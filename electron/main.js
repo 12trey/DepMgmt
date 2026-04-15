@@ -1,5 +1,13 @@
-const { app, BrowserWindow } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 const path = require('path');
+const fs = require('fs');
+const { fork } = require('child_process');
+
+const LOG_PATH = path.join(process.env.USERPROFILE || 'C:\\', 'aipsadt-startup.log');
+function log(msg) {
+  const line = `${new Date().toISOString()} ${msg}\n`;
+  fs.appendFileSync(LOG_PATH, line);
+}
 
 // Enforce single instance
 const gotLock = app.requestSingleInstanceLock();
@@ -9,9 +17,11 @@ if (!gotLock) {
 }
 
 let mainWindow;
+let serverProcess;
 
 const isDev = process.env.NODE_ENV === 'development';
 const SERVER_PORT = 4000;
+
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -26,7 +36,7 @@ function createWindow() {
     },
   });
 
-  mainWindow.removeMenu();
+  //mainWindow.removeMenu();
 
   mainWindow.once('ready-to-show', () => {
     mainWindow.show();
@@ -48,18 +58,47 @@ function createWindow() {
   });
 }
 
-app.whenReady().then(async () => {
-  if (!isDev) {
-    process.env.PORT = String(SERVER_PORT);
-    process.env.NODE_ENV = 'production';
-    try {
-      await require('../server/index.js'); // waits for server.listen() to fire
-    } catch (err) {
-      console.error('Failed to start server:', err);
-    }
-  }
+function startServer() {
+  return new Promise((resolve, reject) => {
+    const serverPath = path.join(__dirname, '../server/index.js');
+    serverProcess = fork(serverPath, [], {
+      env: { ...process.env, PORT: String(SERVER_PORT), NODE_ENV: 'production' },
+    });
+    serverProcess.once('message', (msg) => {
+      if (msg === 'ready') resolve();
+    });
+    serverProcess.once('error', reject);
+    setTimeout(() => reject(new Error('Server startup timed out')), 30000);
+  });
+}
 
-  createWindow();
+ipcMain.handle('pick-folder', async () => {
+  const win = BrowserWindow.getFocusedWindow();
+  const result = await dialog.showOpenDialog(win, { properties: ['openDirectory'] });
+  return result.canceled ? null : result.filePaths[0];
+});
+
+app.whenReady().then(async () => {
+  log(`[startup] app ready, isDev=${isDev}`);
+  if (!isDev) {
+    log('[startup] forking server...');
+    const t = Date.now();
+    try {
+      await startServer();
+    } catch (err) {
+      log(`[startup] server error: ${err.message}`);
+    }
+    log(`[startup] server ready in ${Date.now() - t}ms`);
+    const t2 = Date.now();
+
+    createWindow();
+    mainWindow.once('ready-to-show', () => {
+      log(`[startup] main window ready in ${Date.now() - t2}ms`);
+      // Keep logging until we confirm fork is stable, then remove
+    });
+  } else {
+    createWindow();
+  }
 });
 
 app.on('second-instance', () => {
@@ -70,5 +109,6 @@ app.on('second-instance', () => {
 });
 
 app.on('window-all-closed', () => {
+  if (serverProcess) serverProcess.kill();
   app.quit();
 });

@@ -90,11 +90,14 @@ function StatCard({ icon: Icon, label, value, color }) {
 
 function StatusBadge({ status }) {
   const styles = {
-    draft: 'bg-gray-100 text-gray-700',
-    Success: 'bg-green-100 text-green-700',
-    Failed: 'bg-red-100 text-red-700',
-    Running: 'bg-yellow-100 text-yellow-700',
-    Pending: 'bg-blue-100 text-blue-700',
+    draft:     'bg-gray-100 text-gray-700',
+    ready:     'bg-blue-100 text-blue-700',
+    published: 'bg-green-100 text-green-700',
+    imported:  'bg-purple-100 text-purple-700',
+    Success:   'bg-green-100 text-green-700',
+    Failed:    'bg-red-100 text-red-700',
+    Running:   'bg-yellow-100 text-yellow-700',
+    Pending:   'bg-blue-100 text-blue-700',
     Completed: 'bg-green-100 text-green-700',
   };
   return (

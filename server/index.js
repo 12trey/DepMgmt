@@ -40,6 +40,7 @@ const PORT = process.env.PORT || config.server.port || 4000;
 module.exports = new Promise((resolve, reject) => {
   server.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
+    if (process.send) process.send('ready'); // notify Electron main process when forked
     resolve(PORT);
   });
   server.on('error', reject);

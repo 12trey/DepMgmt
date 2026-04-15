@@ -24,12 +24,14 @@ router.get('/', controller.list);
 router.get('/:appName', controller.getApp);
 router.get('/:appName/:version', controller.getVersion);
 router.post('/', controller.create);
+router.post('/import', controller.importFromPath);
 router.put('/:appName/:version', controller.update);
 router.delete('/:appName/:version', controller.remove);
 router.post('/:appName/:version/upload', upload.array('files'), controller.uploadFiles);
 router.get('/:appName/:version/files', controller.listFiles);
 router.delete('/:appName/:version/files/:filename', controller.deleteFile);
 router.post('/:appName/:version/regenerate', controller.regenerate);
+router.get('/:appName/:version/check-files', controller.checkFiles);
 router.get('/:appName/:version/download', controller.download);
 
 module.exports = router;

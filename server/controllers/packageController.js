@@ -89,6 +89,26 @@ exports.deleteFile = async (req, res) => {
   }
 };
 
+exports.checkFiles = async (req, res) => {
+  try {
+    const result = await packageService.checkMissingFiles(req.params.appName, req.params.version);
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
+exports.importFromPath = async (req, res) => {
+  try {
+    const { sourcePath } = req.body;
+    if (!sourcePath) return res.status(400).json({ error: 'sourcePath is required' });
+    const result = await packageService.importFromPath(sourcePath);
+    res.status(201).json(result);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+};
+
 exports.download = async (req, res) => {
   const { appName, version } = req.params;
   const pkgDir = path.join(paths.packagesDir, appName, version);

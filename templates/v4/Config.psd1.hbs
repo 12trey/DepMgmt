@@ -6,14 +6,14 @@
 
     Toolkit = @{
         ## Logging
-        LogPath              = "$env:WinDir\Logs\Software"
+        LogPath              = 'C:\Windows\Logs\Software'
         LogMaxSize           = 10
         CompressLogs         = $true
         LogWriteToHost       = $true
         LogDebugMessage      = $false
 
         ## Temp Path
-        TempPath             = "$env:Temp"
+        TempPath             = 'C:\Windows\Temp'
         TempPathNoCleanup    = $false
 
         ## Registry
@@ -21,7 +21,7 @@
     }
 
     MSI = @{
-        LogPath              = "$env:WinDir\Logs\Software"
+        LogPath              = 'C:\Windows\Logs\Software'
         LoggingOptions       = '/L*V'
         InstallParams        = '/QN /NORESTART'
         SilentParams         = '/QN /NORESTART'

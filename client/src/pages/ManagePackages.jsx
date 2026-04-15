@@ -1,12 +1,16 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
-import { Search, Trash2, Play, Download } from 'lucide-react';
-import { listPackages, deletePackage, runPackage } from '../api';
+import { Link, useNavigate } from 'react-router-dom';
+import { Search, Trash2, Play, Download, FolderInput } from 'lucide-react';
+import { listPackages, deletePackage, runPackage, importPackage } from '../api';
 
 export default function ManagePackages() {
   const [packages, setPackages] = useState([]);
   const [search, setSearch] = useState('');
   const [msg, setMsg] = useState('');
+  const [error, setError] = useState('');
+  const [importing, setImporting] = useState(false);
+  const navigate = useNavigate();
+  const isElectron = !!window.electronAPI?.isElectron;
 
   const load = () => listPackages().then(setPackages).catch(() => {});
   useEffect(() => { load(); }, []);
@@ -26,14 +30,43 @@ export default function ManagePackages() {
       const result = await runPackage(appName, version, 'Silent');
       setMsg(`Execution started: ${result.id}`);
     } catch (err) {
-      setMsg(`Error: ${err.message}`);
+      setError(err.message);
+    }
+  };
+
+  const handleImport = async () => {
+    setError(''); setMsg('');
+    let sourcePath = null;
+    if (isElectron) {
+      sourcePath = await window.electronAPI.pickFolder();
+      if (!sourcePath) return;
+    } else {
+      sourcePath = prompt('Enter the full path to the PSADT package folder:');
+      if (!sourcePath) return;
+    }
+    setImporting(true);
+    try {
+      const result = await importPackage(sourcePath);
+      setMsg(`Imported: ${result.appName} v${result.version}`);
+      load();
+      navigate(`/packages/${result.appName}/${result.version}`);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setImporting(false);
     }
   };
 
   return (
     <div>
-      <h1 className="text-2xl font-bold mb-6">Manage Packages</h1>
-      {msg && <div className="bg-blue-50 text-blue-700 p-3 rounded mb-4">{msg}</div>}
+      <div className="flex items-center justify-between mb-6">
+        <h1 className="text-2xl font-bold">Manage Packages</h1>
+        <button onClick={handleImport} disabled={importing} className="btn-secondary">
+          <FolderInput size={16} /> {importing ? 'Importing…' : 'Import Package'}
+        </button>
+      </div>
+      {msg && <div className="bg-green-50 text-green-700 p-3 rounded mb-4">{msg}</div>}
+      {error && <div className="bg-red-50 text-red-700 p-3 rounded mb-4">{error}</div>}
 
       <div className="mb-4 relative">
         <Search className="absolute left-3 top-2.5 text-gray-400" size={18} />
