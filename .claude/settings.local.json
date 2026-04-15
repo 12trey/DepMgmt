@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install:*)",
+      "Bash(npx vite:*)",
+      "Bash(node -e ':*)",
+      "Bash(node -e \"require\\('./server/index.js'\\); setTimeout\\(\\(\\) => { console.log\\('OK'\\); process.exit\\(0\\); }, 2000\\);\")",
+      "Bash(curl:*)",
+      "Bash(powershell.exe:*)",
+      "Bash(node:*)",
+      "Bash(cat \"$\\(node -e \"const p=require\\('./server/paths'\\);console.log\\(p.packagesDir\\)\"\\)/test/1/Invoke-AppDeployToolkit.ps1\")",
+      "Bash(grep -n \"Start-ADTProcess\\\\|inkscape\\\\|&quot;\\\\|&amp;\" \"$\\(node -e \"const p=require\\('./server/paths'\\);console.log\\(p.packagesDir\\)\"\\)/test/1/Invoke-AppDeployToolkit.ps1\")",
+      "Bash(grep -n \"adtSession\\\\|dirFiles\\\\|DirFiles\" \"$\\(node -e \"const p=require\\('./server/paths'\\);console.log\\(p.packagesDir\\)\"\\)/test/1/Invoke-AppDeployToolkit.ps1\")",
+      "Bash(grep -n \"Remove-TypeData\\\\|FormatXml\\\\|ObjectSecurity\" \"$\\(node -e \"const p=require\\('./server/paths'\\);console.log\\(p.packagesDir\\)\"\\)/test/1/Invoke-AppDeployToolkit.ps1\")"
+    ]
+  }
+}

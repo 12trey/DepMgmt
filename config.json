@@ -1,0 +1,16 @@
+{
+  "repository": {
+    "url": "",
+    "localPath": "./repo"
+  },
+  "packages": {
+    "basePath": "./packages"
+  },
+  "server": {
+    "port": 4000
+  },
+  "execution": {
+    "powershellPath": "powershell.exe",
+    "defaultArgs": ["-NoProfile", "-ExecutionPolicy", "Bypass"]
+  }
+}
