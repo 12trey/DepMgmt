@@ -10,7 +10,7 @@ export default function Execution() {
   const [logContent, setLogContent] = useState('');
   const [activeExecId, setActiveExecId] = useState(null);
   const [tab, setTab] = useState('single'); // 'single' | 'wrapper'
-  const [singleForm, setSingleForm] = useState({ appName: '', version: '', mode: 'Silent' });
+  const [singleForm, setSingleForm] = useState({ appName: '', version: '', mode: 'Silent', target: '', username: '', password: '' });
   const [wrapperSteps, setWrapperSteps] = useState([]);
   const { messages, subscribe, clear } = useWebSocket(activeExecId);
   const terminalRef = useRef();
@@ -26,7 +26,8 @@ export default function Execution() {
 
   const handleRunSingle = async () => {
     clear();
-    const result = await runPackage(singleForm.appName, singleForm.version, singleForm.mode);
+    const { appName, version, mode, target, username, password } = singleForm;
+    const result = await runPackage(appName, version, mode, target || undefined, username || undefined, password || undefined);
     setActiveExecId(result.id);
     subscribe(result.id);
   };
@@ -56,23 +57,51 @@ export default function Execution() {
         </div>
 
         {tab === 'single' ? (
-          <div className="flex gap-3 items-end">
-            <label className="block flex-1">
-              <span className="text-sm font-medium text-gray-700">Package</span>
-              <select className="input mt-1" value={`${singleForm.appName}|${singleForm.version}`} onChange={(e) => { const [a, v] = e.target.value.split('|'); setSingleForm({ ...singleForm, appName: a, version: v }); }}>
-                <option value="|">Select...</option>
-                {packages.map((p, i) => <option key={i} value={`${p.appName}|${p.version}`}>{p.appName} v{p.version}</option>)}
-              </select>
-            </label>
-            <label className="block w-40">
-              <span className="text-sm font-medium text-gray-700">Mode</span>
-              <select className="input mt-1" value={singleForm.mode} onChange={(e) => setSingleForm({ ...singleForm, mode: e.target.value })}>
-                <option>Silent</option>
-                <option>Interactive</option>
-                <option>NonInteractive</option>
-              </select>
-            </label>
-            <button onClick={handleRunSingle} disabled={!singleForm.appName} className="btn-primary"><Play size={16} /> Run</button>
+          <div className="space-y-3">
+            <div className="flex gap-3 items-end">
+              <label className="block flex-1">
+                <span className="text-sm font-medium text-gray-700">Package</span>
+                <select className="input mt-1" value={`${singleForm.appName}|${singleForm.version}`} onChange={(e) => { const [a, v] = e.target.value.split('|'); setSingleForm({ ...singleForm, appName: a, version: v }); }}>
+                  <option value="|">Select...</option>
+                  {packages.map((p, i) => <option key={i} value={`${p.appName}|${p.version}`}>{p.appName} v{p.version}</option>)}
+                </select>
+              </label>
+              <label className="block w-40">
+                <span className="text-sm font-medium text-gray-700">Mode</span>
+                <select className="input mt-1" value={singleForm.mode} onChange={(e) => setSingleForm({ ...singleForm, mode: e.target.value })}>
+                  <option>Silent</option>
+                  <option>Interactive</option>
+                  <option>NonInteractive</option>
+                </select>
+              </label>
+              <button onClick={handleRunSingle} disabled={!singleForm.appName} className="btn-primary"><Play size={16} /> Run</button>
+            </div>
+            <div className="border-t pt-3">
+              <label className="block">
+                <span className="text-sm font-medium text-gray-700">Remote Target <span className="text-gray-400 font-normal">(optional — leave blank to run locally)</span></span>
+                <input
+                  className="input mt-1"
+                  placeholder="hostname or IP address"
+                  value={singleForm.target}
+                  onChange={(e) => setSingleForm({ ...singleForm, target: e.target.value })}
+                />
+              </label>
+              {singleForm.target && (
+                <div className="flex gap-3 mt-2">
+                  <label className="block flex-1">
+                    <span className="text-sm font-medium text-gray-700">Username <span className="text-gray-400 font-normal">(optional)</span></span>
+                    <input className="input mt-1" placeholder="DOMAIN\user" value={singleForm.username} onChange={(e) => setSingleForm({ ...singleForm, username: e.target.value })} autoComplete="username" />
+                  </label>
+                  <label className="block flex-1">
+                    <span className="text-sm font-medium text-gray-700">Password <span className="text-gray-400 font-normal">(optional)</span></span>
+                    <input className="input mt-1" type="password" value={singleForm.password} onChange={(e) => setSingleForm({ ...singleForm, password: e.target.value })} autoComplete="current-password" />
+                  </label>
+                </div>
+              )}
+              {singleForm.target && (
+                <p className="text-xs text-gray-400 mt-1">Requires WinRM enabled on the target. Package files are copied to a temp directory, executed, then removed. Remote output is displayed when execution completes.</p>
+              )}
+            </div>
           </div>
         ) : (
           <div>

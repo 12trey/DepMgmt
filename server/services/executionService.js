@@ -124,6 +124,172 @@ exports.runWrapper = async (steps) => {
   return { id: wrapperId, status: 'Running' };
 };
 
+exports.runRemote = async (appName, version, mode, target, username, password) => {
+  const pkgDir = path.join(paths.packagesDir, appName, version);
+  if (!fs.existsSync(pkgDir)) throw new Error('Package not found');
+
+  const metaPath = path.join(pkgDir, 'metadata.json');
+  const meta = fs.existsSync(metaPath) ? JSON.parse(fs.readFileSync(metaPath, 'utf-8')) : {};
+  const entryScript = meta.psadtVersion === 'v4' ? 'Invoke-AppDeployToolkit.ps1' : 'Deploy-Application.ps1';
+
+  const config = getConfig();
+  const execId = uuidv4();
+  const execMeta = { id: execId, appName, version, mode, target, status: 'Running', startedAt: new Date().toISOString() };
+  executions.set(execId, execMeta);
+  broadcast(execId, `Starting remote deployment: ${appName} v${version} on ${target} [${mode}]\n`, 'system');
+
+  const psEsc = (s) => String(s).replace(/'/g, "''");
+  const localPath = pkgDir; // full Windows path
+
+  const credLines = (username && password)
+    ? `$secPass = ConvertTo-SecureString '${psEsc(password)}' -AsPlainText -Force\n` +
+      `$cred = [System.Management.Automation.PSCredential]::new('${psEsc(username)}', $secPass)\n` +
+      `$sessionParams['Credential'] = $cred\n`
+    : '';
+
+  const script = [
+    `$ErrorActionPreference = [System.Management.Automation.ActionPreference]::Stop`,
+    `$ProgressPreference = [System.Management.Automation.ActionPreference]::SilentlyContinue`,
+    `$remoteTmp = "C:\\Windows\\Temp\\PSADT_$([System.Guid]::NewGuid().ToString('N'))"`,
+    `$sessionParams = @{ ComputerName = '${psEsc(target)}' }`,
+    credLines,
+    `Write-Host "Connecting to '${psEsc(target)}' via WinRM..."`,
+    `$session = New-PSSession @sessionParams`,
+    `try {`,
+    `    Write-Host "Creating remote staging directory $remoteTmp..."`,
+    `    Invoke-Command -Session $session -ScriptBlock { param($p) New-Item -ItemType Directory -Path $p -Force | Out-Null } -ArgumentList $remoteTmp`,
+    `    Write-Host "Copying package files to ${psEsc(target)}..."`,
+    `    Copy-Item -Path '${psEsc(localPath)}\\*' -Destination $remoteTmp -ToSession $session -Recurse -Force`,
+    `    $adtMod = Get-Module -Name PSAppDeployToolkit -ListAvailable |`,
+    `        Where-Object { $_.Version.Major -ge 4 } |`,
+    `        Sort-Object Version -Descending |`,
+    `        Select-Object -First 1`,
+    `    if ($adtMod) {`,
+    `        $adtSrc = Split-Path $adtMod.Path -Parent`,
+    `        $remoteAdtDest = Join-Path $remoteTmp 'PSAppDeployToolkit'`,
+    `        Write-Host "Copying PSAppDeployToolkit $($adtMod.Version) to remote staging directory..."`,
+    `        Invoke-Command -Session $session -ScriptBlock { param($p) New-Item -ItemType Directory -Path $p -Force | Out-Null } -ArgumentList $remoteAdtDest`,
+    `        Copy-Item -Path "$adtSrc\\*" -Destination $remoteAdtDest -ToSession $session -Recurse -Force`,
+    `    } else {`,
+    `        Write-Warning "PSAppDeployToolkit v4 not found locally; remote machine must have it installed."`,
+    `    }`,
+    `    Write-Host "Executing ${entryScript} on ${psEsc(target)} [Mode: ${mode}]..."`,
+    `    if ('${psEsc(mode)}' -eq 'Interactive') {`,
+    `        # Interactive mode: WinRM has no desktop — run via a scheduled task under the logged-on user`,
+    `        $output = Invoke-Command -Session $session -ScriptBlock {`,
+    `            param($dir, $scriptName)`,
+    `            # Console session`,
+    `            $loggedOnUser = (Get-CimInstance Win32_ComputerSystem).UserName`,
+    `            # RDP/TS sessions: Win32_ComputerSystem.UserName is empty — use explorer.exe owner instead`,
+    `            if (-not $loggedOnUser) {`,
+    `                $exp = Get-CimInstance Win32_Process -Filter "Name='explorer.exe'" | Select-Object -First 1`,
+    `                if ($exp) {`,
+    `                    $o = Invoke-CimMethod -InputObject $exp -MethodName GetOwner`,
+    `                    if ($o.ReturnValue -eq 0) {`,
+    `                        $loggedOnUser = if ($o.Domain) { "$($o.Domain)\\$($o.User)" } else { $o.User }`,
+    `                    }`,
+    `                }`,
+    `            }`,
+    `            if (-not $loggedOnUser) {`,
+    `                throw 'No interactive session found (console or RDP). Interactive mode requires an active desktop session on the target machine.'`,
+    `            }`,
+    `            $taskName  = "PSADT_$([System.Guid]::NewGuid().ToString('N'))"`,
+    `            $sp        = Join-Path $dir $scriptName`,
+    `            $psArg     = "-WindowStyle Hidden -ExecutionPolicy Bypass -File \`"$sp\`" -DeploymentType Install -DeployMode Interactive"`,
+    `            $action    = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument $psArg -WorkingDirectory $dir`,
+    `            $principal = New-ScheduledTaskPrincipal -UserId $loggedOnUser -LogonType Interactive -RunLevel Highest`,
+    `            $settings  = New-ScheduledTaskSettingsSet -ExecutionTimeLimit (New-TimeSpan -Hours 1)`,
+    `            Register-ScheduledTask -TaskName $taskName -Action $action -Principal $principal -Settings $settings -Force | Out-Null`,
+    `            Write-Output "Scheduled task registered. Running interactively as: $loggedOnUser"`,
+    `            Start-ScheduledTask -TaskName $taskName`,
+    `            $deadline = [DateTime]::Now.AddMinutes(60)`,
+    `            do {`,
+    `                Start-Sleep -Seconds 3`,
+    `                $st = (Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue).State`,
+    `            } while ($st -eq 'Running' -and [DateTime]::Now -lt $deadline)`,
+    `            $rc = (Get-ScheduledTaskInfo -TaskName $taskName).LastTaskResult`,
+    `            Unregister-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction SilentlyContinue`,
+    `            Write-Output "Task finished with exit code: $rc"`,
+    `            $logDir = 'C:\\Windows\\Logs\\Software'`,
+    `            $latestLog = Get-ChildItem $logDir -Filter '*.log' -ErrorAction SilentlyContinue |`,
+    `                Sort-Object LastWriteTime -Descending | Select-Object -First 1`,
+    `            if ($latestLog) {`,
+    `                Write-Output "--- PSADT log: $($latestLog.Name) ---"`,
+    `                Get-Content $latestLog.FullName`,
+    `            }`,
+    `        } -ArgumentList $remoteTmp, '${entryScript}'`,
+    `    } else {`,
+    `        $output = Invoke-Command -Session $session -ScriptBlock {`,
+    `            param($dir, $scriptName, $deployMode)`,
+    `            $sp = Join-Path $dir $scriptName`,
+    `            & powershell.exe -NonInteractive -ExecutionPolicy Bypass -File $sp \``,
+    `                -DeploymentType Install -DeployMode $deployMode 2>&1 | ForEach-Object { $_.ToString() }`,
+    `        } -ArgumentList $remoteTmp, '${entryScript}', '${psEsc(mode)}'`,
+    `    }`,
+    `    $output | ForEach-Object { Write-Host $_ }`,
+    `} finally {`,
+    `    Write-Host "Cleaning up remote staging directory..."`,
+    `    try {`,
+    `        Invoke-Command -Session $session -ScriptBlock {`,
+    `            param($p) Remove-Item -Path $p -Recurse -Force -ErrorAction SilentlyContinue`,
+    `        } -ArgumentList $remoteTmp`,
+    `    } catch {}`,
+    `    Remove-PSSession $session -ErrorAction SilentlyContinue`,
+    `}`,
+  ].join('\n');
+
+  // Encode as UTF-16LE for PowerShell -EncodedCommand
+  const encoded = Buffer.from(script, 'utf16le').toString('base64');
+
+  const userProfile = process.env.USERPROFILE || '';
+  const sysRoot = process.env.SystemRoot || 'C:\\Windows';
+  const progFiles = process.env.ProgramFiles || 'C:\\Program Files';
+  const standardModPaths = [
+    ...(userProfile ? [
+      path.join(userProfile, 'Documents', 'WindowsPowerShell', 'Modules'),
+      path.join(userProfile, 'Documents', 'PowerShell', 'Modules'),
+    ] : []),
+    path.join(progFiles, 'WindowsPowerShell', 'Modules'),
+    path.join(progFiles, 'PowerShell', 'Modules'),
+    path.join(sysRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'Modules'),
+  ];
+  const baseParts = (process.env.PSModulePath || '').split(';').filter(Boolean);
+  const mergedParts = [...new Set([...standardModPaths, ...baseParts])];
+  const spawnEnv = { ...process.env, PSModulePath: mergedParts.join(';') };
+
+  const psArgs = [...config.execution.defaultArgs, '-EncodedCommand', encoded];
+
+  (async () => {
+    await new Promise((resolve) => {
+      const child = spawn(config.execution.powershellPath, psArgs, { env: spawnEnv });
+      const logLines = [];
+      const onData = (stream) => (chunk) => {
+        const text = chunk.toString();
+        logLines.push(text);
+        broadcast(execId, text, stream);
+      };
+      child.stdout.on('data', onData('stdout'));
+      child.stderr.on('data', onData('stderr'));
+      child.on('close', (code) => {
+        const status = code === 0 ? 'Success' : 'Failed';
+        executions.set(execId, { ...executions.get(execId), status, exitCode: code, endedAt: new Date().toISOString() });
+        fs.mkdirSync(logsDir, { recursive: true });
+        fs.writeFileSync(path.join(logsDir, `${execId}.log`), logLines.join(''));
+        fs.writeFileSync(path.join(logsDir, `${execId}.json`), JSON.stringify(executions.get(execId), null, 2));
+        broadcast(execId, `\n--- Remote Execution ${status} (exit code ${code}) ---\n`, 'system');
+        resolve();
+      });
+      child.on('error', (err) => {
+        executions.set(execId, { ...executions.get(execId), status: 'Failed', error: err.message });
+        broadcast(execId, `Error: ${err.message}\n`, 'stderr');
+        resolve();
+      });
+    });
+  })();
+
+  return { id: execId, status: 'Running' };
+};
+
 exports.getStatus = (id) => {
   const exec = executions.get(id);
   if (!exec) throw new Error('Execution not found');

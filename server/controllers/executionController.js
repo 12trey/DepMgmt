@@ -2,8 +2,10 @@ const executionService = require('../services/executionService');
 
 exports.run = async (req, res) => {
   try {
-    const { appName, version, mode } = req.body;
-    const result = await executionService.runPackage(appName, version, mode || 'Silent');
+    const { appName, version, mode, target, username, password } = req.body;
+    const result = target
+      ? await executionService.runRemote(appName, version, mode || 'Silent', target, username, password)
+      : await executionService.runPackage(appName, version, mode || 'Silent');
     res.json(result);
   } catch (err) {
     res.status(500).json({ error: err.message });

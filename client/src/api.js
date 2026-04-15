@@ -35,8 +35,8 @@ export async function uploadFiles(appName, version, files) {
 }
 
 // Execution
-export const runPackage = (appName, version, mode) =>
-  request('/execution/run', { method: 'POST', body: JSON.stringify({ appName, version, mode }) });
+export const runPackage = (appName, version, mode, target, username, password) =>
+  request('/execution/run', { method: 'POST', body: JSON.stringify({ appName, version, mode, target, username, password }) });
 export const runWrapper = (steps) =>
   request('/execution/run-wrapper', { method: 'POST', body: JSON.stringify({ steps }) });
 export const getExecStatus = (id) => request(`/execution/status/${id}`);
