@@ -1,7 +1,9 @@
-const { app, BrowserWindow, ipcMain, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, clipboard } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { fork } = require('child_process');
+const { session } = require('electron');
+const { electron } = require('process');
 
 const LOG_PATH = path.join(process.env.USERPROFILE || 'C:\\', 'aipsadt-startup.log');
 function log(msg) {
@@ -33,10 +35,26 @@ function createWindow() {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
+      webviewTag: true
     },
   });
 
-  //mainWindow.removeMenu();
+  ipcMain.on('iframe-message', (event, data) => {
+    console.log('Received from iframe:', data);
+    clipboard.writeText(data);
+
+    dialog.showMessageBoxSync({
+      type: 'info',
+      title: 'Clipboard Updated',
+      message: `${data}\nwas copied to clipboard. Paste and execute in an elevated terminal to run.`,
+      buttons: ['OK']
+    });
+    // send back to renderer
+    event.sender.send('clipboard-updated', data);
+    //console.log(clipboard.readText());
+  });
+  
+  mainWindow.removeMenu();
 
   mainWindow.once('ready-to-show', () => {
     mainWindow.show();
@@ -99,6 +117,14 @@ app.whenReady().then(async () => {
   } else {
     createWindow();
   }
+
+  session.defaultSession.setPermissionRequestHandler((webContents, permission, callback) => {
+    if (permission === 'clipboard-write') {
+      callback(true);
+    } else {
+      callback(false);
+    }
+  });
 });
 
 app.on('second-instance', () => {

@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { RefreshCw } from 'lucide-react';
 
 const DMT_URL = 'http://localhost:7000';
 
 export default function DMTTools() {
   const [status, setStatus] = useState('checking'); // 'checking' | 'available' | 'unavailable'
+
 
   const check = () => {
     setStatus('checking');
@@ -13,7 +14,20 @@ export default function DMTTools() {
       .catch(() => setStatus('unavailable'));
   };
 
-  useEffect(() => { check(); }, []);
+  useEffect(() => {
+    check();
+
+    const handler = (event) => {
+      console.log('got message', event.data);
+      window.electronAPI.sendToMain(event.data.payload);
+    };
+
+    window.addEventListener('message', handler);
+    return () => {
+      window.removeEventListener('message', handler);
+    };
+  }, []);
+
 
   if (status === 'checking') {
     return (
@@ -52,7 +66,14 @@ export default function DMTTools() {
         src={DMT_URL}
         className="w-full h-full border-0"
         title="DMT Tools"
+        allow="clipboard-read *; clipboard-write *;"
       />
+      {/* <webview
+        ref={webviewRef}
+        src={DMT_URL}
+        style={{ width: '100%', height: '100%' }}
+        allowpopups="true"
+      /> */}
     </div>
   );
 }

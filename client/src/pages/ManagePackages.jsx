@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Search, Trash2, Play, Download, FolderInput } from 'lucide-react';
-import { listPackages, deletePackage, runPackage, importPackage } from '../api';
+import { listPackages, deletePackage, importPackage } from '../api';
 
 export default function ManagePackages() {
   const [packages, setPackages] = useState([]);
@@ -25,13 +25,8 @@ export default function ManagePackages() {
     load();
   };
 
-  const handleRun = async (appName, version) => {
-    try {
-      const result = await runPackage(appName, version, 'Silent');
-      setMsg(`Execution started: ${result.id}`);
-    } catch (err) {
-      setError(err.message);
-    }
+  const handleRun = (appName, version) => {
+    navigate('/execution', { state: { appName, version } });
   };
 
   const handleImport = async () => {

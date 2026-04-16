@@ -15,7 +15,7 @@ function getConfig() {
 // In-memory execution tracker
 const executions = new Map();
 
-function runScript(scriptPath, mode, execId) {
+function runScript(scriptPath, mode, execId, deploymentType = 'Install') {
   return new Promise((resolve, reject) => {
     const config = getConfig();
     const psArgs = [
@@ -23,7 +23,7 @@ function runScript(scriptPath, mode, execId) {
       '-File',
       scriptPath,
       `-DeploymentType`,
-      'Install',
+      deploymentType,
       `-DeployMode`,
       mode,
     ];
@@ -83,17 +83,17 @@ function runScript(scriptPath, mode, execId) {
   });
 }
 
-exports.runPackage = async (appName, version, mode) => {
+exports.runPackage = async (appName, version, mode, deploymentType = 'Install') => {
   const scriptPath = packageService.getEntryScript(appName, version);
   if (!fs.existsSync(scriptPath)) throw new Error('Deploy script not found');
 
   const execId = uuidv4();
-  const meta = { id: execId, appName, version, mode, status: 'Running', startedAt: new Date().toISOString() };
+  const meta = { id: execId, appName, version, mode, deploymentType, status: 'Running', startedAt: new Date().toISOString() };
   executions.set(execId, meta);
-  broadcast(execId, `Starting deployment: ${appName} v${version} [${mode}]\n`, 'system');
+  broadcast(execId, `Starting deployment: ${appName} v${version} [${deploymentType}/${mode}]\n`, 'system');
 
   // Run in background, don't await
-  runScript(scriptPath, mode, execId).catch(() => {});
+  runScript(scriptPath, mode, execId, deploymentType).catch(() => {});
 
   return { id: execId, status: 'Running' };
 };
@@ -111,9 +111,9 @@ exports.runWrapper = async (steps) => {
         broadcast(wrapperId, `Step ${i + 1}: Script not found for ${step.appName}\n`, 'stderr');
         continue;
       }
-      broadcast(wrapperId, `\n=== Step ${i + 1}/${steps.length}: ${step.appName} v${step.version} ===\n`, 'system');
+      broadcast(wrapperId, `\n=== Step ${i + 1}/${steps.length}: ${step.appName} v${step.version} [${step.deploymentType || 'Install'}/${step.mode || 'Silent'}] ===\n`, 'system');
       try {
-        await runScript(scriptPath, step.mode || 'Silent', wrapperId);
+        await runScript(scriptPath, step.mode || 'Silent', wrapperId, step.deploymentType || 'Install');
       } catch {
         broadcast(wrapperId, `Step ${i + 1} failed, continuing...\n`, 'stderr');
       }
@@ -124,7 +124,7 @@ exports.runWrapper = async (steps) => {
   return { id: wrapperId, status: 'Running' };
 };
 
-exports.runRemote = async (appName, version, mode, target, username, password) => {
+exports.runRemote = async (appName, version, mode, target, username, password, deploymentType = 'Install') => {
   const pkgDir = path.join(paths.packagesDir, appName, version);
   if (!fs.existsSync(pkgDir)) throw new Error('Package not found');
 
@@ -134,9 +134,9 @@ exports.runRemote = async (appName, version, mode, target, username, password) =
 
   const config = getConfig();
   const execId = uuidv4();
-  const execMeta = { id: execId, appName, version, mode, target, status: 'Running', startedAt: new Date().toISOString() };
+  const execMeta = { id: execId, appName, version, mode, deploymentType, target, status: 'Running', startedAt: new Date().toISOString() };
   executions.set(execId, execMeta);
-  broadcast(execId, `Starting remote deployment: ${appName} v${version} on ${target} [${mode}]\n`, 'system');
+  broadcast(execId, `Starting remote deployment: ${appName} v${version} on ${target} [${deploymentType}/${mode}]\n`, 'system');
 
   const psEsc = (s) => String(s).replace(/'/g, "''");
   const localPath = pkgDir; // full Windows path
@@ -174,7 +174,7 @@ exports.runRemote = async (appName, version, mode, target, username, password) =
     `    } else {`,
     `        Write-Warning "PSAppDeployToolkit v4 not found locally; remote machine must have it installed."`,
     `    }`,
-    `    Write-Host "Executing ${entryScript} on ${psEsc(target)} [Mode: ${mode}]..."`,
+    `    Write-Host "Executing ${entryScript} on ${psEsc(target)} [${deploymentType}/${mode}]..."`,
     `    if ('${psEsc(mode)}' -eq 'Interactive') {`,
     `        # Interactive mode: WinRM has no desktop — run via a scheduled task under the logged-on user`,
     `        $output = Invoke-Command -Session $session -ScriptBlock {`,
@@ -196,7 +196,7 @@ exports.runRemote = async (appName, version, mode, target, username, password) =
     `            }`,
     `            $taskName  = "PSADT_$([System.Guid]::NewGuid().ToString('N'))"`,
     `            $sp        = Join-Path $dir $scriptName`,
-    `            $psArg     = "-WindowStyle Hidden -ExecutionPolicy Bypass -File \`"$sp\`" -DeploymentType Install -DeployMode Interactive"`,
+    `            $psArg     = "-WindowStyle Hidden -ExecutionPolicy Bypass -File \`"$sp\`" -DeploymentType ${psEsc(deploymentType)} -DeployMode Interactive"`,
     `            $action    = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument $psArg -WorkingDirectory $dir`,
     `            $principal = New-ScheduledTaskPrincipal -UserId $loggedOnUser -LogonType Interactive -RunLevel Highest`,
     `            $settings  = New-ScheduledTaskSettingsSet -ExecutionTimeLimit (New-TimeSpan -Hours 1)`,
@@ -243,7 +243,7 @@ exports.runRemote = async (appName, version, mode, target, username, password) =
     `            param($dir, $scriptName, $deployMode)`,
     `            $sp = Join-Path $dir $scriptName`,
     `            Set-Location $dir`,
-    `            & $sp -DeploymentType Install -DeployMode $deployMode 2>&1 | ForEach-Object { $_.ToString() }`,
+    `            & $sp -DeploymentType ${psEsc(deploymentType)} -DeployMode $deployMode 2>&1 | ForEach-Object { $_.ToString() }`,
     `        } -ArgumentList $remoteTmp, '${entryScript}', '${psEsc(mode)}'`,
     `    }`,
     `    $output | ForEach-Object { Write-Host $_ }`,

@@ -1,16 +1,18 @@
 import { useEffect, useState, useRef } from 'react';
+import { useLocation } from 'react-router-dom';
 import { listLogs, getLog, listPackages, runPackage, runWrapper } from '../api';
 import { useWebSocket } from '../hooks/useWebSocket';
 import { Plus, Trash2, Play } from 'lucide-react';
 
 export default function Execution() {
+  const { state: navState } = useLocation();
   const [logs, setLogs] = useState([]);
   const [packages, setPackages] = useState([]);
   const [selectedLog, setSelectedLog] = useState(null);
   const [logContent, setLogContent] = useState('');
   const [activeExecId, setActiveExecId] = useState(null);
   const [tab, setTab] = useState('single'); // 'single' | 'wrapper'
-  const [singleForm, setSingleForm] = useState({ appName: '', version: '', mode: 'Silent', target: '', username: '', password: '' });
+  const [singleForm, setSingleForm] = useState({ appName: navState?.appName || '', version: navState?.version || '', deploymentType: 'Install', mode: 'Silent', target: '', username: '', password: '' });
   const [wrapperSteps, setWrapperSteps] = useState([]);
   const { messages, subscribe, clear } = useWebSocket(activeExecId);
   const terminalRef = useRef();
@@ -26,8 +28,8 @@ export default function Execution() {
 
   const handleRunSingle = async () => {
     clear();
-    const { appName, version, mode, target, username, password } = singleForm;
-    const result = await runPackage(appName, version, mode, target || undefined, username || undefined, password || undefined);
+    const { appName, version, deploymentType, mode, target, username, password } = singleForm;
+    const result = await runPackage(appName, version, mode, deploymentType, target || undefined, username || undefined, password || undefined);
     setActiveExecId(result.id);
     subscribe(result.id);
   };
@@ -64,6 +66,14 @@ export default function Execution() {
                 <select className="input mt-1" value={`${singleForm.appName}|${singleForm.version}`} onChange={(e) => { const [a, v] = e.target.value.split('|'); setSingleForm({ ...singleForm, appName: a, version: v }); }}>
                   <option value="|">Select...</option>
                   {packages.map((p, i) => <option key={i} value={`${p.appName}|${p.version}`}>{p.appName} v{p.version}</option>)}
+                </select>
+              </label>
+              <label className="block w-36">
+                <span className="text-sm font-medium text-gray-700">Type</span>
+                <select className="input mt-1" value={singleForm.deploymentType} onChange={(e) => setSingleForm({ ...singleForm, deploymentType: e.target.value })}>
+                  <option>Install</option>
+                  <option>Uninstall</option>
+                  <option>Repair</option>
                 </select>
               </label>
               <label className="block w-40">
@@ -112,6 +122,11 @@ export default function Execution() {
                   <option value="|">Select...</option>
                   {packages.map((p, j) => <option key={j} value={`${p.appName}|${p.version}`}>{p.appName} v{p.version}</option>)}
                 </select>
+                <select className="input w-32" value={step.deploymentType || 'Install'} onChange={(e) => { const arr = [...wrapperSteps]; arr[i] = { ...step, deploymentType: e.target.value }; setWrapperSteps(arr); }}>
+                  <option>Install</option>
+                  <option>Uninstall</option>
+                  <option>Repair</option>
+                </select>
                 <select className="input w-36" value={step.mode} onChange={(e) => { const arr = [...wrapperSteps]; arr[i] = { ...step, mode: e.target.value }; setWrapperSteps(arr); }}>
                   <option>Silent</option>
                   <option>Interactive</option>
@@ -120,7 +135,7 @@ export default function Execution() {
               </div>
             ))}
             <div className="flex gap-2 mt-2">
-              <button onClick={() => setWrapperSteps([...wrapperSteps, { appName: '', version: '', mode: 'Silent' }])} className="btn-secondary text-sm"><Plus size={16} /> Add Step</button>
+              <button onClick={() => setWrapperSteps([...wrapperSteps, { appName: '', version: '', deploymentType: 'Install', mode: 'Silent' }])} className="btn-secondary text-sm"><Plus size={16} /> Add Step</button>
               <button onClick={handleRunWrapper} disabled={wrapperSteps.length === 0} className="btn-primary text-sm"><Play size={16} /> Run All</button>
             </div>
           </div>
