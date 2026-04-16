@@ -19,6 +19,7 @@ const navItems = [
   { to: '/msi-builder', icon: Package, label: 'MSI Builder' },
   { to: '/git', icon: GitBranch, label: 'Git' },
   { to: '/config', icon: Settings, label: 'Settings' },
+  { divider: true },
   { to: '/dmt-tools', icon: Monitor, label: 'DMT Tools' },
 ];
 
@@ -31,7 +32,7 @@ export default function App() {
           PSADT for DMT
         </div>
         <div className="flex-1 py-3">
-          {navItems.map(({ to, icon: Icon, label }) => (
+          {/* {navItems.map(({ to, icon: Icon, label }) => (
             <NavLink
               key={to}
               to={to}
@@ -43,7 +44,30 @@ export default function App() {
               <Icon size={18} />
               {label}
             </NavLink>
-          ))}
+          ))} */}
+
+          {navItems.map((item, index) => {
+            if (item.divider) {
+              return <div key={`divider-${index}`} className="my-2 border-t border-gray-700" />;
+            }
+
+            const { to, icon: Icon, label } = item;
+
+            return (
+              <NavLink
+                key={to}
+                to={to}
+                end={to === '/'}
+                className={({ isActive }) =>
+                  `flex items-center gap-3 px-4 py-2.5 text-sm hover:bg-gray-800 ${isActive ? 'bg-gray-800 text-white border-l-2 border-blue-500' : ''
+                  }`
+                }
+              >
+                <Icon size={18} />
+                {label}
+              </NavLink>
+            );
+          })}
         </div>
       </nav>
 

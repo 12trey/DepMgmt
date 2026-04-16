@@ -62,6 +62,17 @@ export const updateConfig = (data) => request('/config', { method: 'PUT', body: 
 // MSI Builder
 export const detectMsiTools = () => request('/msi/detect-tools');
 
+export async function probeMsi(file) {
+  const form = new FormData();
+  form.append('file', file);
+  const res = await fetch(`${BASE}/msi/probe`, { method: 'POST', body: form });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error(err.error || res.statusText);
+  }
+  return res.json();
+}
+
 export async function buildMsi(formData) {
   const res = await fetch(`${BASE}/msi/build`, { method: 'POST', body: formData });
   return res;

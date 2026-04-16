@@ -1,6 +1,16 @@
 const fs = require('fs');
 const msiService = require('../services/msiService');
 
+exports.probe = async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'No MSI file uploaded' });
+    const info = await msiService.probeMsi(req.file.buffer);
+    res.json(info);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
 exports.detectTools = async (_req, res) => {
   try {
     const result = await msiService.detectWix();

@@ -1,9 +1,34 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   AlertCircle, CheckCircle, ChevronDown, ChevronRight,
-  FileText, Folder, FolderPlus, Plus, Trash2, Package,
+  FileText, Folder, FolderPlus, Plus, Trash2, Package, HardDrive, Server, Settings,
 } from 'lucide-react';
-import { detectMsiTools, buildMsi } from '../api';
+import { detectMsiTools, probeMsi, buildMsi } from '../api';
+
+// ─── Constants ────────────────────────────────────────────────────────────────
+
+// scope: 'machine' | 'user' | 'both'
+const WIX_DIR_OPTIONS = [
+  { id: 'CommonAppDataFolder',  label: 'ProgramData',          desc: 'C:\\ProgramData\\...',                        scope: 'machine' },
+  { id: 'WindowsFolder',        label: 'Windows',              desc: 'C:\\Windows\\...',                            scope: 'machine' },
+  { id: 'SystemFolder',         label: 'System32',             desc: 'C:\\Windows\\System32\\...',                  scope: 'machine' },
+  { id: 'System64Folder',       label: 'System64',             desc: 'C:\\Windows\\SysWOW64\\...',                  scope: 'machine' },
+  { id: 'CommonFilesFolder',    label: 'Common Files (x86)',   desc: 'C:\\Program Files (x86)\\Common Files\\...', scope: 'machine' },
+  { id: 'CommonFiles64Folder',  label: 'Common Files (x64)',   desc: 'C:\\Program Files\\Common Files\\...',       scope: 'machine' },
+  { id: 'FontsFolder',          label: 'Fonts',                desc: 'C:\\Windows\\Fonts',                          scope: 'machine' },
+  { id: 'AppDataFolder',        label: 'AppData (Roaming)',    desc: '%APPDATA%\\...',                              scope: 'user' },
+  { id: 'LocalAppDataFolder',   label: 'LocalAppData',         desc: '%LOCALAPPDATA%\\...',                         scope: 'user' },
+  { id: 'PersonalFolder',       label: 'Documents',            desc: 'My Documents\\...',                           scope: 'user' },
+  { id: 'TempFolder',           label: 'Temp',                 desc: '%TEMP%\\...',                                 scope: 'both' },
+  { id: 'custom',               label: 'Custom Path…',         desc: 'Specify an absolute path',                   scope: 'both' },
+];
+
+const DEFAULT_SERVICE = {
+  name: '', displayName: '', description: '',
+  startType: 'auto', account: 'LocalSystem', customAccount: '', password: '',
+  errorControl: 'normal',
+  startOnInstall: true, stopOnUninstall: true, removeOnUninstall: true,
+};
 
 // ─── Tree helpers ─────────────────────────────────────────────────────────────
 
@@ -19,6 +44,11 @@ function treeRemove(root, id) {
   };
 }
 
+function treeUpdateNode(root, id, updates) {
+  if (root.id === id) return { ...root, ...updates };
+  return { ...root, children: (root.children || []).map(c => treeUpdateNode(c, id, updates)) };
+}
+
 function flattenAllFiles(node) {
   if (node.type === 'file') return [node];
   return (node.children || []).flatMap(flattenAllFiles);
@@ -31,13 +61,72 @@ function collectFilesForUpload(node) {
 
 function serializeTree(node) {
   const { file: _drop, ...rest } = node;
-  return { ...rest, fileRef: node.type === 'file' ? node.id : undefined, children: (node.children || []).map(serializeTree) };
+  return {
+    ...rest,
+    fileRef: node.type === 'file' ? node.id : undefined,
+    children: (node.children || []).map(serializeTree),
+  };
 }
 
 function formatBytes(n) {
   if (n < 1024) return `${n} B`;
   if (n < 1024 ** 2) return `${(n / 1024).toFixed(1)} KB`;
   return `${(n / 1024 ** 2).toFixed(1)} MB`;
+}
+
+function incrementVersion(v) {
+  const parts = String(v || '1.0.0').split('.');
+  while (parts.length < 3) parts.push('0');
+  parts[parts.length - 1] = String(parseInt(parts[parts.length - 1], 10) + 1);
+  return parts.join('.');
+}
+
+// ─── Folder drag-drop helpers ─────────────────────────────────────────────────
+
+async function readEntry(entry) {
+  if (!entry) return null;
+  if (entry.isFile) {
+    return new Promise(resolve =>
+      entry.file(f => resolve(
+        f.size > 0 ? { id: crypto.randomUUID(), name: f.name, type: 'file', file: f, size: f.size } : null
+      ))
+    );
+  }
+  if (entry.isDirectory) {
+    const children = await readDirEntry(entry);
+    return { id: crypto.randomUUID(), name: entry.name, type: 'dir', children };
+  }
+  return null;
+}
+
+async function readDirEntry(dirEntry) {
+  return new Promise(resolve => {
+    const reader = dirEntry.createReader();
+    const all = [];
+    function batch() {
+      reader.readEntries(entries => {
+        if (!entries.length) {
+          Promise.all(all.map(readEntry)).then(nodes => resolve(nodes.filter(Boolean)));
+        } else {
+          all.push(...entries);
+          batch();
+        }
+      });
+    }
+    batch();
+  });
+}
+
+async function dropToNodes(dataTransfer) {
+  const items = Array.from(dataTransfer.items || []);
+  if (items.length > 0 && typeof items[0]?.webkitGetAsEntry === 'function') {
+    const entries = items.map(item => item.webkitGetAsEntry()).filter(Boolean);
+    const nodes = await Promise.all(entries.map(readEntry));
+    return nodes.filter(Boolean);
+  }
+  return Array.from(dataTransfer.files)
+    .filter(f => f.size > 0)
+    .map(f => ({ id: crypto.randomUUID(), name: f.name, type: 'file', file: f, size: f.size }));
 }
 
 // ─── REG file parser ──────────────────────────────────────────────────────────
@@ -47,8 +136,6 @@ function parseRegFile(text) {
     HKEY_LOCAL_MACHINE: 'HKLM', HKEY_CURRENT_USER: 'HKCU',
     HKEY_CLASSES_ROOT: 'HKCR', HKEY_USERS: 'HKU', HKEY_CURRENT_CONFIG: 'HKCC',
   };
-
-  // Normalise + join continuation lines
   const content = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').replace(/\\\n\s*/g, '');
   const entries = [];
   let current = null;
@@ -60,7 +147,7 @@ function parseRegFile(text) {
 
     if (line.startsWith('[')) {
       if (current) entries.push(current);
-      if (line.startsWith('[-')) { current = null; continue; } // delete marker
+      if (line.startsWith('[-')) { current = null; continue; }
       const fullKey = line.slice(1, -1);
       const sep = fullKey.indexOf('\\');
       const rootFull = sep > -1 ? fullKey.slice(0, sep) : fullKey;
@@ -82,7 +169,7 @@ function parseRegFile(text) {
       rest = line.slice(eq + 1);
     } else continue;
 
-    if (rest === '-') continue; // value deletion
+    if (rest === '-') continue;
 
     let type = 'string', value = '';
     if (rest.startsWith('"')) {
@@ -92,16 +179,10 @@ function parseRegFile(text) {
       type = 'integer'; value = String(parseInt(rest.slice(6), 16));
     } else if (rest.startsWith('hex(2):')) {
       type = 'expandable';
-      try {
-        const bytes = rest.slice(7).split(',').filter(Boolean).map(b => parseInt(b, 16));
-        value = new TextDecoder('utf-16le').decode(new Uint8Array(bytes)).replace(/\0/g, '');
-      } catch { value = ''; }
+      try { const b = rest.slice(7).split(',').filter(Boolean).map(x => parseInt(x, 16)); value = new TextDecoder('utf-16le').decode(new Uint8Array(b)).replace(/\0/g, ''); } catch { value = ''; }
     } else if (rest.startsWith('hex(7):')) {
       type = 'multiString';
-      try {
-        const bytes = rest.slice(7).split(',').filter(Boolean).map(b => parseInt(b, 16));
-        value = new TextDecoder('utf-16le').decode(new Uint8Array(bytes)).replace(/\0\0$/, '').replace(/\0/g, '\n');
-      } catch { value = ''; }
+      try { const b = rest.slice(7).split(',').filter(Boolean).map(x => parseInt(x, 16)); value = new TextDecoder('utf-16le').decode(new Uint8Array(b)).replace(/\0\0$/, '').replace(/\0/g, '\n'); } catch { value = ''; }
     } else if (rest.startsWith('hex:')) {
       type = 'binary'; value = rest.slice(4);
     } else continue;
@@ -112,33 +193,192 @@ function parseRegFile(text) {
   return entries;
 }
 
+// ─── ServiceModal ─────────────────────────────────────────────────────────────
+
+function ServiceModal({ file, onSave, onRemove, onClose }) {
+  const [svc, setSvc] = useState(() => ({
+    ...DEFAULT_SERVICE,
+    name: file.name.replace(/\.exe$/i, ''),
+    ...(file.service || {}),
+  }));
+  const upd = (k, v) => setSvc(s => ({ ...s, [k]: v }));
+
+  return (
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center gap-3 p-5 border-b">
+          <Server size={18} className="text-blue-600 flex-shrink-0" />
+          <div className="min-w-0">
+            <h3 className="font-semibold text-gray-900">Windows Service — {file.name}</h3>
+          </div>
+          <button onClick={onClose} className="ml-auto text-gray-400 hover:text-gray-700 flex-shrink-0">✕</button>
+        </div>
+        <div className="p-5 space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <label className="block">
+              <span className="text-sm font-medium text-gray-700">Service Name <span className="text-red-500">*</span></span>
+              <input className="input mt-1 w-full" value={svc.name} onChange={e => upd('name', e.target.value)} placeholder="MyService" />
+              <p className="text-xs text-gray-400 mt-0.5">Internal Windows service name (no spaces)</p>
+            </label>
+            <label className="block">
+              <span className="text-sm font-medium text-gray-700">Display Name</span>
+              <input className="input mt-1 w-full" value={svc.displayName} onChange={e => upd('displayName', e.target.value)} placeholder={svc.name || 'My Service'} />
+            </label>
+          </div>
+          <label className="block">
+            <span className="text-sm font-medium text-gray-700">Description</span>
+            <textarea className="input mt-1 w-full h-16 resize-none" value={svc.description} onChange={e => upd('description', e.target.value)} placeholder="Optional description shown in Services.msc" />
+          </label>
+          <div className="grid grid-cols-2 gap-4">
+            <label className="block">
+              <span className="text-sm font-medium text-gray-700">Startup Type</span>
+              <select className="input mt-1 w-full" value={svc.startType} onChange={e => upd('startType', e.target.value)}>
+                <option value="auto">Automatic</option>
+                <option value="demand">Manual</option>
+                <option value="disabled">Disabled</option>
+              </select>
+            </label>
+            <label className="block">
+              <span className="text-sm font-medium text-gray-700">Error Control</span>
+              <select className="input mt-1 w-full" value={svc.errorControl} onChange={e => upd('errorControl', e.target.value)}>
+                <option value="ignore">Ignore</option>
+                <option value="normal">Normal</option>
+                <option value="critical">Critical</option>
+              </select>
+            </label>
+          </div>
+          <label className="block">
+            <span className="text-sm font-medium text-gray-700">Log On As</span>
+            <select className="input mt-1 w-full" value={svc.account} onChange={e => upd('account', e.target.value)}>
+              <option value="LocalSystem">Local System</option>
+              <option value="LocalService">Local Service</option>
+              <option value="NetworkService">Network Service</option>
+              <option value="custom">Custom Account…</option>
+            </select>
+          </label>
+          {svc.account === 'custom' && (
+            <div className="grid grid-cols-2 gap-3 pl-4 border-l-2 border-gray-200">
+              <label className="block">
+                <span className="text-xs font-medium text-gray-600">Username</span>
+                <input className="input mt-1 w-full text-sm" value={svc.customAccount} onChange={e => upd('customAccount', e.target.value)} placeholder="DOMAIN\\user or .\\user" />
+              </label>
+              <label className="block">
+                <span className="text-xs font-medium text-gray-600">Password</span>
+                <input type="password" className="input mt-1 w-full text-sm" value={svc.password} onChange={e => upd('password', e.target.value)} />
+              </label>
+            </div>
+          )}
+          <div>
+            <span className="text-sm font-medium text-gray-700 block mb-2">Service Actions</span>
+            <div className="space-y-2 pl-1">
+              {[
+                ['startOnInstall', 'Start service after install'],
+                ['stopOnUninstall', 'Stop service before uninstall'],
+                ['removeOnUninstall', 'Remove (unregister) service on uninstall'],
+              ].map(([key, label]) => (
+                <label key={key} className="flex items-center gap-2 cursor-pointer">
+                  <input type="checkbox" checked={svc[key] !== false} onChange={e => upd(key, e.target.checked)} />
+                  <span className="text-sm text-gray-700">{label}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+        </div>
+        <div className="flex items-center justify-between p-4 border-t bg-gray-50 rounded-b-xl">
+          <button
+            className="text-sm text-red-500 hover:text-red-700"
+            onClick={onRemove}
+          >
+            Remove Service Config
+          </button>
+          <div className="flex gap-2">
+            <button className="btn-secondary text-sm" onClick={onClose}>Cancel</button>
+            <button className="btn-primary text-sm" onClick={() => onSave(svc)} disabled={!svc.name.trim()}>Save</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── DestinationDropZone ──────────────────────────────────────────────────────
+
+function DestinationDropZone({ destId, addingFolder, folderName, onFolderNameChange, onFolderConfirm, onFolderCancel, children, onAddNodes }) {
+  const [dragOver, setDragOver] = useState(false);
+
+  return (
+    <div
+      className={`p-2 min-h-10 font-mono text-sm transition-colors
+        ${dragOver ? 'bg-blue-50 ring-1 ring-inset ring-blue-300' : 'bg-gray-50'}`}
+      onDragOver={e => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; }}
+      onDragEnter={e => { e.preventDefault(); setDragOver(true); }}
+      onDragLeave={e => { e.preventDefault(); if (!e.currentTarget.contains(e.relatedTarget)) setDragOver(false); }}
+      onDrop={async e => {
+        e.preventDefault(); setDragOver(false);
+        const nodes = await dropToNodes(e.dataTransfer);
+        if (nodes.length) onAddNodes(destId, nodes);
+      }}
+    >
+      {addingFolder && (
+        <div className="flex items-center gap-1 py-0.5 px-2 mb-1">
+          <FolderPlus size={13} className="text-yellow-500 flex-shrink-0" />
+          <input
+            autoFocus
+            className="text-sm border border-blue-400 rounded px-1 w-40 outline-none bg-white"
+            value={folderName}
+            onChange={e => onFolderNameChange(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === 'Enter') onFolderConfirm();
+              if (e.key === 'Escape') onFolderCancel();
+            }}
+            onBlur={onFolderConfirm}
+            placeholder="Folder name…"
+          />
+          <button onClick={onFolderConfirm} className="text-xs text-blue-600 hover:text-blue-800 px-1">Add</button>
+          <button onClick={onFolderCancel} className="text-xs text-gray-400 hover:text-gray-700">✕</button>
+        </div>
+      )}
+      {children}
+      {!children && !addingFolder && (
+        <p className="text-xs text-gray-400 italic px-2 py-1">Drop files or folders here from Explorer</p>
+      )}
+    </div>
+  );
+}
+
 // ─── TreeNode component ───────────────────────────────────────────────────────
 
-function TreeNode({ node, onAddFolder, onAddFiles, onDelete }) {
+function TreeNode({ node, onAddFolder, onAddNodes, onDelete, onRename, onConfigService, isRoot = false }) {
   const [expanded, setExpanded] = useState(true);
   const [addingFolder, setAddingFolder] = useState(false);
   const [newFolderName, setNewFolderName] = useState('');
   const [dragOver, setDragOver] = useState(false);
+  const [isRenaming, setIsRenaming] = useState(false);
+  const [editName, setEditName] = useState(node.name);
   const dragCount = useRef(0);
-  const isRoot = node.id === 'ROOT';
   const isDir = node.type === 'dir';
+  const isExe = node.type === 'file' && node.name.toLowerCase().endsWith('.exe');
+  const hasService = Boolean(node.service?.name);
 
-  const handleDragOver = (e) => { e.preventDefault(); e.stopPropagation(); e.dataTransfer.dropEffect = 'copy'; };
-  const handleDragEnter = (e) => {
-    e.preventDefault(); e.stopPropagation();
-    dragCount.current++;
-    setDragOver(true);
+  const commitRename = () => {
+    setIsRenaming(false);
+    const n = editName.trim();
+    if (n && n !== node.name) onRename(node.id, n);
+    else setEditName(node.name);
   };
-  const handleDragLeave = (e) => {
+
+  const handleDragOver = e => { e.preventDefault(); e.stopPropagation(); e.dataTransfer.dropEffect = 'copy'; };
+  const handleDragEnter = e => { e.preventDefault(); e.stopPropagation(); dragCount.current++; setDragOver(true); };
+  const handleDragLeave = e => {
     e.preventDefault(); e.stopPropagation();
     dragCount.current = Math.max(0, dragCount.current - 1);
     if (dragCount.current === 0) setDragOver(false);
   };
-  const handleDrop = (e) => {
+  const handleDrop = async e => {
     e.preventDefault(); e.stopPropagation();
     dragCount.current = 0; setDragOver(false);
-    const files = Array.from(e.dataTransfer.files).filter(f => f.size > 0);
-    if (files.length) onAddFiles(node.id, files);
+    const nodes = await dropToNodes(e.dataTransfer);
+    if (nodes.length) onAddNodes(node.id, nodes);
   };
 
   const confirmAddFolder = () => {
@@ -149,16 +389,15 @@ function TreeNode({ node, onAddFolder, onAddFiles, onDelete }) {
 
   return (
     <div>
-      {/* Row */}
       <div
         className={`flex items-center gap-1.5 py-0.5 px-2 rounded group select-none
-          ${isDir ? 'cursor-pointer' : ''}
+          ${isDir && !isRenaming ? 'cursor-pointer' : ''}
           ${dragOver ? 'bg-blue-50 ring-1 ring-inset ring-blue-400' : 'hover:bg-gray-100'}`}
         onDragOver={isDir ? handleDragOver : undefined}
         onDragEnter={isDir ? handleDragEnter : undefined}
         onDragLeave={isDir ? handleDragLeave : undefined}
         onDrop={isDir ? handleDrop : undefined}
-        onClick={isDir ? () => setExpanded(v => !v) : undefined}
+        onClick={isDir && !isRenaming ? () => setExpanded(v => !v) : undefined}
       >
         <span className="w-3.5 flex-shrink-0 text-gray-400">
           {isDir ? (expanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />) : null}
@@ -166,49 +405,101 @@ function TreeNode({ node, onAddFolder, onAddFiles, onDelete }) {
         {isDir
           ? <Folder size={14} className="flex-shrink-0 text-yellow-500" />
           : <FileText size={14} className="flex-shrink-0 text-gray-400" />}
-        <span className={`text-sm flex-1 truncate ${isRoot ? 'font-semibold text-gray-800' : 'text-gray-700'}`}>
-          {node.name}
-        </span>
+
+        {/* Label / rename input */}
+        {isRenaming ? (
+          <input
+            autoFocus
+            className="text-sm border border-blue-400 rounded px-1 flex-1 outline-none bg-white"
+            value={editName}
+            onChange={e => setEditName(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === 'Enter') commitRename();
+              if (e.key === 'Escape') { setIsRenaming(false); setEditName(node.name); }
+            }}
+            onBlur={commitRename}
+            onClick={e => e.stopPropagation()}
+          />
+        ) : (
+          <span
+            className={`text-sm flex-1 truncate ${isRoot ? 'font-semibold text-gray-800' : 'text-gray-700'}`}
+            onDoubleClick={isDir && !isRoot ? e => { e.stopPropagation(); setIsRenaming(true); setEditName(node.name); } : undefined}
+            title={isDir && !isRoot ? 'Double-click to rename' : undefined}
+          >
+            {node.name}
+          </span>
+        )}
+
+        {/* Service badge */}
+        {hasService && (
+          <span className="flex-shrink-0 flex items-center gap-0.5 text-xs text-blue-600 bg-blue-50 border border-blue-200 rounded px-1 py-0.5 leading-none">
+            <Server size={10} /> SVC
+          </span>
+        )}
+
         {node.type === 'file' && (
           <span className="text-xs text-gray-400 flex-shrink-0">{formatBytes(node.size)}</span>
         )}
-        {/* Action buttons — shown on hover */}
-        <div className="hidden group-hover:flex items-center gap-0.5 ml-1" onClick={e => e.stopPropagation()}>
-          {isDir && (
-            <button
-              onClick={() => { setAddingFolder(true); setExpanded(true); }}
-              className="p-0.5 rounded hover:bg-gray-200 text-gray-400 hover:text-gray-700"
-              title="Add subfolder"
-            >
-              <FolderPlus size={12} />
-            </button>
-          )}
-          {!isRoot && (
-            <button
-              onClick={() => onDelete(node.id)}
-              className="p-0.5 rounded hover:bg-red-50 text-gray-400 hover:text-red-500"
-              title="Delete"
-            >
-              <Trash2 size={12} />
-            </button>
-          )}
-        </div>
+
+        {/* Hover actions */}
+        {!isRenaming && (
+          <div className="hidden group-hover:flex items-center gap-0.5 ml-1" onClick={e => e.stopPropagation()}>
+            {isDir && !isRoot && (
+              <button
+                onClick={e => { e.stopPropagation(); setIsRenaming(true); setEditName(node.name); }}
+                className="p-0.5 rounded hover:bg-gray-200 text-gray-400 hover:text-gray-700"
+                title="Rename"
+              >
+                <Settings size={11} />
+              </button>
+            )}
+            {isDir && (
+              <button
+                onClick={e => { e.stopPropagation(); setAddingFolder(true); setExpanded(true); }}
+                className="p-0.5 rounded hover:bg-gray-200 text-gray-400 hover:text-gray-700"
+                title="Add subfolder"
+              >
+                <FolderPlus size={12} />
+              </button>
+            )}
+            {(isExe || hasService) && (
+              <button
+                onClick={() => onConfigService(node)}
+                className={`p-0.5 rounded hover:bg-blue-50 ${hasService ? 'text-blue-500 hover:text-blue-700' : 'text-gray-400 hover:text-gray-700'}`}
+                title={hasService ? 'Edit service config' : 'Configure as Windows service'}
+              >
+                <Server size={12} />
+              </button>
+            )}
+            {!isRoot && (
+              <button
+                onClick={() => onDelete(node.id)}
+                className="p-0.5 rounded hover:bg-red-50 text-gray-400 hover:text-red-500"
+                title="Delete"
+              >
+                <Trash2 size={12} />
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
-      {/* Children */}
       {isDir && expanded && (
         <div className="ml-4 border-l border-gray-200 pl-1 mt-0.5">
           {(node.children || []).map(child => (
-            <TreeNode key={child.id} node={child} onAddFolder={onAddFolder} onAddFiles={onAddFiles} onDelete={onDelete} />
+            <TreeNode
+              key={child.id} node={child}
+              onAddFolder={onAddFolder} onAddNodes={onAddNodes}
+              onDelete={onDelete} onRename={onRename} onConfigService={onConfigService}
+            />
           ))}
 
-          {/* Inline "add folder" input */}
           {addingFolder && (
             <div className="flex items-center gap-1 py-0.5 px-2" onClick={e => e.stopPropagation()}>
               <FolderPlus size={13} className="text-yellow-500 flex-shrink-0" />
               <input
                 autoFocus
-                className="text-sm border border-blue-400 rounded px-1 w-36 outline-none"
+                className="text-sm border border-blue-400 rounded px-1 w-36 outline-none bg-white"
                 value={newFolderName}
                 onChange={e => setNewFolderName(e.target.value)}
                 onKeyDown={e => {
@@ -223,7 +514,7 @@ function TreeNode({ node, onAddFolder, onAddFiles, onDelete }) {
           )}
 
           {(node.children || []).length === 0 && !addingFolder && (
-            <p className="text-xs text-gray-400 italic px-2 py-1">Drop files here from Explorer</p>
+            <p className="text-xs text-gray-400 italic px-2 py-1">Drop files or folders here</p>
           )}
         </div>
       )}
@@ -238,13 +529,14 @@ const EMPTY_DETAILS = {
   upgradeCode: '', installDirName: '', platform: 'x64', scope: 'perMachine',
 };
 
-const ROOT_NODE = { id: 'ROOT', name: 'INSTALLDIR', type: 'dir', children: [] };
+const INSTALL_DIR_DEST = { id: 'ROOT', wixId: 'INSTALLDIR', name: 'Install Directory', customPath: null, type: 'dir', children: [] };
 
 export default function MsiBuilder() {
   const [details, setDetails] = useState(EMPTY_DETAILS);
-  const [fileTree, setFileTree] = useState(ROOT_NODE);
+  const [destinations, setDestinations] = useState([INSTALL_DIR_DEST]);
   const [shortcuts, setShortcuts] = useState([]);
   const [registryEntries, setRegistryEntries] = useState([]);
+  const [expandedRegIds, setExpandedRegIds] = useState(new Set());
   const [activeTab, setActiveTab] = useState('files');
   const [building, setBuilding] = useState(false);
   const [buildError, setBuildError] = useState('');
@@ -252,8 +544,27 @@ export default function MsiBuilder() {
   const [wixTool, setWixTool] = useState(null);
   const [wixChecked, setWixChecked] = useState(false);
   const [regDragOver, setRegDragOver] = useState(false);
-  const regFileRef = useRef();
   const regDragCount = useRef(0);
+  const regFileRef = useRef();
+
+  // MSI drag-drop on Package Details
+  const [msiDragOver, setMsiDragOver] = useState(false);
+  const msiDragCount = useRef(0);
+  const [msiProbing, setMsiProbing] = useState(false);
+  const [detectedVersion, setDetectedVersion] = useState('');
+  const [msiProbError, setMsiProbError] = useState('');
+
+  // Add destination UI
+  const [addDestOpen, setAddDestOpen] = useState(false);
+  const [showCustomInput, setShowCustomInput] = useState(false);
+  const [customPathInput, setCustomPathInput] = useState('');
+
+  // Per-destination inline folder creation
+  const [destAddingFolder, setDestAddingFolder] = useState({});
+  const [destFolderName, setDestFolderName] = useState({});
+
+  // Service config modal
+  const [serviceEditFile, setServiceEditFile] = useState(null);
 
   useEffect(() => {
     detectMsiTools()
@@ -263,18 +574,103 @@ export default function MsiBuilder() {
   }, []);
 
   const det = (field, value) => setDetails(d => ({ ...d, [field]: value }));
-  const allFiles = flattenAllFiles(fileTree);
+  const allFiles = destinations.flatMap(dest => flattenAllFiles(dest));
+
+  // Available location options filtered by scope
+  const scopeFilter = details.scope === 'perUser' ? 'user' : 'machine';
+  const availableDestOptions = WIX_DIR_OPTIONS.filter(opt => opt.scope === 'both' || opt.scope === scopeFilter);
+
+  // ── Destination actions ──
+  const addDestination = (wixId, customPath = null) => {
+    const id = crypto.randomUUID();
+    const shortId = id.replace(/-/g, '').slice(0, 12);
+    const wixIdFinal = customPath ? `CUSTOMDIR_${shortId}` : wixId;
+    const name = customPath ? customPath : (WIX_DIR_OPTIONS.find(d => d.id === wixId)?.label || wixId);
+    setDestinations(dests => [...dests, { id, wixId: wixIdFinal, name, customPath, type: 'dir', children: [] }]);
+  };
+
+  const removeDestination = (id) => setDestinations(dests => dests.filter(d => d.id !== id));
+
+  const confirmCustomPath = () => {
+    const p = customPathInput.trim();
+    if (p) addDestination('custom', p);
+    setShowCustomInput(false); setCustomPathInput('');
+  };
+
+  // ── Dest-level inline folder creation ──
+  const openDestFolder = (destId) => {
+    setDestAddingFolder(v => ({ ...v, [destId]: true }));
+    setDestFolderName(v => ({ ...v, [destId]: '' }));
+  };
+
+  const commitDestFolder = (destId) => {
+    const name = (destFolderName[destId] || '').trim();
+    if (name) handleAddFolder(destId, name);
+    setDestAddingFolder(v => ({ ...v, [destId]: false }));
+    setDestFolderName(v => ({ ...v, [destId]: '' }));
+  };
+
+  const cancelDestFolder = (destId) => {
+    setDestAddingFolder(v => ({ ...v, [destId]: false }));
+    setDestFolderName(v => ({ ...v, [destId]: '' }));
+  };
 
   // ── Tree actions ──
   const handleAddFolder = (parentId, name) =>
-    setFileTree(t => treeAdd(t, parentId, [{ id: crypto.randomUUID(), name, type: 'dir', children: [] }]));
+    setDestinations(dests => dests.map(dest =>
+      treeAdd(dest, parentId, [{ id: crypto.randomUUID(), name, type: 'dir', children: [] }])
+    ));
 
-  const handleAddFiles = (parentId, files) =>
-    setFileTree(t => treeAdd(t, parentId, files.map(f => ({
-      id: crypto.randomUUID(), name: f.name, type: 'file', file: f, size: f.size,
-    }))));
+  const handleAddNodes = (parentId, nodes) =>
+    setDestinations(dests => dests.map(dest => treeAdd(dest, parentId, nodes)));
 
-  const handleDelete = (id) => setFileTree(t => treeRemove(t, id));
+  const handleDelete = (id) =>
+    setDestinations(dests => dests.map(dest => treeRemove(dest, id)));
+
+  const handleRename = (nodeId, newName) =>
+    setDestinations(dests => dests.map(dest => treeUpdateNode(dest, nodeId, { name: newName })));
+
+  // ── Service config ──
+  const handleConfigService = (fileNode) => setServiceEditFile(fileNode);
+
+  const handleSaveService = (svc) => {
+    if (serviceEditFile) {
+      setDestinations(dests => dests.map(dest => treeUpdateNode(dest, serviceEditFile.id, { service: svc })));
+      setServiceEditFile(null);
+    }
+  };
+
+  const handleRemoveService = () => {
+    if (serviceEditFile) {
+      setDestinations(dests => dests.map(dest => treeUpdateNode(dest, serviceEditFile.id, { service: null })));
+      setServiceEditFile(null);
+    }
+  };
+
+  // ── MSI probe ──
+  const handleMsiDrop = async e => {
+    e.preventDefault();
+    msiDragCount.current = 0; setMsiDragOver(false);
+    const file = Array.from(e.dataTransfer.files).find(f => f.name.toLowerCase().endsWith('.msi'));
+    if (!file) return;
+    setMsiProbing(true); setMsiProbError('');
+    try {
+      const info = await probeMsi(file);
+      setDetectedVersion(info.version);
+      setDetails(d => ({
+        ...d,
+        productName: info.productName || d.productName,
+        manufacturer: info.manufacturer || d.manufacturer,
+        upgradeCode: info.upgradeCode || d.upgradeCode,
+        platform: info.platform || d.platform,
+        version: incrementVersion(info.version),
+      }));
+    } catch (err) {
+      setMsiProbError('Could not read MSI: ' + err.message);
+    } finally {
+      setMsiProbing(false);
+    }
+  };
 
   // ── Shortcuts ──
   const addShortcut = () =>
@@ -284,36 +680,26 @@ export default function MsiBuilder() {
   const deleteShortcut = (id) => setShortcuts(s => s.filter(sc => sc.id !== id));
 
   // ── Registry ──
-  const importRegEntries = (entries) => setRegistryEntries(prev => [...prev, ...entries]);
-  const deleteRegEntry = (id) => setRegistryEntries(prev => prev.filter(e => e.id !== id));
+  const importRegEntries = entries => setRegistryEntries(prev => [...prev, ...entries]);
+  const deleteRegEntry = id => setRegistryEntries(prev => prev.filter(e => e.id !== id));
+  const toggleRegExpand = id => setExpandedRegIds(s => {
+    const ns = new Set(s);
+    ns.has(id) ? ns.delete(id) : ns.add(id);
+    return ns;
+  });
 
-  const handleRegFilePicker = async (e) => {
-    const files = Array.from(e.target.files || []);
-    for (const f of files) {
-      const text = await f.text();
-      importRegEntries(parseRegFile(text));
+  const handleRegFilePicker = async e => {
+    for (const f of Array.from(e.target.files || [])) {
+      importRegEntries(parseRegFile(await f.text()));
     }
     e.target.value = '';
   };
 
-  const handleRegDragOver = (e) => { e.preventDefault(); e.stopPropagation(); e.dataTransfer.dropEffect = 'copy'; };
-  const handleRegDragEnter = (e) => {
-    e.preventDefault(); e.stopPropagation();
-    regDragCount.current++;
-    setRegDragOver(true);
-  };
-  const handleRegDragLeave = (e) => {
-    e.preventDefault(); e.stopPropagation();
-    regDragCount.current = Math.max(0, regDragCount.current - 1);
-    if (regDragCount.current === 0) setRegDragOver(false);
-  };
-  const handleRegDrop = async (e) => {
+  const handleRegDrop = async e => {
     e.preventDefault(); e.stopPropagation();
     regDragCount.current = 0; setRegDragOver(false);
-    const files = Array.from(e.dataTransfer.files).filter(f => f.name.toLowerCase().endsWith('.reg'));
-    for (const f of files) {
-      const text = await f.text();
-      importRegEntries(parseRegFile(text));
+    for (const f of Array.from(e.dataTransfer.files).filter(f => f.name.toLowerCase().endsWith('.reg'))) {
+      importRegEntries(parseRegFile(await f.text()));
     }
   };
 
@@ -321,10 +707,10 @@ export default function MsiBuilder() {
   const handleBuild = async () => {
     setBuildError(''); setBuildSuccess(false); setBuilding(true);
     try {
-      const uploadFiles = collectFilesForUpload(fileTree);
+      const uploadFiles = destinations.flatMap(dest => collectFilesForUpload(dest));
       const meta = {
         ...details,
-        fileTree: serializeTree(fileTree),
+        destinations: destinations.map(serializeTree),
         shortcuts,
         registryEntries,
       };
@@ -341,12 +727,9 @@ export default function MsiBuilder() {
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       const a = Object.assign(document.createElement('a'), {
-        href: url,
-        download: `${details.productName || 'package'}_${details.version}.msi`,
+        href: url, download: `${details.productName || 'package'}_${details.version}.msi`,
       });
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
       URL.revokeObjectURL(url);
       setBuildSuccess(true);
     } catch (err) {
@@ -360,34 +743,68 @@ export default function MsiBuilder() {
 
   return (
     <div>
+      {/* Service config modal */}
+      {serviceEditFile && (
+        <ServiceModal
+          file={serviceEditFile}
+          onSave={handleSaveService}
+          onRemove={handleRemoveService}
+          onClose={() => setServiceEditFile(null)}
+        />
+      )}
+
       <div className="flex items-center gap-3 mb-6">
         <Package size={22} className="text-blue-600" />
         <h1 className="text-2xl font-bold">MSI Builder</h1>
       </div>
 
-      {/* WiX tool status banner */}
+      {/* WiX status banner */}
       {wixChecked && (
-        <div className={`flex items-start gap-3 p-3 rounded-lg mb-5 text-sm ${wixTool?.type ? 'bg-green-50 text-green-800 border border-green-200' : 'bg-yellow-50 text-yellow-800 border border-yellow-200'}`}>
+        <div className={`flex items-start gap-3 p-3 rounded-lg mb-5 text-sm ${wixTool?.type ? 'bg-green-50 text-green-800 border border-green-200' : 'bg-blue-50 text-blue-800 border border-blue-200'}`}>
           {wixTool?.type
             ? <CheckCircle size={16} className="mt-0.5 flex-shrink-0 text-green-600" />
-            : <AlertCircle size={16} className="mt-0.5 flex-shrink-0 text-yellow-600" />}
-          <div>
+            : <AlertCircle size={16} className="mt-0.5 flex-shrink-0 text-blue-600" />}
+          <span>
             {wixTool?.type
-              ? <span><strong>WiX {wixTool.type === 'v5' ? 'v5' : 'v3'}</strong> detected — {wixTool.version}</span>
-              : <>
-                  <strong>No WiX toolset found.</strong> Install one to compile MSIs:
-                  <ul className="mt-1 ml-4 list-disc space-y-0.5">
-                    <li><code className="bg-yellow-100 px-1 rounded">dotnet tool install --global wix</code> — WiX v5 (recommended)</li>
-                    <li>WiX Toolset v3 from <strong>wixtoolset.org/releases</strong></li>
-                  </ul>
-                </>}
-          </div>
+              ? <><strong>WiX v3.14</strong> detected — {wixTool.version}</>
+              : <>WiX v3.14 not found — it will be <strong>downloaded automatically</strong> the first time you compile.</>}
+          </span>
         </div>
       )}
 
-      {/* Package details */}
-      <div className="bg-white rounded-lg shadow p-5 mb-5">
-        <h2 className="font-semibold text-gray-800 mb-4">Package Details</h2>
+      {/* Package Details — MSI drop zone */}
+      <div
+        className={`bg-white rounded-lg shadow p-5 mb-5 relative transition-all ${msiDragOver ? 'ring-2 ring-blue-400' : ''}`}
+        onDragOver={e => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; }}
+        onDragEnter={e => { e.preventDefault(); msiDragCount.current++; setMsiDragOver(true); }}
+        onDragLeave={e => {
+          e.preventDefault();
+          msiDragCount.current = Math.max(0, msiDragCount.current - 1);
+          if (msiDragCount.current === 0) setMsiDragOver(false);
+        }}
+        onDrop={handleMsiDrop}
+      >
+        {msiDragOver && (
+          <div className="absolute inset-0 bg-blue-50/90 rounded-lg z-10 pointer-events-none flex items-center justify-center">
+            <div className="flex items-center gap-2 text-blue-600 font-medium text-sm">
+              <Package size={18} /> Drop MSI to auto-fill package details
+            </div>
+          </div>
+        )}
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="font-semibold text-gray-800">Package Details</h2>
+          <span className="text-xs text-gray-400 select-none">Drop an existing .msi to auto-fill ↓</span>
+        </div>
+        {msiProbing && <div className="text-xs text-blue-700 bg-blue-50 border border-blue-200 rounded px-3 py-2 mb-4">Reading MSI properties…</div>}
+        {msiProbError && <div className="text-xs text-red-700 bg-red-50 border border-red-200 rounded px-3 py-2 mb-4">{msiProbError}</div>}
+        {detectedVersion && !msiProbing && (
+          <div className="text-xs text-blue-700 bg-blue-50 border border-blue-200 rounded px-3 py-2 mb-4 flex items-center gap-2">
+            <Package size={13} className="flex-shrink-0" />
+            Imported from existing MSI — detected version: <code className="font-mono bg-blue-100 px-1 rounded">{detectedVersion}</code>
+            <span className="text-blue-400">→</span>
+            new version: <code className="font-mono bg-blue-100 px-1 rounded">{details.version}</code>
+          </div>
+        )}
         <div className="grid grid-cols-2 gap-4">
           <label className="block">
             <span className="text-sm font-medium text-gray-700">Product Name <span className="text-red-500">*</span></span>
@@ -441,9 +858,7 @@ export default function MsiBuilder() {
       <div className="bg-white rounded-lg shadow mb-5">
         <div className="flex border-b px-4">
           {['files', 'shortcuts', 'registry'].map(tab => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
+            <button key={tab} onClick={() => setActiveTab(tab)}
               className={`text-sm font-medium py-3 px-4 border-b-2 -mb-px capitalize ${activeTab === tab ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
             >
               {tab}
@@ -458,16 +873,113 @@ export default function MsiBuilder() {
           {activeTab === 'files' && (
             <div>
               <div className="flex items-center justify-between mb-3">
-                <p className="text-sm text-gray-500">Drag files from Windows Explorer onto any folder node. Use <kbd className="bg-gray-100 px-1 rounded text-xs">+</kbd> to add subfolders.</p>
-                <button className="btn-secondary text-sm" onClick={() => handleAddFolder('ROOT', 'New Folder')}>
-                  <FolderPlus size={14} /> Add Folder
-                </button>
+                <p className="text-sm text-gray-500">
+                  Drop files or folders from Explorer onto any location.
+                  {details.scope === 'perUser' && <span className="ml-1 text-amber-600">Current User scope — locations are filtered to user folders.</span>}
+                </p>
+                <div className="relative flex items-center gap-2">
+                  <button className="btn-secondary text-sm" onClick={() => { setAddDestOpen(v => !v); setShowCustomInput(false); }}>
+                    <HardDrive size={14} /> Add Location
+                  </button>
+                  {addDestOpen && (
+                    <>
+                      <div className="fixed inset-0 z-10" onClick={() => setAddDestOpen(false)} />
+                      <div className="absolute right-0 top-full mt-1 bg-white border rounded-lg shadow-lg z-20 w-64 overflow-hidden">
+                        {availableDestOptions.map(opt => (
+                          <button key={opt.id}
+                            className="flex flex-col items-start w-full px-3 py-2 hover:bg-gray-50 text-left border-b last:border-0"
+                            onClick={() => {
+                              setAddDestOpen(false);
+                              if (opt.id === 'custom') setShowCustomInput(true);
+                              else addDestination(opt.id);
+                            }}
+                          >
+                            <span className="text-sm font-medium text-gray-800">{opt.label}</span>
+                            <span className="text-xs text-gray-400">{opt.desc}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                </div>
               </div>
-              <div className="border rounded-lg p-2 min-h-48 font-mono text-sm bg-gray-50">
-                <TreeNode node={fileTree} onAddFolder={handleAddFolder} onAddFiles={handleAddFiles} onDelete={handleDelete} />
-              </div>
+
+              {showCustomInput && (
+                <div className="flex items-center gap-2 mb-3">
+                  <input
+                    autoFocus className="input flex-1 text-sm font-mono"
+                    placeholder="C:\Windows\Temp\MyApp"
+                    value={customPathInput}
+                    onChange={e => setCustomPathInput(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') confirmCustomPath();
+                      if (e.key === 'Escape') { setShowCustomInput(false); setCustomPathInput(''); }
+                    }}
+                  />
+                  <button className="btn-primary text-sm px-3" onClick={confirmCustomPath}>Add</button>
+                  <button className="btn-secondary text-sm px-3" onClick={() => { setShowCustomInput(false); setCustomPathInput(''); }}>Cancel</button>
+                </div>
+              )}
+
+              {destinations.map(dest => (
+                <div key={dest.id} className="border rounded-lg mb-3 overflow-hidden">
+                  <div className="flex items-center justify-between px-3 py-2 bg-gray-100 border-b">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <Folder size={14} className="flex-shrink-0 text-yellow-500" />
+                      <span className="text-sm font-semibold text-gray-700 truncate">{dest.name}</span>
+                      {dest.customPath
+                        ? <span className="text-xs text-blue-600 font-mono ml-1 truncate">{dest.customPath}</span>
+                        : dest.wixId !== 'INSTALLDIR' && (
+                            <span className="text-xs text-gray-500 bg-gray-200 px-1.5 rounded flex-shrink-0">{dest.wixId}</span>
+                          )
+                      }
+                    </div>
+                    <div className="flex items-center gap-1 flex-shrink-0 ml-2">
+                      <button
+                        onClick={() => openDestFolder(dest.id)}
+                        className="p-1 rounded hover:bg-gray-200 text-gray-400 hover:text-gray-700"
+                        title="Add subfolder"
+                      >
+                        <FolderPlus size={13} />
+                      </button>
+                      {dest.wixId !== 'INSTALLDIR' && (
+                        <button onClick={() => removeDestination(dest.id)} className="p-1 rounded hover:bg-red-50 text-gray-400 hover:text-red-500" title="Remove location">
+                          <Trash2 size={13} />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  <DestinationDropZone
+                    destId={dest.id}
+                    onAddNodes={handleAddNodes}
+                    addingFolder={!!destAddingFolder[dest.id]}
+                    folderName={destFolderName[dest.id] || ''}
+                    onFolderNameChange={v => setDestFolderName(prev => ({ ...prev, [dest.id]: v }))}
+                    onFolderConfirm={() => commitDestFolder(dest.id)}
+                    onFolderCancel={() => cancelDestFolder(dest.id)}
+                  >
+                    {dest.children.length > 0
+                      ? dest.children.map(child => (
+                          <TreeNode
+                            key={child.id} node={child}
+                            onAddFolder={handleAddFolder} onAddNodes={handleAddNodes}
+                            onDelete={handleDelete} onRename={handleRename}
+                            onConfigService={handleConfigService}
+                          />
+                        ))
+                      : null
+                    }
+                  </DestinationDropZone>
+                </div>
+              ))}
+
               {allFiles.length > 0 && (
-                <p className="text-xs text-gray-400 mt-2">{allFiles.length} file{allFiles.length !== 1 ? 's' : ''} — {formatBytes(allFiles.reduce((s, f) => s + (f.size || 0), 0))} total</p>
+                <p className="text-xs text-gray-400 mt-1">
+                  {allFiles.length} file{allFiles.length !== 1 ? 's' : ''} across {destinations.length} location{destinations.length !== 1 ? 's' : ''} — {formatBytes(allFiles.reduce((s, f) => s + (f.size || 0), 0))} total
+                  {allFiles.some(f => f.service?.name) && (
+                    <span className="ml-2 text-blue-500">· {allFiles.filter(f => f.service?.name).length} service{allFiles.filter(f => f.service?.name).length !== 1 ? 's' : ''}</span>
+                  )}
+                </p>
               )}
             </div>
           )}
@@ -477,13 +989,9 @@ export default function MsiBuilder() {
             <div>
               <div className="flex items-center justify-between mb-3">
                 <p className="text-sm text-gray-500">Create shortcuts on the Desktop and/or Start Menu.</p>
-                <button className="btn-secondary text-sm" onClick={addShortcut}>
-                  <Plus size={14} /> Add Shortcut
-                </button>
+                <button className="btn-secondary text-sm" onClick={addShortcut}><Plus size={14} /> Add Shortcut</button>
               </div>
-              {shortcuts.length === 0 && (
-                <p className="text-gray-400 text-sm py-6 text-center">No shortcuts defined.</p>
-              )}
+              {shortcuts.length === 0 && <p className="text-gray-400 text-sm py-6 text-center">No shortcuts defined.</p>}
               <div className="space-y-3">
                 {shortcuts.map(sc => (
                   <div key={sc.id} className="border rounded-lg p-3 bg-gray-50">
@@ -495,11 +1003,9 @@ export default function MsiBuilder() {
                       <label className="block">
                         <span className="text-xs font-medium text-gray-600">Target Executable</span>
                         <select className="input mt-1 w-full text-sm" value={sc.targetFileId} onChange={e => updateShortcut(sc.id, 'targetFileId', e.target.value)}>
-                          <option value="">Select .exe…</option>
+                          <option value="">Select file…</option>
                           {exeFiles.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
-                          {allFiles.filter(f => !f.name.toLowerCase().endsWith('.exe')).map(f => (
-                            <option key={f.id} value={f.id}>{f.name}</option>
-                          ))}
+                          {allFiles.filter(f => !f.name.toLowerCase().endsWith('.exe')).map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
                         </select>
                       </label>
                       <label className="block">
@@ -510,9 +1016,7 @@ export default function MsiBuilder() {
                           <option value="startmenu">Start Menu only</option>
                         </select>
                       </label>
-                      <button onClick={() => deleteShortcut(sc.id)} className="text-red-400 hover:text-red-600 mb-0.5">
-                        <Trash2 size={16} />
-                      </button>
+                      <button onClick={() => deleteShortcut(sc.id)} className="text-red-400 hover:text-red-600 mb-0.5"><Trash2 size={16} /></button>
                     </div>
                     <label className="block mt-2">
                       <span className="text-xs font-medium text-gray-600">Description (tooltip)</span>
@@ -527,13 +1031,12 @@ export default function MsiBuilder() {
           {/* ── Registry tab ── */}
           {activeTab === 'registry' && (
             <div>
-              {/* Drop zone */}
               <div
                 className={`border-2 border-dashed rounded-lg p-6 text-center mb-4 transition-colors cursor-pointer
                   ${regDragOver ? 'border-blue-400 bg-blue-50' : 'border-gray-300 hover:border-gray-400 bg-gray-50'}`}
-                onDragOver={handleRegDragOver}
-                onDragEnter={handleRegDragEnter}
-                onDragLeave={handleRegDragLeave}
+                onDragOver={e => { e.preventDefault(); e.stopPropagation(); e.dataTransfer.dropEffect = 'copy'; }}
+                onDragEnter={e => { e.preventDefault(); e.stopPropagation(); regDragCount.current++; setRegDragOver(true); }}
+                onDragLeave={e => { e.preventDefault(); e.stopPropagation(); regDragCount.current = Math.max(0, regDragCount.current - 1); if (regDragCount.current === 0) setRegDragOver(false); }}
                 onDrop={handleRegDrop}
                 onClick={() => regFileRef.current?.click()}
               >
@@ -542,9 +1045,7 @@ export default function MsiBuilder() {
                 <p className="text-xs text-gray-400 mt-1">or click to browse — values are parsed into WiX registry elements</p>
               </div>
 
-              {registryEntries.length === 0 && (
-                <p className="text-gray-400 text-sm text-center py-4">No registry entries imported.</p>
-              )}
+              {registryEntries.length === 0 && <p className="text-gray-400 text-sm text-center py-4">No registry entries imported.</p>}
 
               {registryEntries.length > 0 && (
                 <div className="border rounded-lg overflow-hidden">
@@ -558,34 +1059,42 @@ export default function MsiBuilder() {
                       </tr>
                     </thead>
                     <tbody className="divide-y font-mono">
-                      {registryEntries.map(entry => (
-                        <tr key={entry.id} className="hover:bg-gray-50">
-                          <td className="px-3 py-2 font-semibold text-blue-700">{entry.root}</td>
-                          <td className="px-3 py-2 text-gray-700 max-w-xs truncate">{entry.key}</td>
-                          <td className="px-3 py-2">
-                            <div className="space-y-0.5">
-                              {entry.values.length === 0
-                                ? <span className="text-gray-400 italic">key only</span>
-                                : entry.values.slice(0, 3).map((v, i) => (
-                                    <div key={i} className="text-gray-600">
-                                      <span className="text-gray-500">{v.name || '(Default)'}</span>
-                                      <span className="text-gray-400"> = </span>
-                                      <span className="text-green-700 truncate inline-block max-w-[160px] align-bottom">{v.value}</span>
-                                      <span className="text-gray-400 ml-1">({v.type})</span>
-                                    </div>
-                                  ))}
+                      {registryEntries.map(entry => {
+                        const expanded = expandedRegIds.has(entry.id);
+                        const shown = expanded ? entry.values : entry.values.slice(0, 3);
+                        return (
+                          <tr key={entry.id} className="hover:bg-gray-50 align-top">
+                            <td className="px-3 py-2 font-semibold text-blue-700 whitespace-nowrap">{entry.root}</td>
+                            <td className="px-3 py-2 text-gray-700 max-w-xs break-all">{entry.key}</td>
+                            <td className="px-3 py-2">
+                              <div className="space-y-0.5">
+                                {entry.values.length === 0
+                                  ? <span className="text-gray-400 italic">key only</span>
+                                  : shown.map((v, i) => (
+                                      <div key={i} className="text-gray-600">
+                                        <span className="text-gray-500">{v.name || '(Default)'}</span>
+                                        <span className="text-gray-400"> = </span>
+                                        <span className="text-green-700 break-all">{v.value}</span>
+                                        <span className="text-gray-400 ml-1">({v.type})</span>
+                                      </div>
+                                    ))
+                                }
+                              </div>
                               {entry.values.length > 3 && (
-                                <span className="text-gray-400">+{entry.values.length - 3} more</span>
+                                <button
+                                  onClick={() => toggleRegExpand(entry.id)}
+                                  className="text-blue-500 hover:text-blue-700 text-xs mt-1"
+                                >
+                                  {expanded ? '▲ Show less' : `▼ +${entry.values.length - 3} more`}
+                                </button>
                               )}
-                            </div>
-                          </td>
-                          <td className="px-3 py-2 text-right">
-                            <button onClick={() => deleteRegEntry(entry.id)} className="text-red-400 hover:text-red-600">
-                              <Trash2 size={13} />
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
+                            </td>
+                            <td className="px-3 py-2 text-right align-top">
+                              <button onClick={() => deleteRegEntry(entry.id)} className="text-red-400 hover:text-red-600"><Trash2 size={13} /></button>
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
@@ -618,7 +1127,6 @@ export default function MsiBuilder() {
             <CheckCircle size={15} /> MSI compiled and downloaded successfully.
           </div>
         )}
-
         {buildError && (
           <div className="mt-4">
             <div className="flex items-center gap-2 text-red-700 text-sm font-medium mb-1">
