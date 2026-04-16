@@ -58,3 +58,11 @@ export const gitLog = () => request('/git/log');
 // Config
 export const getConfig = () => request('/config');
 export const updateConfig = (data) => request('/config', { method: 'PUT', body: JSON.stringify(data) });
+
+// MSI Builder
+export const detectMsiTools = () => request('/msi/detect-tools');
+
+export async function buildMsi(formData) {
+  const res = await fetch(`${BASE}/msi/build`, { method: 'POST', body: formData });
+  return res;
+}
