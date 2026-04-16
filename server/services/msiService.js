@@ -1,8 +1,17 @@
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const https = require('https');
+const http = require('http');
 const { execFile } = require('child_process');
-const { v4: uuidv4 } = require('uuid');
+const { v4: uuidv4, v5: uuidv5 } = require('uuid');
+
+// Fixed namespace for deterministic component GUIDs (stable across rebuilds)
+// RFC 4122 URL namespace — guaranteed valid variant/version nibbles
+const GUID_NS = '6ba7b811-9dad-11d1-80b4-00c04fd430c8';
+
+const WIX3_CACHE = path.join(os.homedir(), '.aipsadt', 'wix3');
+const WIX3_URL = 'https://github.com/wixtoolset/wix3/releases/download/wix314rtm/wix314-binaries.zip';
 
 const WIX3_DIRS = [
   'C:\\Program Files (x86)\\WiX Toolset v3.14\\bin',
@@ -27,10 +36,6 @@ function probe(cmd, args) {
 }
 
 async function detectWix() {
-  // WiX v5 — dotnet global tool 'wix'
-  const v5 = await probe('wix', ['--version']);
-  if (v5) return { type: 'v5', version: v5, exe: 'wix' };
-
   // WiX v3 — candle/light in PATH
   const v3path = await probe('candle', []);
   if (v3path && v3path.toLowerCase().includes('toolset')) {
@@ -47,10 +52,23 @@ async function detectWix() {
     }
   }
 
+  // WiX v3 — previously auto-downloaded cache
+  const cachedCandle = path.join(WIX3_CACHE, 'candle.exe');
+  const cachedLight = path.join(WIX3_CACHE, 'light.exe');
+  if (fs.existsSync(cachedCandle)) {
+    const ver = await probe(cachedCandle, []);
+    return {
+      type: 'v3',
+      version: ((ver || '').split('\n')[0].trim() || 'v3.14') + ' (cached)',
+      exe: { candle: cachedCandle, light: cachedLight },
+    };
+  }
+
   return { type: null };
 }
 
-// WiX requires IDs starting with letter/underscore, only [A-Za-z0-9_.]
+// ─── WiX ID / XML helpers ─────────────────────────────────────────────────────
+
 function sid(str) {
   let s = String(str).replace(/-/g, '').replace(/[^A-Za-z0-9_.]/g, '_');
   if (/^[0-9]/.test(s)) s = '_' + s;
@@ -71,7 +89,6 @@ function wixRegType(type) {
   return { string: 'string', integer: 'integer', binary: 'binary', expandable: 'expandable', multiString: 'multiString' }[type] || 'string';
 }
 
-// Build nodeId -> wixDirId map for all dir nodes
 function buildDirMap(nodes) {
   const map = {};
   function walk(ns) {
@@ -83,7 +100,6 @@ function buildDirMap(nodes) {
   return map;
 }
 
-// Flatten all file nodes, each carrying its parent dir's WiX ID
 function flattenFiles(nodes, parentDirId, dirMap) {
   const files = [];
   for (const n of nodes) {
@@ -97,7 +113,6 @@ function flattenFiles(nodes, parentDirId, dirMap) {
   return files;
 }
 
-// Recursively emit <Directory> elements for dir nodes
 function genDirs(nodes, dirMap, indent) {
   const pad = '  '.repeat(indent);
   let xml = '';
@@ -111,7 +126,7 @@ function genDirs(nodes, dirMap, indent) {
   return xml;
 }
 
-function buildShortcutComponents(shortcuts, allFiles, manufacturer, productName, indent, wixVersion) {
+function buildShortcutComponents(shortcuts, allFiles, manufacturer, productName, indent) {
   const pad = '  '.repeat(indent);
   let xml = '';
   const startMenuRemoveDone = { done: false };
@@ -127,19 +142,15 @@ function buildShortcutComponents(shortcuts, allFiles, manufacturer, productName,
       const compId = sid(`comp_sc_${sc.id}_${loc}`);
       const scId = sid(`sc_${sc.id}_${loc}`);
       const scDir = loc === 'desktop' ? 'DesktopFolder' : 'StartMenuDir';
-      const regName = `${scId}`;
 
       xml += `${pad}<Component Id="${compId}" Directory="INSTALLDIR" Guid="*">\n`;
       xml += `${pad}  <Shortcut Id="${scId}" Directory="${scDir}" Name="${esc(sc.name)}"`;
-      xml += ` Target="[${targetDirId}]${esc(targetExe)}" WorkingDirectory="${targetDirId}"${descAttr}`;
-      if (wixVersion === 'v3') xml += ` Advertise="no"`;
-      xml += ` />\n`;
-      // Only emit RemoveFolder for StartMenuDir once
+      xml += ` Target="[${targetDirId}]${esc(targetExe)}" WorkingDirectory="${targetDirId}"${descAttr} Advertise="no" />\n`;
       if (loc === 'startmenu' && !startMenuRemoveDone.done) {
         xml += `${pad}  <RemoveFolder Id="rf_StartMenuDir" Directory="StartMenuDir" On="uninstall" />\n`;
         startMenuRemoveDone.done = true;
       }
-      xml += `${pad}  <RegistryValue Root="HKCU" Key="Software\\${esc(manufacturer)}\\${esc(productName)}" Name="${regName}" Type="integer" Value="1" KeyPath="yes" />\n`;
+      xml += `${pad}  <RegistryValue Root="HKCU" Key="Software\\${esc(manufacturer)}\\${esc(productName)}" Name="${scId}" Type="integer" Value="1" KeyPath="yes" />\n`;
       xml += `${pad}</Component>\n`;
     }
   }
@@ -153,7 +164,6 @@ function buildRegistryComponents(registryEntries, indent) {
     const compId = sid(`comp_reg_${entry.id}`);
     xml += `${pad}<Component Id="${compId}" Directory="INSTALLDIR" Guid="*">\n`;
     if (!entry.values || entry.values.length === 0) {
-      // Sentinel value so the component has a KeyPath
       xml += `${pad}  <RegistryValue Root="${wixHive(entry.root)}" Key="${esc(entry.key)}" Name="Installed" Type="integer" Value="1" KeyPath="yes" />\n`;
     } else {
       for (let i = 0; i < entry.values.length; i++) {
@@ -167,27 +177,60 @@ function buildRegistryComponents(registryEntries, indent) {
   return xml;
 }
 
-function generateWxsV3(meta, allFiles, dirMap) {
+function generateWxs(meta, allFiles, dirMap) {
   const { productName, manufacturer, version, upgradeCode, platform, scope, installDirName, shortcuts, registryEntries } = meta;
-  const pf = platform === 'x86' ? 'ProgramFilesFolder' : 'ProgramFiles64Folder';
   const arch = platform === 'x86' ? 'x86' : 'x64';
   const installScope = scope === 'perUser' ? 'perUser' : 'perMachine';
   const dirName = esc(installDirName || productName);
   const hasShortcuts = (shortcuts || []).length > 0;
+  const perUser = scope === 'perUser';
 
   let fileComps = '';
   for (const f of allFiles) {
-    fileComps += `      <Component Id="${sid('comp_' + f.id)}" Guid="*" Directory="${f.wixDirId}">\n`;
-    fileComps += `        <File Id="${sid('file_' + f.id)}" Source="files/${f.fileRef}" Name="${esc(f.name)}" KeyPath="yes" />\n`;
+    const fileId = sid('file_' + f.id);
+    const compId = sid('comp_' + f.id);
+    // ICE38: per-user components must use HKCU registry as KeyPath, not a file.
+    // Guid="*" is also disallowed when a component has both a file and a registry KeyPath.
+    const guid = perUser ? uuidv5(compId, GUID_NS).toUpperCase() : '*';
+    fileComps += `      <Component Id="${compId}" Guid="${guid}" Directory="${f.wixDirId}">\n`;
+    fileComps += `        <File Id="${fileId}" Source="files/${f.fileRef}" Name="${esc(f.name)}"${perUser ? '' : ' KeyPath="yes"'} />\n`;
+    if (perUser) {
+      fileComps += `        <RegistryValue Root="HKCU" Key="Software\\${esc(manufacturer)}\\${esc(productName)}\\Components" Name="${fileId}" Type="integer" Value="1" KeyPath="yes" />\n`;
+    }
     fileComps += `      </Component>\n`;
   }
 
-  const scComps = buildShortcutComponents(shortcuts, allFiles, manufacturer, productName, 3, 'v3');
+  // ICE64: every user-profile directory needs a RemoveFolder entry
+  let cleanupComp = '';
+  if (perUser) {
+    cleanupComp += `      <Component Id="comp_cleanup_dirs" Guid="*" Directory="INSTALLDIR">\n`;
+    cleanupComp += `        <RemoveFolder Id="rf_INSTALLDIR" Directory="INSTALLDIR" On="uninstall" />\n`;
+    cleanupComp += `        <RemoveFolder Id="rf_UserProgramsFolder" Directory="UserProgramsFolder" On="uninstall" />\n`;
+    for (const wixId of Object.values(dirMap)) {
+      cleanupComp += `        <RemoveFolder Id="rf_${wixId}" Directory="${wixId}" On="uninstall" />\n`;
+    }
+    cleanupComp += `        <RegistryValue Root="HKCU" Key="Software\\${esc(manufacturer)}\\${esc(productName)}" Name="Installed" Type="integer" Value="1" KeyPath="yes" />\n`;
+    cleanupComp += `      </Component>\n`;
+  }
+
+  const scComps = buildShortcutComponents(shortcuts, allFiles, manufacturer, productName, 3);
   const regComps = buildRegistryComponents(registryEntries, 3);
 
   const shortcutDirs = hasShortcuts
     ? `      <Directory Id="DesktopFolder" />\n      <Directory Id="ProgramMenuFolder">\n        <Directory Id="StartMenuDir" Name="${esc(productName)}" />\n      </Directory>\n`
     : '';
+
+  const installDirSection = perUser
+    ? `      <Directory Id="LocalAppDataFolder">
+        <Directory Id="UserProgramsFolder" Name="Programs">
+          <Directory Id="INSTALLDIR" Name="${dirName}">
+${genDirs(meta.fileTree.children || [], dirMap, 6)}          </Directory>
+        </Directory>
+      </Directory>`
+    : `      <Directory Id="${platform === 'x86' ? 'ProgramFilesFolder' : 'ProgramFiles64Folder'}">
+        <Directory Id="INSTALLDIR" Name="${dirName}">
+${genDirs(meta.fileTree.children || [], dirMap, 5)}        </Directory>
+      </Directory>`;
 
   return `<?xml version="1.0" encoding="UTF-8"?>
 <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
@@ -199,14 +242,11 @@ function generateWxsV3(meta, allFiles, dirMap) {
     <MediaTemplate EmbedCab="yes" />
 
     <Directory Id="TARGETDIR" Name="SourceDir">
-      <Directory Id="${pf}">
-        <Directory Id="INSTALLDIR" Name="${dirName}">
-${genDirs(meta.fileTree.children || [], dirMap, 5)}        </Directory>
-      </Directory>
+${installDirSection}
 ${shortcutDirs}    </Directory>
 
     <ComponentGroup Id="AllComponents">
-${fileComps}${scComps}${regComps}    </ComponentGroup>
+${fileComps}${cleanupComp}${scComps}${regComps}    </ComponentGroup>
 
     <Feature Id="MainFeature" Title="${esc(productName)}" Level="1">
       <ComponentGroupRef Id="AllComponents" />
@@ -215,54 +255,7 @@ ${fileComps}${scComps}${regComps}    </ComponentGroup>
 </Wix>`;
 }
 
-function generateWxsV5(meta, allFiles, dirMap) {
-  const { productName, manufacturer, version, upgradeCode, platform, scope, installDirName, shortcuts, registryEntries } = meta;
-  const pf = platform === 'x86' ? 'ProgramFilesFolder' : 'ProgramFiles64Folder';
-  const arch = platform === 'x86' ? 'x86' : 'x64';
-  const pkgScope = scope === 'perUser' ? 'perUser' : 'perMachine';
-  const dirName = esc(installDirName || productName);
-  const hasShortcuts = (shortcuts || []).length > 0;
-
-  let fileComps = '';
-  for (const f of allFiles) {
-    fileComps += `    <Component Id="${sid('comp_' + f.id)}" Directory="${f.wixDirId}" Guid="*">\n`;
-    fileComps += `      <File Id="${sid('file_' + f.id)}" Source="files/${f.fileRef}" Name="${esc(f.name)}" KeyPath="yes" />\n`;
-    fileComps += `    </Component>\n`;
-  }
-
-  const scComps = buildShortcutComponents(shortcuts, allFiles, manufacturer, productName, 2, 'v5');
-  const regComps = buildRegistryComponents(registryEntries, 2);
-
-  const shortcutDirs = hasShortcuts
-    ? `  <StandardDirectory Id="DesktopFolder" />\n  <StandardDirectory Id="ProgramMenuFolder">\n    <Directory Id="StartMenuDir" Name="${esc(productName)}" />\n  </StandardDirectory>\n`
-    : '';
-
-  return `<?xml version="1.0" encoding="UTF-8"?>
-<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
-  <Package Name="${esc(productName)}"
-           Manufacturer="${esc(manufacturer)}"
-           Version="${esc(version)}"
-           UpgradeCode="{${upgradeCode}}"
-           Scope="${pkgScope}"
-           Platform="${arch}">
-
-    <MajorUpgrade DowngradeErrorMessage="A newer version of [ProductName] is already installed." />
-    <MediaTemplate EmbedCab="yes" />
-
-    <StandardDirectory Id="${pf}">
-      <Directory Id="INSTALLDIR" Name="${dirName}">
-${genDirs(meta.fileTree.children || [], dirMap, 4)}      </Directory>
-    </StandardDirectory>
-${shortcutDirs}
-    <ComponentGroup Id="AllComponents">
-${fileComps}${scComps}${regComps}    </ComponentGroup>
-
-    <Feature Id="MainFeature" Level="1">
-      <ComponentGroupRef Id="AllComponents" />
-    </Feature>
-  </Package>
-</Wix>`;
-}
+// ─── Compiler helpers ─────────────────────────────────────────────────────────
 
 function runExe(exe, args, cwd) {
   return new Promise((resolve, reject) => {
@@ -274,46 +267,95 @@ function runExe(exe, args, cwd) {
   });
 }
 
-async function buildMsi(meta, fileBuffers) {
-  const tool = await detectWix();
-  if (!tool.type) {
-    throw new Error(
-      'No WiX toolset found on this machine.\n' +
-      'Install WiX v5:  dotnet tool install --global wix\n' +
-      'Install WiX v3:  https://wixtoolset.org/releases/'
+// Download a URL to dest, following redirects.
+// res.resume() is required on redirect responses to drain the body and release the TCP connection.
+function downloadFile(url, dest) {
+  return new Promise((resolve, reject) => {
+    function get(url) {
+      const mod = url.startsWith('https') ? https : http;
+      mod.get(url, (res) => {
+        if ([301, 302, 303, 307, 308].includes(res.statusCode) && res.headers.location) {
+          res.resume(); // drain body so connection is released before next request
+          return get(res.headers.location);
+        }
+        if (res.statusCode !== 200) {
+          res.resume();
+          return reject(new Error(`Download failed: HTTP ${res.statusCode}`));
+        }
+        const file = fs.createWriteStream(dest);
+        res.pipe(file);
+        file.on('finish', () => file.close(resolve));
+        file.on('error', reject);
+      }).on('error', reject);
+    }
+    get(url);
+  });
+}
+
+// Extract a zip using powershell.exe directly (shell:false avoids cmd.exe quoting issues)
+function extractZip(zipPath, destDir) {
+  return new Promise((resolve, reject) => {
+    execFile(
+      'powershell.exe',
+      ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass',
+       '-Command', `Expand-Archive -Force -Path "${zipPath}" -DestinationPath "${destDir}"`],
+      { shell: false, windowsHide: true, maxBuffer: 50 * 1024 * 1024 },
+      (err, stdout, stderr) => {
+        const output = [stdout, stderr].filter(Boolean).join('\n').trim();
+        if (err) reject(new Error(`Extraction failed: ${output || err.message}`));
+        else resolve();
+      }
     );
+  });
+}
+
+async function downloadWix3() {
+  const zipPath = path.join(os.tmpdir(), 'wix314-binaries.zip');
+  try {
+    await downloadFile(WIX3_URL, zipPath);
+    fs.mkdirSync(WIX3_CACHE, { recursive: true });
+    await extractZip(zipPath, WIX3_CACHE);
+
+    const candle = path.join(WIX3_CACHE, 'candle.exe');
+    const light = path.join(WIX3_CACHE, 'light.exe');
+    if (!fs.existsSync(candle)) throw new Error('Extraction finished but candle.exe not found in extracted files.');
+
+    return { type: 'v3', version: 'v3.14 (downloaded)', exe: { candle, light } };
+  } finally {
+    try { fs.unlinkSync(zipPath); } catch {}
+  }
+}
+
+// ─── Main build entry point ───────────────────────────────────────────────────
+
+async function buildMsi(meta, fileBuffers) {
+  let tool = await detectWix();
+  if (!tool.type) {
+    tool = await downloadWix3();
   }
 
   const buildDir = path.join(os.tmpdir(), 'msibuild_' + uuidv4());
   fs.mkdirSync(path.join(buildDir, 'files'), { recursive: true });
 
   try {
-    // Write each uploaded file buffer to buildDir/files/<fileRef>
     for (const [fileRef, buffer] of Object.entries(fileBuffers)) {
       fs.writeFileSync(path.join(buildDir, 'files', fileRef), buffer);
     }
 
     const dirMap = buildDirMap(meta.fileTree.children || []);
     const allFiles = flattenFiles(meta.fileTree.children || [], 'INSTALLDIR', dirMap);
-
-    const wxs = tool.type === 'v5'
-      ? generateWxsV5(meta, allFiles, dirMap)
-      : generateWxsV3(meta, allFiles, dirMap);
+    const wxs = generateWxs(meta, allFiles, dirMap);
 
     fs.writeFileSync(path.join(buildDir, 'product.wxs'), wxs, 'utf-8');
 
     const safeName = meta.productName.replace(/[^A-Za-z0-9_-]/g, '_');
     const msiName = `${safeName}_${meta.version}.msi`;
     const msiPath = path.join(buildDir, msiName);
+    const arch = meta.platform === 'x86' ? 'x86' : 'x64';
 
     let buildLog = '';
-    if (tool.type === 'v5') {
-      buildLog = await runExe(tool.exe, ['build', 'product.wxs', '-o', msiName], buildDir);
-    } else {
-      const arch = meta.platform === 'x86' ? 'x86' : 'x64';
-      buildLog += await runExe(tool.exe.candle, ['-arch', arch, '-out', 'product.wixobj', 'product.wxs'], buildDir);
-      buildLog += '\n' + await runExe(tool.exe.light, ['-out', msiName, 'product.wixobj'], buildDir);
-    }
+    buildLog += await runExe(tool.exe.candle, ['-arch', arch, '-out', 'product.wixobj', 'product.wxs'], buildDir);
+    buildLog += '\n' + await runExe(tool.exe.light, ['-sice:ICE91', '-out', msiName, 'product.wixobj'], buildDir);
 
     if (!fs.existsSync(msiPath)) {
       throw new Error(`Compiler finished but MSI was not created.\n${buildLog}`);
