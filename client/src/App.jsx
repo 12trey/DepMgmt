@@ -1,5 +1,5 @@
 import { Routes, Route, NavLink } from 'react-router-dom';
-import { LayoutDashboard, PackagePlus, FolderOpen, Play, GitBranch, Settings, Monitor } from 'lucide-react';
+import { LayoutDashboard, PackagePlus, FolderOpen, Play, GitBranch, Settings, Monitor, Package } from 'lucide-react';
 import Dashboard from './pages/Dashboard';
 import CreatePackage from './pages/CreatePackage';
 import ManagePackages from './pages/ManagePackages';
@@ -9,14 +9,17 @@ import Execution from './pages/Execution';
 import GitPanel from './pages/GitPanel';
 import Config from './pages/Config';
 import DMTTools from './pages/DMTTools';
+import MsiBuilder from './pages/MsiBuilder';
 
 const navItems = [
   { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
   { to: '/create', icon: PackagePlus, label: 'Create Package' },
   { to: '/packages', icon: FolderOpen, label: 'Manage Packages' },
   { to: '/execution', icon: Play, label: 'Execution / Logs' },
+  { to: '/msi-builder', icon: Package, label: 'MSI Builder' },
   { to: '/git', icon: GitBranch, label: 'Git' },
   { to: '/config', icon: Settings, label: 'Settings' },
+  { divider: true },
   { to: '/dmt-tools', icon: Monitor, label: 'DMT Tools' },
 ];
 
@@ -29,7 +32,7 @@ export default function App() {
           PSADT for DMT
         </div>
         <div className="flex-1 py-3">
-          {navItems.map(({ to, icon: Icon, label }) => (
+          {/* {navItems.map(({ to, icon: Icon, label }) => (
             <NavLink
               key={to}
               to={to}
@@ -41,7 +44,30 @@ export default function App() {
               <Icon size={18} />
               {label}
             </NavLink>
-          ))}
+          ))} */}
+
+          {navItems.map((item, index) => {
+            if (item.divider) {
+              return <div key={`divider-${index}`} className="my-2 border-t border-gray-700" />;
+            }
+
+            const { to, icon: Icon, label } = item;
+
+            return (
+              <NavLink
+                key={to}
+                to={to}
+                end={to === '/'}
+                className={({ isActive }) =>
+                  `flex items-center gap-3 px-4 py-2.5 text-sm hover:bg-gray-800 ${isActive ? 'bg-gray-800 text-white border-l-2 border-blue-500' : ''
+                  }`
+                }
+              >
+                <Icon size={18} />
+                {label}
+              </NavLink>
+            );
+          })}
         </div>
       </nav>
 
@@ -57,6 +83,7 @@ export default function App() {
           <Route path="/git" element={<GitPanel />} />
           <Route path="/config" element={<Config />} />
           <Route path="/dmt-tools" element={<DMTTools />} />
+          <Route path="/msi-builder" element={<MsiBuilder />} />
         </Routes>
       </main>
     </div>

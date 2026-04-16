@@ -9,6 +9,7 @@ const packageRoutes = require('./routes/packages');
 const executionRoutes = require('./routes/execution');
 const gitRoutes = require('./routes/git');
 const configRoutes = require('./routes/config');
+const msiRoutes = require('./routes/msi');
 const { attachWss } = require('./services/logStream');
 
 const app = express();
@@ -26,6 +27,7 @@ app.use('/api/packages', packageRoutes);
 app.use('/api/execution', executionRoutes);
 app.use('/api/git', gitRoutes);
 app.use('/api/config', configRoutes);
+app.use('/api/msi', msiRoutes);
 
 // Serve React build in production
 if (fs.existsSync(paths.clientDist)) {
