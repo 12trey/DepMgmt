@@ -12,6 +12,7 @@ const configRoutes = require('./routes/config');
 const msiRoutes = require('./routes/msi');
 const intuneRoutes = require('./routes/intune');
 const groupRoutes = require('./routes/groups');
+const wslRoutes = require('./routes/wsl');
 const { attachWss } = require('./services/logStream');
 
 const app = express();
@@ -32,6 +33,7 @@ app.use('/api/config', configRoutes);
 app.use('/api/msi', msiRoutes);
 app.use('/api/intune', intuneRoutes);
 app.use('/api/groups', groupRoutes);
+app.use('/api/wsl', wslRoutes);
 
 // Serve React build in production
 if (fs.existsSync(paths.clientDist)) {

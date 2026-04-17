@@ -7,3 +7,9 @@ logs/
 *.log
 .env
 /tools
+# Python venv (if accidentally created in project root)
+/bin
+/lib
+/lib64
+/include
+pyvenv.cfg
