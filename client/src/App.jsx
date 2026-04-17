@@ -33,7 +33,7 @@ export default function App() {
       {/* Sidebar */}
       <nav className="w-56 bg-gray-900 text-gray-300 flex flex-col">
         <div className="px-4 py-5 text-white font-bold text-lg border-b border-gray-700">
-          PSADT for DMT
+          Deployment Manager
         </div>
         <div className="flex-1 py-3">
           {/* {navItems.map(({ to, icon: Icon, label }) => (

@@ -276,6 +276,9 @@ export PATH="$VENV_BIN:$PATH"
 "$VENV_BIN/pip3" show ansible-core > /dev/null 2>&1 || (echo "==> Installing ansible-core..." && "$VENV_BIN/pip3" install ansible-core)
 "$VENV_BIN/pip3" show pywinrm    > /dev/null 2>&1 || (echo "==> Installing pywinrm[kerberos]..." && "$VENV_BIN/pip3" install 'pywinrm[kerberos]')
 
+"$VENV_BIN/ansible-galaxy" collection install ansible.windows --ignore-certs --force || echo "==> Failed to install ansible.windows collection, but continuing anyway…"
+"$VENV_BIN/ansible-galaxy" collection install ansible.posix --ignore-certs --force || echo "==> Failed to install ansible.posix collection, but continuing anyway…"
+
 echo "==> Checking for NVM/Node..."
 if ! command -v node > /dev/null 2>&1; then
   echo "==> Installing NVM..."
@@ -364,6 +367,8 @@ if ! command -v node > /dev/null 2>&1; then
   NODE_BIN=$(find "$NVM_DIR/versions/node" -maxdepth 2 -name node -type f 2>/dev/null | sort -V | tail -1)
   [ -n "$NODE_BIN" ] && export PATH="$(dirname "$NODE_BIN"):$PATH"
 fi
+# Activate the Python venv so ansible-playbook is on PATH for child processes
+[ -f "/opt/.ansiblevenv/bin/activate" ] && . "/opt/.ansiblevenv/bin/activate"
 cd ${APP_PATH}
 exec node ${APP_ENTRY} >> /tmp/dmt-app.log 2>&1
 EOLAUNCH
@@ -373,7 +378,7 @@ chmod +x /tmp/dmt-launch.sh
     // Spawn wsl.exe running bash in the foreground (node runs via exec, keeping wsl.exe alive).
     // windowsHide:true works for non-detached processes — confirmed working by the setup spawn.
     // unref() lets the Express server continue without waiting for this child to exit.
-    const child = spawn('wsl.exe', ['-d', instance, 'bash', '-l', '/tmp/dmt-launch.sh'], {
+    const child = spawn('wsl.exe', ['-d', instance, '--cd', `${APP_PATH}`, 'bash', '-l', '/tmp/dmt-launch.sh'], {
       stdio: 'ignore',
       windowsHide: true,
     });
@@ -406,4 +411,96 @@ rsync -av --delete \
   }
 });
 
+// Attach a WebSocketServer that spawns a login shell in the named WSL instance.
+// One shell per WebSocket connection. Uses Python's pty module inside WSL to
+// allocate a real pseudo-terminal so bash shows PS1 prompts and the PTY layer
+// converts \n→\r\n (fixes the cascading-line problem in xterm.js).
+//
+// Resize protocol: client sends a 5-byte binary message [0x00, ch, cl, rh, rl]
+// where cols = (ch<<8)|cl and rows = (rh<<8)|rl.  The Python bridge calls
+// TIOCSWINSZ + SIGWINCH when it sees this prefix byte.
+function attachTerminalWss(wss) {
+  wss.on('connection', (ws, req) => {
+    const url = new URL(req.url, 'http://localhost');
+    const instance = url.searchParams.get('instance');
+    const cols = Math.max(20, parseInt(url.searchParams.get('cols') || '220', 10));
+    const rows = Math.max(5,  parseInt(url.searchParams.get('rows') || '50',  10));
+
+    if (!instance) {
+      ws.close(1008, 'instance query param required');
+      return;
+    }
+
+    // Python PTY bridge — written verbatim to a temp file via heredoc, then
+    // exec'd.  Single-space indentation is valid Python 3.
+    // IMPORTANT: keep this a plain string (not a template literal) until the
+    // ROWS/COLS substitution below so that ${...} inside Python code is safe.
+    const pyBridge = `import sys,os,pty,fcntl,struct,signal,select,termios
+mfd,sfd=pty.openpty()
+fcntl.ioctl(sfd,termios.TIOCSWINSZ,struct.pack("HHHH",TMROWS,TMCOLS,0,0))
+pid=os.fork()
+if pid==0:
+ os.setsid()
+ try:fcntl.ioctl(sfd,termios.TIOCSCTTY,0)
+ except:pass
+ for f in[0,1,2]:os.dup2(sfd,f)
+ if sfd>2:os.close(sfd)
+ os.close(mfd)
+ os.execvp("/bin/bash",["/bin/bash","-l","-i"])
+os.close(sfd)
+while True:
+ try:r,_,_=select.select([0,mfd],[],[],1)
+ except:r=[]
+ if 0 in r:
+  try:chunk=os.read(0,4096)
+  except:break
+  if not chunk:break
+  i=0
+  while i<len(chunk):
+   if chunk[i:i+1]==b'\\x00':
+    if i+5<=len(chunk):
+     c=(chunk[i+1]<<8)|chunk[i+2];rr=(chunk[i+3]<<8)|chunk[i+4]
+     fcntl.ioctl(mfd,termios.TIOCSWINSZ,struct.pack("HHHH",rr,c,0,0))
+     os.kill(pid,signal.SIGWINCH);i+=5
+    else:i=len(chunk)
+   else:
+    e=chunk.find(b'\\x00',i)
+    tw=chunk[i:] if e<0 else chunk[i:e]
+    if tw:os.write(mfd,tw)
+    i=len(chunk) if e<0 else e
+ if mfd in r:
+  try:d=os.read(mfd,4096)
+  except:break
+  if not d:break
+  os.write(1,d)
+try:os.waitpid(pid,0)
+except:pass`
+      .replace('TMROWS', String(rows))
+      .replace('TMCOLS', String(cols));
+
+    // Spawn a login bash in WSL, write the bridge script via heredoc, then exec
+    // python3 to replace bash.  stdin stays open so Python uses it as terminal I/O.
+    const child = spawn('wsl.exe', ['-d', instance, 'bash', '-l'], {
+      windowsHide: true,
+    });
+
+    child.stdin.write(
+      `cat > /tmp/dmt_pty_$$.py << 'DMTPYEND'\n${pyBridge}\nDMTPYEND\nexec python3 /tmp/dmt_pty_$$.py\n`
+    );
+
+    const fwd = (data) => {
+      if (ws.readyState === ws.OPEN) ws.send(data instanceof Buffer ? data : Buffer.from(data));
+    };
+
+    child.stdout.on('data', fwd);
+    child.stderr.on('data', fwd);
+    child.on('close', () => { try { ws.close(); } catch {} });
+    child.on('error', (err) => { try { ws.close(1011, err.message); } catch {} });
+
+    ws.on('message', (data) => { try { child.stdin.write(data); } catch {} });
+    ws.on('close', () => { try { child.kill(); } catch {} });
+  });
+}
+
 module.exports = router;
+module.exports.attachTerminalWss = attachTerminalWss;

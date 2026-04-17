@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
-import { RefreshCw, ChevronDown, CheckCircle, XCircle, AlertCircle, Loader2, Settings, Upload } from 'lucide-react';
+import { RefreshCw, ChevronDown, CheckCircle, XCircle, AlertCircle, Loader2, Settings, Upload, TerminalSquare, X, Wrench } from 'lucide-react';
 
 const STORAGE_KEY = 'dmt-wsl-instance';
 
@@ -12,7 +12,7 @@ const LAUNCH_TIMEOUT = 30000;
 async function fetchInstances() {
   const r = await fetch('/api/wsl/instances');
   if (!r.ok) throw new Error(await r.text());
-  return r.json(); // { instances: string[] }
+  return r.json();
 }
 
 async function checkSetup(instance) {
@@ -22,7 +22,7 @@ async function checkSetup(instance) {
     body: JSON.stringify({ instance }),
   });
   if (!r.ok) throw new Error(await r.text());
-  return r.json(); // { checks, ready }
+  return r.json();
 }
 
 async function syncApp(instance) {
@@ -85,10 +85,128 @@ function Badge({ ok, label }) {
   );
 }
 
+// ── Integrated terminal panel ──────────────────────────────────────────────────
+
+function TerminalPanel({ instance, onClose }) {
+  const containerRef = useRef(null);
+  const termRef = useRef(null);
+  const wsRef = useRef(null);
+
+  useEffect(() => {
+    let term;
+    let fitAddon;
+
+    async function init() {
+      const { Terminal } = await import('@xterm/xterm');
+      const { FitAddon } = await import('@xterm/addon-fit');
+      await import('@xterm/xterm/css/xterm.css');
+
+      term = new Terminal({
+        cursorBlink: true,
+        fontSize: 13,
+        fontFamily: '"Cascadia Code", "Consolas", monospace',
+        theme: {
+          background: '#0d1117',
+          foreground: '#e6edf3',
+          cursor: '#58a6ff',
+          selectionBackground: '#264f78',
+        },
+      });
+      fitAddon = new FitAddon();
+      term.loadAddon(fitAddon);
+      term.open(containerRef.current);
+
+      // Defer fit until the browser has resolved the flex container's dimensions.
+      await new Promise(resolve => requestAnimationFrame(resolve));
+      fitAddon.fit();
+      termRef.current = term;
+
+      // Focus the underlying textarea with preventScroll:true.
+      // term.focus() doesn't pass preventScroll, so the browser auto-scrolls the
+      // page to reveal the hidden input element, making the cursor appear to jump
+      // to the bottom. Querying the textarea and focusing it directly avoids this.
+      const ta = containerRef.current?.querySelector('textarea');
+      if (ta) ta.focus({ preventScroll: true });
+      else term.focus();
+
+      // Open WebSocket with initial terminal dimensions so Python can set the
+      // PTY size correctly from the start.
+      const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const ws = new WebSocket(
+        `${proto}//${window.location.host}/ws/terminal` +
+        `?instance=${encodeURIComponent(instance)}&cols=${term.cols}&rows=${term.rows}`
+      );
+      ws.binaryType = 'arraybuffer';
+      wsRef.current = ws;
+
+      ws.onmessage = (e) => {
+        const data = e.data instanceof ArrayBuffer ? new Uint8Array(e.data) : e.data;
+        term.write(data);
+      };
+      ws.onclose = () => term.write('\r\n\x1b[31m[connection closed]\x1b[0m\r\n');
+      ws.onerror = () => term.write('\r\n\x1b[31m[websocket error]\x1b[0m\r\n');
+
+      // Forward keypresses/paste to the PTY
+      term.onData((data) => {
+        if (ws.readyState === WebSocket.OPEN) ws.send(data);
+      });
+
+      // Forward resize events using the null-byte protocol:
+      // 5 bytes: [0x00, cols_hi, cols_lo, rows_hi, rows_lo]
+      term.onResize(({ cols, rows }) => {
+        if (ws.readyState === WebSocket.OPEN) {
+          const msg = new Uint8Array(5);
+          msg[0] = 0x00;
+          msg[1] = (cols >> 8) & 0xff;
+          msg[2] = cols & 0xff;
+          msg[3] = (rows >> 8) & 0xff;
+          msg[4] = rows & 0xff;
+          ws.send(msg.buffer);
+        }
+      });
+    }
+
+    init().catch(console.error);
+
+    const onResize = () => { try { fitAddon?.fit(); } catch {} };
+    window.addEventListener('resize', onResize);
+
+    return () => {
+      window.removeEventListener('resize', onResize);
+      try { wsRef.current?.close(); } catch {}
+      try { termRef.current?.dispose(); } catch {}
+    };
+  }, [instance]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  return (
+    <div className="flex flex-col border-t border-gray-200 bg-[#0d1117] shrink-0" style={{ height: '280px' }}>
+      <div className="flex items-center justify-between px-3 py-1 bg-gray-800 border-b border-gray-700">
+        <span className="text-xs text-gray-300 font-mono">Terminal — {instance}</span>
+        <button
+          onClick={onClose}
+          className="text-gray-400 hover:text-white"
+          title="Close terminal"
+        >
+          <X size={14} />
+        </button>
+      </div>
+      <div
+        ref={containerRef}
+        className="flex-1 overflow-hidden p-1"
+        onClick={() => {
+          const ta = containerRef.current?.querySelector('textarea');
+          if (ta) ta.focus({ preventScroll: true });
+          else termRef.current?.focus();
+        }}
+      />
+    </div>
+  );
+}
+
 // ── Main component ─────────────────────────────────────────────────────────────
 
 export default function DMTTools() {
-  const [stage, setStage] = useState('select-instance'); // select-instance | checking | setup-needed | setting-up | launching | ready | error
+  const [stage, setStage] = useState('select-instance');
   const [instances, setInstances] = useState([]);
   const [selectedInstance, setSelectedInstance] = useState('');
   const [checkResult, setCheckResult] = useState(null);
@@ -97,11 +215,11 @@ export default function DMTTools() {
   const [serviceAvailable, setServiceAvailable] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [syncMsg, setSyncMsg] = useState('');
+  const [showTerminal, setShowTerminal] = useState(false);
   const pollRef = useRef(null);
   const launchTimerRef = useRef(null);
   const logBottomRef = useRef(null);
 
-  // Load WSL instances on mount; auto-select the saved default if present
   useEffect(() => {
     fetchInstances()
       .then(({ instances: list }) => {
@@ -120,12 +238,10 @@ export default function DMTTools() {
     return () => window.removeEventListener('message', handler);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Auto-scroll setup log
   useEffect(() => {
     logBottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [setupLog]);
 
-  // Poll DMT_URL once we're in launching stage
   const startPolling = useCallback((instance) => {
     let elapsed = 0;
     pollRef.current = setInterval(async () => {
@@ -164,7 +280,6 @@ export default function DMTTools() {
       const result = await checkSetup(instance);
       setCheckResult(result);
       if (result.ready) {
-        // Already set up — check if the service is already running
         try {
           await fetch(DMT_URL, { mode: 'no-cors', signal: AbortSignal.timeout(3000) });
           setServiceAvailable(true);
@@ -190,7 +305,6 @@ export default function DMTTools() {
       await runSetup(selectedInstance, (msg) => {
         setSetupLog(prev => [...prev, msg]);
       });
-      // Re-check after setup
       const result = await checkSetup(selectedInstance);
       setCheckResult(result);
       if (result.ready) {
@@ -239,13 +353,15 @@ export default function DMTTools() {
     setSetupLog([]);
     setError('');
     setServiceAvailable(false);
+    setShowTerminal(false);
   };
 
-  // ── Render: iframe ───────────────────────────────────────────────────────────
+  // ── Render: iframe + optional terminal ───────────────────────────────────────
 
   if (stage === 'ready') {
     return (
       <div className="-m-6 flex flex-col" style={{ height: 'calc(100vh - 0px)' }}>
+        {/* Header bar */}
         <div className="flex items-center justify-between px-3 py-1 bg-gray-50 border-b border-gray-200 shrink-0 gap-4">
           <span className="text-xs text-gray-500">
             WSL: <strong>{selectedInstance}</strong>
@@ -264,6 +380,24 @@ export default function DMTTools() {
               Sync to WSL
             </button>
             <button
+              onClick={() => setShowTerminal(v => !v)}
+              className={`flex items-center gap-1 text-xs ${showTerminal ? 'text-green-600 hover:text-green-800' : 'text-gray-500 hover:text-gray-700'}`}
+              title="Toggle integrated terminal"
+            >
+              <TerminalSquare size={13} />
+              Terminal
+            </button>
+            <button
+              onClick={() => {
+                if (window.confirm(`Re-run WSL setup on ${selectedInstance}?\n\nThis will re-sync files and restart the app.`))
+                  handleRunSetup();
+              }}
+              className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-700"
+              title="Re-run setup on this WSL instance"
+            >
+              <Wrench size={11} /> Re-run Setup
+            </button>
+            <button
               onClick={() => { localStorage.removeItem(STORAGE_KEY); reset(); }}
               className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-700"
             >
@@ -271,12 +405,22 @@ export default function DMTTools() {
             </button>
           </div>
         </div>
+
+        {/* Main content: iframe grows to fill space */}
         <iframe
           src={DMT_URL}
-          className="w-full flex-1 border-0"
+          className="w-full flex-1 border-0 min-h-0"
           title="DMT Tools"
           allow="clipboard-read *; clipboard-write *;"
         />
+
+        {/* Integrated terminal — shown below iframe */}
+        {showTerminal && (
+          <TerminalPanel
+            instance={selectedInstance}
+            onClose={() => setShowTerminal(false)}
+          />
+        )}
       </div>
     );
   }
@@ -287,13 +431,11 @@ export default function DMTTools() {
     <div className="flex flex-col items-center justify-center min-h-64 py-8">
       <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-6 w-full max-w-lg space-y-5">
 
-        {/* Header */}
         <div>
           <h2 className="text-base font-semibold text-gray-800">Ansible DMT Tools</h2>
           <p className="text-xs text-gray-500 mt-0.5">Select a WSL instance to host the Ansible UI.</p>
         </div>
 
-        {/* Instance selector */}
         <div>
           <label className="block text-xs font-medium text-gray-600 mb-1">WSL Instance</label>
           <div className="relative">
@@ -312,7 +454,6 @@ export default function DMTTools() {
           </div>
         </div>
 
-        {/* Checking spinner */}
         {stage === 'checking' && (
           <div className="flex items-center gap-2 text-sm text-gray-500">
             <Loader2 size={16} className="animate-spin" />
@@ -320,7 +461,6 @@ export default function DMTTools() {
           </div>
         )}
 
-        {/* Check results */}
         {checkResult && stage === 'setup-needed' && (
           <div className="space-y-2">
             <p className="text-xs font-medium text-gray-600">Environment checks:</p>
@@ -349,7 +489,6 @@ export default function DMTTools() {
           </div>
         )}
 
-        {/* Setup log — visible while running and persisted on error */}
         {(stage === 'setting-up' || (stage === 'error' && setupLog.length > 0)) && (
           <div className="space-y-2">
             {stage === 'setting-up' && (
@@ -369,7 +508,6 @@ export default function DMTTools() {
           </div>
         )}
 
-        {/* Launching */}
         {stage === 'launching' && (
           <div className="flex items-center gap-2 text-sm text-gray-500">
             <Loader2 size={16} className="animate-spin" />
@@ -377,7 +515,6 @@ export default function DMTTools() {
           </div>
         )}
 
-        {/* Error */}
         {stage === 'error' && (
           <div className="bg-red-50 border border-red-200 rounded-lg p-3 space-y-2">
             <div className="flex items-start gap-2 text-sm text-red-700">
@@ -390,7 +527,6 @@ export default function DMTTools() {
           </div>
         )}
 
-        {/* Reset link when blocked */}
         {(stage === 'checking' || stage === 'setting-up' || stage === 'launching') && (
           <button onClick={reset} className="text-xs text-gray-400 hover:text-gray-600 flex items-center gap-1">
             <RefreshCw size={11} /> Cancel

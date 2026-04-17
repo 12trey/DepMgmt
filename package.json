@@ -1,7 +1,7 @@
 {
   "name": "dmtpsadt",
   "version": "1.0.1",
-  "description": "Web-based PSADT Master Wrapper with Electron support",
+  "description": "Web-based PSADT, MSI, IntuneWin, Ansible and AD group management with Electron support",
   "main": "electron/main.js",
   "scripts": {
     "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
@@ -15,7 +15,7 @@
   },
   "build": {
     "appId": "com.dmtpsadt.app",
-    "productName": "DMTPSADT",
+    "productName": "Deployment Manager",
     "directories": {
       "output": "dist-electron"
     },
