@@ -1,6 +1,6 @@
 {
   "name": "dmtpsadt",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Web-based PSADT Master Wrapper with Electron support",
   "main": "electron/main.js",
   "scripts": {
@@ -25,7 +25,13 @@
       "server/**/*",
       "client/dist/**/*",
       "templates/**/*",
-      "config.json"
+      "config.json",
+      "ansible-app/**/*",
+      "!ansible-app/.git/**/*",
+      "!ansible-app/.gitkeep",
+      "!ansible-app/node_modules/**/*",
+      "!ansible-app/my-react-app/node_modules/**/*",
+      "!ansible-app/my-react-app/dist/**/*"
     ],
     "win": {
       "target": [
@@ -46,6 +52,7 @@
   ],
   "license": "MIT",
   "dependencies": {
+    "adm-zip": "^0.5.17",
     "archiver": "^7.0.1",
     "cors": "^2.8.6",
     "express": "^4.21.0",

@@ -6,3 +6,16 @@ repo/
 logs/
 *.log
 .env
+/tools
+# Ansible app — tracked separately; ignore generated/installed artifacts
+ansible-app/node_modules/
+ansible-app/my-react-app/node_modules/
+ansible-app/my-react-app/dist/
+ansible-app/.env
+
+# Python venv (if accidentally created in project root)
+/bin
+/lib
+/lib64
+/include
+pyvenv.cfg

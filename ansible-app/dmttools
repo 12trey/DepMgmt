@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+
+set -e
+
+echo "Checking for NVM/NodeJS..."
+
+if [[ `which node` == "" ]]; then
+  # Check if nvm exists
+  if [ ! -s "$NVM_DIR/nvm.sh" ]; then
+    echo "NVM not found. Installing..."
+
+    # Install NVM (official install script)
+    curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash
+
+    # Export NVM environment variables
+    export NVM_DIR="$HOME/.nvm"
+    [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+  else
+    echo "NVM is already installed."
+
+    # Ensure it's loaded
+    export NVM_DIR="$HOME/.nvm"
+    [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+  fi
+
+  echo "Installing latest Node.js..."
+
+  # Install latest Node
+  nvm install node
+
+  # Set default version
+  nvm alias default node
+
+  # Use it now
+  nvm use default
+
+  echo "Node version:"
+  node -v
+
+  echo "NPM version:"
+  npm -v
+fi
+
+echo "Done."
+
+PREVPATH=$(pwd)
+cd /home/ansibleapp
+
+node /home/ansibleapp/app.js
+
+cd $PREVPATH

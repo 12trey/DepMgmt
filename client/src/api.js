@@ -77,3 +77,22 @@ export async function buildMsi(formData) {
   const res = await fetch(`${BASE}/msi/build`, { method: 'POST', body: formData });
   return res;
 }
+
+// Intune .intunewin packager
+export const getIntuneToolStatus = () => request('/intune/status');
+export const downloadIntuneTool = () => request('/intune/download', { method: 'POST' });
+export const buildIntuneWin = (data) =>
+  request('/intune/build', { method: 'POST', body: JSON.stringify(data) });
+
+// Group management — credential = { adUsername, adPassword } | null | undefined
+const creds = (c) => (c ? { adUsername: c.adUsername, adPassword: c.adPassword } : {});
+export const verifyGroup = (name, type, credential) =>
+  request('/groups/verify-group', { method: 'POST', body: JSON.stringify({ name, type, ...creds(credential) }) });
+export const getGroupMembers = (name, type, credential) =>
+  request('/groups/members', { method: 'POST', body: JSON.stringify({ name, type, ...creds(credential) }) });
+export const verifyUser = (username, type, credential) =>
+  request('/groups/verify-user', { method: 'POST', body: JSON.stringify({ username, type, ...creds(credential) }) });
+export const addUserToGroup = (username, groupName, type, credential) =>
+  request('/groups/add-user', { method: 'POST', body: JSON.stringify({ username, groupName, type, ...creds(credential) }) });
+export const removeUserFromGroup = (username, groupName, type, credential) =>
+  request('/groups/remove-user', { method: 'POST', body: JSON.stringify({ username, groupName, type, ...creds(credential) }) });

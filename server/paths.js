@@ -43,6 +43,10 @@ if (isPackaged && !fs.existsSync(configPath)) {
   }
 }
 
+// Ansible app source — included in the Electron build under ansible-app/
+// In dev mode this is the project root; in packaged mode it is alongside the other app files.
+const ansibleAppDir = path.join(appRoot, 'ansible-app');
+
 // Ensure writable directories exist
 fs.mkdirSync(packagesDir, { recursive: true });
 fs.mkdirSync(logsDir, { recursive: true });
@@ -57,4 +61,5 @@ module.exports = {
   packagesDir,
   logsDir,
   repoDir,
+  ansibleAppDir,
 };

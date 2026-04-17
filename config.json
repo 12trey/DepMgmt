@@ -11,6 +11,23 @@
   },
   "execution": {
     "powershellPath": "powershell.exe",
-    "defaultArgs": ["-NoProfile", "-ExecutionPolicy", "Bypass"]
+    "defaultArgs": [
+      "-NoProfile",
+      "-ExecutionPolicy",
+      "Bypass"
+    ]
+  },
+  "groups": {
+    "adDomain": "",
+    "managedGroups": [
+      {
+        "name": "Administrators",
+        "type": "local"
+      },
+      {
+        "name": "Users",
+        "type": "local"
+      }
+    ]
   }
 }
