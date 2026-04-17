@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
-import { RefreshCw, ChevronDown, CheckCircle, XCircle, AlertCircle, Loader2, Settings } from 'lucide-react';
+import { RefreshCw, ChevronDown, CheckCircle, XCircle, AlertCircle, Loader2, Settings, Upload } from 'lucide-react';
 
 const STORAGE_KEY = 'dmt-wsl-instance';
 
@@ -23,6 +23,16 @@ async function checkSetup(instance) {
   });
   if (!r.ok) throw new Error(await r.text());
   return r.json(); // { checks, ready }
+}
+
+async function syncApp(instance) {
+  const r = await fetch('/api/wsl/sync', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ instance }),
+  });
+  if (!r.ok) throw new Error(await r.text());
+  return r.json();
 }
 
 async function launchApp(instance) {
@@ -85,6 +95,8 @@ export default function DMTTools() {
   const [setupLog, setSetupLog] = useState([]);
   const [error, setError] = useState('');
   const [serviceAvailable, setServiceAvailable] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [syncMsg, setSyncMsg] = useState('');
   const pollRef = useRef(null);
   const launchTimerRef = useRef(null);
   const logBottomRef = useRef(null);
@@ -206,6 +218,19 @@ export default function DMTTools() {
     }
   };
 
+  const handleSync = async () => {
+    setSyncing(true);
+    setSyncMsg('');
+    try {
+      await syncApp(selectedInstance);
+      setSyncMsg('Synced — reload the iframe to pick up changes.');
+    } catch (err) {
+      setSyncMsg(`Sync failed: ${err.message}`);
+    } finally {
+      setSyncing(false);
+    }
+  };
+
   const reset = () => {
     clearInterval(pollRef.current);
     setStage('select-instance');
@@ -221,19 +246,30 @@ export default function DMTTools() {
   if (stage === 'ready') {
     return (
       <div className="-m-6 flex flex-col" style={{ height: 'calc(100vh - 0px)' }}>
-        <div className="flex items-center justify-between px-3 py-1 bg-gray-50 border-b border-gray-200 shrink-0">
+        <div className="flex items-center justify-between px-3 py-1 bg-gray-50 border-b border-gray-200 shrink-0 gap-4">
           <span className="text-xs text-gray-500">
             WSL: <strong>{selectedInstance}</strong>
           </span>
-          <button
-            onClick={() => {
-              localStorage.removeItem(STORAGE_KEY);
-              reset();
-            }}
-            className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-700"
-          >
-            <Settings size={11} /> Change instance
-          </button>
+          <div className="flex items-center gap-3">
+            {syncMsg && (
+              <span className="text-xs text-gray-500 italic">{syncMsg}</span>
+            )}
+            <button
+              onClick={handleSync}
+              disabled={syncing}
+              className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 disabled:opacity-50"
+              title="Sync ansible-app/ from this project to WSL"
+            >
+              {syncing ? <Loader2 size={11} className="animate-spin" /> : <Upload size={11} />}
+              Sync to WSL
+            </button>
+            <button
+              onClick={() => { localStorage.removeItem(STORAGE_KEY); reset(); }}
+              className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-700"
+            >
+              <Settings size={11} /> Change instance
+            </button>
+          </div>
         </div>
         <iframe
           src={DMT_URL}

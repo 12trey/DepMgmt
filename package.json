@@ -25,7 +25,13 @@
       "server/**/*",
       "client/dist/**/*",
       "templates/**/*",
-      "config.json"
+      "config.json",
+      "ansible-app/**/*",
+      "!ansible-app/.git/**/*",
+      "!ansible-app/.gitkeep",
+      "!ansible-app/node_modules/**/*",
+      "!ansible-app/my-react-app/node_modules/**/*",
+      "!ansible-app/my-react-app/dist/**/*"
     ],
     "win": {
       "target": [

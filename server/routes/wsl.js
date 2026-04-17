@@ -1,6 +1,8 @@
 const express = require('express');
 const { execFile, spawn } = require('child_process');
 const { promisify } = require('util');
+const path = require('path');
+const paths = require('../paths');
 
 const execFileAsync = promisify(execFile);
 const router = express.Router();
@@ -9,7 +11,17 @@ const APP_PORT = 7000;
 const APP_PATH = '/home/ansibleapp';
 const APP_ENTRY = '/home/ansibleapp/app.js';
 const PYTHON_VENV = '/opt/.ansiblevenv';
-const REQUIRED_PACKAGES = ['krb5-user', 'python3', 'python3-pip', 'python3-venv', 'python3.12-venv', 'curl', 'wget', 'jq'];
+const REQUIRED_PACKAGES = ['krb5-user', 'python3', 'python3-pip', 'python3-venv', 'python3.12-venv', 'rsync', 'curl', 'wget', 'jq'];
+
+// Convert a Windows absolute path to a WSL /mnt/ path
+function toWslPath(winPath) {
+  return winPath
+    .replace(/^([A-Za-z]):/, (_, d) => `/mnt/${d.toLowerCase()}`)
+    .replace(/\\/g, '/');
+}
+
+// ansible-app source visible from inside WSL via the Windows /mnt/ filesystem bridge
+const ANSIBLE_APP_WSL = toWslPath(paths.ansibleAppDir);
 
 // Run a command inside a WSL instance by piping it via stdin to a login shell.
 // Spawning 'bash -l' and writing to stdin avoids both Windows argument-quoting
@@ -243,7 +255,7 @@ export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 export NVM_DIR="$HOME/.nvm"
 [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
 
-SYSTEM_DEPS="krb5-user python3 python3-pip python3-venv python3.12-venv gcc python3-dev libkrb5-dev curl wget sudo jq"
+SYSTEM_DEPS="krb5-user python3 python3-pip python3-venv python3.12-venv gcc python3-dev libkrb5-dev rsync curl wget sudo jq"
 echo "==> Updating package lists..."
 sudo apt-get update -q
 echo "==> Installing system dependencies..."
@@ -278,10 +290,22 @@ else
   echo "==> Node already available: $(node --version)"
 fi
 
-git clone http://192.168.4.44:33000/trey/Ansibleapp.git ${APP_PATH} || echo "==> App directory already exists, skipping clone."
+echo "==> Syncing Ansible app from host (${ANSIBLE_APP_WSL})..."
+if [ ! -d "${ANSIBLE_APP_WSL}" ] || [ -z "$(ls -A "${ANSIBLE_APP_WSL}" 2>/dev/null | grep -v '.gitkeep')" ]; then
+  echo "==> ERROR: ansible-app/ directory is missing or empty in the PSADT project."
+  echo "==>        Populate it by cloning: git clone <repo> ansible-app"
+  exit 1
+fi
+mkdir -p ${APP_PATH}
+rsync -av --delete \
+  --exclude='node_modules' \
+  --exclude='.git' \
+  --exclude='my-react-app/node_modules' \
+  --exclude='my-react-app/dist' \
+  "${ANSIBLE_APP_WSL}/" "${APP_PATH}/"
 
 if [ ! -d ${APP_PATH} ]; then
-  echo "==> ERROR: App directory ${APP_PATH} not found. Please clone the Ansible app first."
+  echo "==> ERROR: App directory ${APP_PATH} not found after sync."
   exit 1
 fi
 
@@ -356,6 +380,27 @@ chmod +x /tmp/dmt-launch.sh
     child.unref();
 
     res.json({ launched: true, instance, port: APP_PORT });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/wsl/sync — rsync ansible-app/ from the Windows project into the WSL instance
+// Body: { instance }
+router.post('/sync', async (req, res) => {
+  const { instance } = req.body;
+  if (!instance) return res.status(400).json({ error: 'instance is required' });
+
+  try {
+    const result = await wslExec(instance, `
+rsync -av --delete \
+  --exclude='node_modules' \
+  --exclude='.git' \
+  --exclude='my-react-app/node_modules' \
+  --exclude='my-react-app/dist' \
+  "${ANSIBLE_APP_WSL}/" "${APP_PATH}/"
+`);
+    res.json({ synced: true, output: result.stdout });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
