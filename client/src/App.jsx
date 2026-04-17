@@ -1,5 +1,5 @@
 import { Routes, Route, NavLink } from 'react-router-dom';
-import { LayoutDashboard, PackagePlus, FolderOpen, Play, GitBranch, Settings, Monitor, Package } from 'lucide-react';
+import { LayoutDashboard, PackagePlus, FolderOpen, Play, GitBranch, Settings, Monitor, Package, Archive, UsersRound } from 'lucide-react';
 import Dashboard from './pages/Dashboard';
 import CreatePackage from './pages/CreatePackage';
 import ManagePackages from './pages/ManagePackages';
@@ -10,6 +10,8 @@ import GitPanel from './pages/GitPanel';
 import Config from './pages/Config';
 import DMTTools from './pages/DMTTools';
 import MsiBuilder from './pages/MsiBuilder';
+import IntuneWin from './pages/IntuneWin';
+import ManageGroups from './pages/ManageGroups';
 
 const navItems = [
   { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
@@ -17,6 +19,8 @@ const navItems = [
   { to: '/packages', icon: FolderOpen, label: 'Manage Packages' },
   { to: '/execution', icon: Play, label: 'Execution / Logs' },
   { to: '/msi-builder', icon: Package, label: 'MSI Builder' },
+  { to: '/intune-win', icon: Archive, label: 'Intune Packager' },
+  { to: '/manage-groups', icon: UsersRound, label: 'Manage Groups' },
   { to: '/git', icon: GitBranch, label: 'Git' },
   { to: '/config', icon: Settings, label: 'Settings' },
   { divider: true },
@@ -84,6 +88,8 @@ export default function App() {
           <Route path="/config" element={<Config />} />
           <Route path="/dmt-tools" element={<DMTTools />} />
           <Route path="/msi-builder" element={<MsiBuilder />} />
+          <Route path="/intune-win" element={<IntuneWin />} />
+          <Route path="/manage-groups" element={<ManageGroups />} />
         </Routes>
       </main>
     </div>

@@ -9,6 +9,7 @@ const { clipboard } = require('electron');
 contextBridge.exposeInMainWorld('electronAPI', {
   isElectron: true,
   pickFolder: () => ipcRenderer.invoke('pick-folder'),
+  pickFile: (options) => ipcRenderer.invoke('pick-file', options),
   sendToMain: (data) => ipcRenderer.send('iframe-message', data)
 });
 

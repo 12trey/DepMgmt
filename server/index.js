@@ -10,6 +10,8 @@ const executionRoutes = require('./routes/execution');
 const gitRoutes = require('./routes/git');
 const configRoutes = require('./routes/config');
 const msiRoutes = require('./routes/msi');
+const intuneRoutes = require('./routes/intune');
+const groupRoutes = require('./routes/groups');
 const { attachWss } = require('./services/logStream');
 
 const app = express();
@@ -28,6 +30,8 @@ app.use('/api/execution', executionRoutes);
 app.use('/api/git', gitRoutes);
 app.use('/api/config', configRoutes);
 app.use('/api/msi', msiRoutes);
+app.use('/api/intune', intuneRoutes);
+app.use('/api/groups', groupRoutes);
 
 // Serve React build in production
 if (fs.existsSync(paths.clientDist)) {

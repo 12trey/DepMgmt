@@ -1,10 +1,19 @@
 import { useEffect, useState } from 'react';
-import { getConfig, updateConfig } from '../api';
+import { Plus, Trash2, CheckCircle, AlertCircle, Loader } from 'lucide-react';
+import { getConfig, updateConfig, verifyGroup } from '../api';
+import { useAdCredential } from '../context/AdCredentialContext';
 
 export default function Config() {
+  const { adUsername, adPassword } = useAdCredential();
   const [config, setConfig] = useState(null);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState('');
+  const [msgType, setMsgType] = useState('info'); // 'info' | 'error'
+
+  // New group form state
+  const [newGroup, setNewGroup] = useState({ name: '', type: 'local' });
+  const [verifying, setVerifying] = useState(false);
+  const [verifyResult, setVerifyResult] = useState(null); // { exists, name, description, error }
 
   useEffect(() => {
     getConfig().then(setConfig).catch(() => {});
@@ -17,40 +26,278 @@ export default function Config() {
       const result = await updateConfig(config);
       setConfig(result);
       setMsg('Configuration saved.');
+      setMsgType('info');
     } catch (err) {
       setMsg(`Error: ${err.message}`);
+      setMsgType('error');
     } finally {
       setSaving(false);
     }
   };
 
-  if (!config) return <p>Loading...</p>;
+  const setNested = (section, key, value) =>
+    setConfig((c) => ({ ...c, [section]: { ...c[section], [key]: value } }));
+
+  // ── Managed groups helpers ───────────────────────────────────────────────
+
+  const managedGroups = config?.groups?.managedGroups || [];
+
+  const removeGroup = (index) => {
+    const updated = managedGroups.filter((_, i) => i !== index);
+    setConfig((c) => ({ ...c, groups: { ...c.groups, managedGroups: updated } }));
+  };
+
+  const handleVerifyGroup = async () => {
+    if (!newGroup.name.trim()) return;
+    setVerifying(true);
+    setVerifyResult(null);
+    const credential = adUsername.trim() ? { adUsername: adUsername.trim(), adPassword } : null;
+    try {
+      const result = await verifyGroup(newGroup.name.trim(), newGroup.type, credential);
+      setVerifyResult(result);
+    } catch (err) {
+      setVerifyResult({ exists: false, error: err.message });
+    } finally {
+      setVerifying(false);
+    }
+  };
+
+  const handleAddGroup = () => {
+    if (!verifyResult?.exists) return;
+    const entry = { name: verifyResult.name, type: newGroup.type };
+    // Avoid duplicates
+    const already = managedGroups.some(
+      (g) => g.name.toLowerCase() === entry.name.toLowerCase() && g.type === entry.type
+    );
+    if (already) return;
+    setConfig((c) => ({
+      ...c,
+      groups: { ...c.groups, managedGroups: [...managedGroups, entry] },
+    }));
+    setNewGroup({ name: '', type: 'local' });
+    setVerifyResult(null);
+  };
+
+  if (!config) return <p className="text-gray-400">Loading...</p>;
+
+  const isDomainGroupSelected = newGroup.type === 'domain';
 
   return (
-    <div className="max-w-2xl">
-      <h1 className="text-2xl font-bold mb-6">Settings</h1>
-      {msg && <div className="bg-blue-50 text-blue-700 p-3 rounded mb-4">{msg}</div>}
+    <div className="max-w-2xl space-y-6">
+      <h1 className="text-2xl font-bold">Settings</h1>
 
-      <div className="bg-white rounded-lg shadow p-5 space-y-4">
-        <Field label="Repository URL" value={config.repository?.url || ''} onChange={(v) => setConfig({ ...config, repository: { ...config.repository, url: v } })} />
-        <Field label="Repository Local Path" value={config.repository?.localPath || ''} onChange={(v) => setConfig({ ...config, repository: { ...config.repository, localPath: v } })} />
-        <Field label="Packages Base Path" value={config.packages?.basePath || ''} onChange={(v) => setConfig({ ...config, packages: { ...config.packages, basePath: v } })} />
-        <Field label="Server Port" value={config.server?.port || ''} onChange={(v) => setConfig({ ...config, server: { ...config.server, port: parseInt(v) || 4000 } })} />
-        <Field label="PowerShell Path" value={config.execution?.powershellPath || ''} onChange={(v) => setConfig({ ...config, execution: { ...config.execution, powershellPath: v } })} />
+      {msg && (
+        <div
+          className={`p-3 rounded text-sm ${
+            msgType === 'error'
+              ? 'bg-red-50 text-red-700'
+              : 'bg-blue-50 text-blue-700'
+          }`}
+        >
+          {msg}
+        </div>
+      )}
 
-        <button onClick={handleSave} disabled={saving} className="btn-primary">
-          {saving ? 'Saving...' : 'Save Configuration'}
-        </button>
-      </div>
+      {/* General settings */}
+      <Section title="General">
+        <Field
+          label="Repository URL"
+          value={config.repository?.url || ''}
+          onChange={(v) => setNested('repository', 'url', v)}
+        />
+        <Field
+          label="Repository Local Path"
+          value={config.repository?.localPath || ''}
+          onChange={(v) => setNested('repository', 'localPath', v)}
+          className="mt-3"
+        />
+        <Field
+          label="Packages Base Path"
+          value={config.packages?.basePath || ''}
+          onChange={(v) => setNested('packages', 'basePath', v)}
+          className="mt-3"
+        />
+        <Field
+          label="Server Port"
+          value={config.server?.port || ''}
+          onChange={(v) => setNested('server', 'port', parseInt(v) || 4000)}
+          className="mt-3"
+        />
+        <Field
+          label="PowerShell Path"
+          value={config.execution?.powershellPath || ''}
+          onChange={(v) => setNested('execution', 'powershellPath', v)}
+          className="mt-3"
+        />
+      </Section>
+
+      {/* Group management settings */}
+      <Section title="Group Management">
+        <Field
+          label="Active Directory Domain"
+          hint="Required for managing AD groups (e.g. contoso.com or CONTOSO)"
+          value={config.groups?.adDomain || ''}
+          onChange={(v) => setNested('groups', 'adDomain', v)}
+          placeholder="contoso.com"
+        />
+
+        {/* Managed groups list */}
+        <div className="mt-5">
+          <p className="text-sm font-medium text-gray-700 mb-2">Managed Groups</p>
+          <p className="text-xs text-gray-400 mb-3">
+            These groups will appear on the Manage Groups page for adding/removing users.
+          </p>
+
+          {managedGroups.length > 0 ? (
+            <div className="border rounded-lg divide-y mb-4">
+              {managedGroups.map((g, i) => (
+                <div key={i} className="flex items-center gap-3 px-3 py-2">
+                  <span
+                    className={`text-xs font-medium px-2 py-0.5 rounded-full flex-shrink-0 ${
+                      g.type === 'local'
+                        ? 'bg-gray-100 text-gray-600'
+                        : 'bg-blue-100 text-blue-700'
+                    }`}
+                  >
+                    {g.type === 'local' ? 'Local' : 'Domain'}
+                  </span>
+                  <span className="text-sm flex-1">{g.name}</span>
+                  <button
+                    type="button"
+                    onClick={() => removeGroup(i)}
+                    className="text-gray-300 hover:text-red-500 transition-colors"
+                    title="Remove"
+                  >
+                    <Trash2 size={15} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-gray-400 italic mb-4">No groups configured yet.</p>
+          )}
+
+          {/* Add group form */}
+          <div className="border rounded-lg p-4 bg-gray-50 space-y-3">
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Add Group</p>
+            <div className="flex gap-3">
+              <div className="flex-shrink-0">
+                <label className="block text-xs text-gray-500 mb-1">Type</label>
+                <select
+                  className="input text-sm"
+                  value={newGroup.type}
+                  onChange={(e) => {
+                    setNewGroup((g) => ({ ...g, type: e.target.value }));
+                    setVerifyResult(null);
+                  }}
+                >
+                  <option value="local">Local</option>
+                  <option value="domain">Domain (AD)</option>
+                </select>
+              </div>
+              <div className="flex-1">
+                <label className="block text-xs text-gray-500 mb-1">Group Name</label>
+                <input
+                  className="input w-full text-sm"
+                  placeholder={isDomainGroupSelected ? 'Domain Admins' : 'Administrators'}
+                  value={newGroup.name}
+                  onChange={(e) => {
+                    setNewGroup((g) => ({ ...g, name: e.target.value }));
+                    setVerifyResult(null);
+                  }}
+                  onKeyDown={(e) => e.key === 'Enter' && handleVerifyGroup()}
+                />
+              </div>
+            </div>
+
+            {isDomainGroupSelected && !config.groups?.adDomain && (
+              <p className="text-xs text-amber-600 flex items-center gap-1">
+                <AlertCircle size={12} /> Set the AD Domain above before adding domain groups.
+              </p>
+            )}
+
+            {/* Verify result */}
+            {verifyResult && (
+              <div
+                className={`rounded p-3 text-sm ${
+                  verifyResult.exists
+                    ? 'bg-green-50 border border-green-200'
+                    : 'bg-red-50 border border-red-200'
+                }`}
+              >
+                {verifyResult.exists ? (
+                  <div className="flex items-start gap-2">
+                    <CheckCircle size={15} className="text-green-600 flex-shrink-0 mt-0.5" />
+                    <div>
+                      <p className="font-medium text-green-800">{verifyResult.name}</p>
+                      {verifyResult.description && (
+                        <p className="text-xs text-green-600">{verifyResult.description}</p>
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-start gap-2">
+                    <AlertCircle size={15} className="text-red-500 flex-shrink-0 mt-0.5" />
+                    <p className="text-red-700">{verifyResult.error || 'Group not found.'}</p>
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={handleVerifyGroup}
+                disabled={verifying || !newGroup.name.trim()}
+                className="btn-secondary text-sm"
+              >
+                {verifying ? (
+                  <><Loader size={14} className="animate-spin" /> Verifying...</>
+                ) : (
+                  'Verify Group'
+                )}
+              </button>
+              {verifyResult?.exists && (
+                <button
+                  type="button"
+                  onClick={handleAddGroup}
+                  className="btn-primary text-sm"
+                >
+                  <Plus size={14} /> Add to List
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      </Section>
+
+      <button onClick={handleSave} disabled={saving} className="btn-primary">
+        {saving ? 'Saving...' : 'Save Configuration'}
+      </button>
     </div>
   );
 }
 
-function Field({ label, value, onChange }) {
+function Section({ title, children }) {
   return (
-    <label className="block">
+    <div className="bg-white rounded-lg shadow p-5">
+      <h2 className="font-semibold text-lg mb-4">{title}</h2>
+      {children}
+    </div>
+  );
+}
+
+function Field({ label, hint, value, onChange, className = '', placeholder = '' }) {
+  return (
+    <label className={`block ${className}`}>
       <span className="text-sm font-medium text-gray-700">{label}</span>
-      <input className="input mt-1" value={value} onChange={(e) => onChange(e.target.value)} />
+      {hint && <span className="text-xs text-gray-400 ml-2">{hint}</span>}
+      <input
+        className="input mt-1"
+        value={value}
+        placeholder={placeholder}
+        onChange={(e) => onChange(e.target.value)}
+      />
     </label>
   );
 }

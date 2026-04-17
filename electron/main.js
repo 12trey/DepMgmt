@@ -96,6 +96,15 @@ ipcMain.handle('pick-folder', async () => {
   return result.canceled ? null : result.filePaths[0];
 });
 
+ipcMain.handle('pick-file', async (_event, options = {}) => {
+  const win = BrowserWindow.getFocusedWindow();
+  const result = await dialog.showOpenDialog(win, {
+    properties: ['openFile'],
+    filters: options.filters || [],
+  });
+  return result.canceled ? null : result.filePaths[0];
+});
+
 app.whenReady().then(async () => {
   log(`[startup] app ready, isDev=${isDev}`);
   if (!isDev) {
