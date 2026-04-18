@@ -182,7 +182,7 @@ router.post('/check', async (req, res) => {
 // POST /api/wsl/setup — run ansible setup script in a WSL instance (streams output via SSE)
 // Body: { instance }
 router.post('/setup', (req, res) => {
-  const { instance } = req.body;
+  const { instance, runAsRoot } = req.body;
   if (!instance) return res.status(400).json({ error: 'instance is required' });
 
   res.setHeader('Content-Type', 'text/event-stream');
@@ -276,8 +276,10 @@ export PATH="$VENV_BIN:$PATH"
 "$VENV_BIN/pip3" show ansible-core > /dev/null 2>&1 || (echo "==> Installing ansible-core..." && "$VENV_BIN/pip3" install ansible-core)
 "$VENV_BIN/pip3" show pywinrm    > /dev/null 2>&1 || (echo "==> Installing pywinrm[kerberos]..." && "$VENV_BIN/pip3" install 'pywinrm[kerberos]')
 
-"$VENV_BIN/ansible-galaxy" collection install ansible.windows --ignore-certs --force || echo "==> Failed to install ansible.windows collection, but continuing anyway…"
-"$VENV_BIN/ansible-galaxy" collection install ansible.posix --ignore-certs --force || echo "==> Failed to install ansible.posix collection, but continuing anyway…"
+mkdir -p /usr/share/ansible/collections
+chmod 755 /usr/share/ansible/collections
+"$VENV_BIN/ansible-galaxy" collection install ansible.windows --ignore-certs --force -p /usr/share/ansible/collections || echo "==> Failed to install ansible.windows collection, but continuing anyway…"
+"$VENV_BIN/ansible-galaxy" collection install ansible.posix --ignore-certs --force -p /usr/share/ansible/collections || echo "==> Failed to install ansible.posix collection, but continuing anyway…"
 
 echo "==> Checking for NVM/Node..."
 if ! command -v node > /dev/null 2>&1; then
@@ -328,8 +330,14 @@ fi
 echo "==> Setup complete!"
 `;
 
-  // Pipe script via stdin — avoids Windows argument-quoting issues entirely
-  const args = ['-d', instance, 'bash', '-l'];
+  // The setup script writes to /opt and /home/ansibleapp — system paths that
+  // require root. Rather than prefixing every individual command with sudo,
+  // run the entire script as root via wsl.exe -u root. WSL permits this from
+  // the Windows side without Linux-level authentication, so it works whether
+  // the instance's default user is root or a non-root sudoer.
+  const args = runAsRoot
+    ? ['-d', instance, '-u', 'root', 'bash', '-l']
+    : ['-d', instance, 'bash', '-l'];
   const child = spawn('wsl.exe', args, { windowsHide: true });
   child.stdin.write(setupScript);
   child.stdin.end();

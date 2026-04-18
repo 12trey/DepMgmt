@@ -45,11 +45,11 @@ async function launchApp(instance) {
   return r.json();
 }
 
-async function runSetup(instance, onLine) {
+async function runSetup(instance, onLine, runAsRoot) {
   const r = await fetch('/api/wsl/setup', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ instance }),
+    body: JSON.stringify({ instance, runAsRoot: runAsRoot || undefined }),
   });
   if (!r.ok) throw new Error(await r.text());
 
@@ -216,9 +216,14 @@ export default function DMTTools() {
   const [syncing, setSyncing] = useState(false);
   const [syncMsg, setSyncMsg] = useState('');
   const [showTerminal, setShowTerminal] = useState(false);
+  const [confirmRerun, setConfirmRerun] = useState(false);
+  const [requiresSudo, setRequiresSudo] = useState(false);
   const pollRef = useRef(null);
   const launchTimerRef = useRef(null);
   const logBottomRef = useRef(null);
+  // Incremented on every reset() so stale async callbacks can detect they've
+  // been superseded and skip their setState calls.
+  const opGenRef = useRef(0);
 
   useEffect(() => {
     fetchInstances()
@@ -243,16 +248,19 @@ export default function DMTTools() {
   }, [setupLog]);
 
   const startPolling = useCallback((instance) => {
+    const gen = opGenRef.current;
     let elapsed = 0;
     pollRef.current = setInterval(async () => {
       elapsed += POLL_INTERVAL;
       try {
         await fetch(DMT_URL, { mode: 'no-cors', signal: AbortSignal.timeout(2000) });
+        if (opGenRef.current !== gen) return; // reset() was called while fetch was in-flight
         clearInterval(pollRef.current);
         clearTimeout(launchTimerRef.current);
         setServiceAvailable(true);
         setStage('ready');
       } catch {
+        if (opGenRef.current !== gen) return;
         if (elapsed >= LAUNCH_TIMEOUT) {
           clearInterval(pollRef.current);
           setError(`Service did not start on port 7000 within ${LAUNCH_TIMEOUT / 1000}s.`);
@@ -271,6 +279,7 @@ export default function DMTTools() {
 
   const handleInstanceSelect = async (instance) => {
     if (!instance) return;
+    const gen = ++opGenRef.current; // bump generation so any prior async callbacks abort
     localStorage.setItem(STORAGE_KEY, instance);
     setSelectedInstance(instance);
     setStage('checking');
@@ -278,21 +287,26 @@ export default function DMTTools() {
     setError('');
     try {
       const result = await checkSetup(instance);
+      if (opGenRef.current !== gen) return;
       setCheckResult(result);
       if (result.ready) {
         try {
           await fetch(DMT_URL, { mode: 'no-cors', signal: AbortSignal.timeout(3000) });
+          if (opGenRef.current !== gen) return;
           setServiceAvailable(true);
           setStage('ready');
         } catch {
+          if (opGenRef.current !== gen) return;
           setStage('launching');
           await launchApp(instance);
+          if (opGenRef.current !== gen) return;
           startPolling(instance);
         }
       } else {
         setStage('setup-needed');
       }
     } catch (err) {
+      if (opGenRef.current !== gen) return;
       setError(err.message);
       setStage('error');
     }
@@ -304,7 +318,7 @@ export default function DMTTools() {
     try {
       await runSetup(selectedInstance, (msg) => {
         setSetupLog(prev => [...prev, msg]);
-      });
+      }, requiresSudo ? true : undefined);
       const result = await checkSetup(selectedInstance);
       setCheckResult(result);
       if (result.ready) {
@@ -346,6 +360,7 @@ export default function DMTTools() {
   };
 
   const reset = () => {
+    opGenRef.current++; // invalidate any in-flight async callbacks
     clearInterval(pollRef.current);
     setStage('select-instance');
     setSelectedInstance('');
@@ -387,16 +402,36 @@ export default function DMTTools() {
               <TerminalSquare size={13} />
               Terminal
             </button>
-            <button
-              onClick={() => {
-                if (window.confirm(`Re-run WSL setup on ${selectedInstance}?\n\nThis will re-sync files and restart the app.`))
-                  handleRunSetup();
-              }}
-              className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-700"
-              title="Re-run setup on this WSL instance"
-            >
-              <Wrench size={11} /> Re-run Setup
-            </button>
+            {confirmRerun ? (
+              <span className="flex items-center gap-1 text-xs flex-wrap">
+                <span className="text-amber-600">Re-run setup?</span>
+                <label className="flex items-center gap-1 text-gray-500 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={requiresSudo}
+                    onChange={e => setRequiresSudo(e.target.checked)}
+                    className="rounded"
+                  />
+                  run as root
+                </label>
+                <button
+                  onClick={() => { setConfirmRerun(false); handleRunSetup(); }}
+                  className="text-red-600 hover:text-red-800 font-medium"
+                >Yes</button>
+                <button
+                  onClick={() => setConfirmRerun(false)}
+                  className="text-gray-500 hover:text-gray-700"
+                >Cancel</button>
+              </span>
+            ) : (
+              <button
+                onClick={() => setConfirmRerun(true)}
+                className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-700"
+                title="Re-run setup on this WSL instance"
+              >
+                <Wrench size={11} /> Re-run Setup
+              </button>
+            )}
             <button
               onClick={() => { localStorage.removeItem(STORAGE_KEY); reset(); }}
               className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-700"
@@ -476,7 +511,23 @@ export default function DMTTools() {
                 Missing packages: {checkResult.checks.missingPackages.join(', ')}
               </p>
             )}
-            <div className="flex gap-2 pt-1">
+            <div className="pt-1">
+              <label className="flex items-center gap-2 text-xs text-gray-600 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={requiresSudo}
+                  onChange={e => setRequiresSudo(e.target.checked)}
+                  className="rounded"
+                />
+                Default user is not root — run setup as root
+              </label>
+              {requiresSudo && (
+                <p className="text-xs text-amber-600 mt-1 ml-5">
+                  Setup will run as root via <code>wsl -u root</code>. No password needed.
+                </p>
+              )}
+            </div>
+            <div className="flex gap-2">
               <button onClick={handleRunSetup} className="btn-primary text-sm">
                 Run Setup
               </button>

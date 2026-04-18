@@ -149,7 +149,40 @@ app.post('/savefile', async (req, res) => {
     return res.status(400).json({ error: 'Invalid file path' });
   }
   try {
+    fs.mkdirSync(path.dirname(fullPath), { recursive: true });
     fs.writeFileSync(fullPath, content, 'utf-8');
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/renamefile', (req, res) => {
+  const { file, newName } = req.body;
+  if (!file || !newName) return res.status(400).json({ error: 'file and newName are required' });
+  const oldPath = path.resolve(repoFolder, '.' + file);
+  if (!oldPath.startsWith(repoFolder + '/') && oldPath !== repoFolder)
+    return res.status(400).json({ error: 'Invalid file path' });
+  // Build new path: same directory, new name
+  const newPath = path.join(path.dirname(oldPath), path.basename(newName));
+  if (!newPath.startsWith(repoFolder + '/'))
+    return res.status(400).json({ error: 'Invalid new name' });
+  try {
+    fs.renameSync(oldPath, newPath);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/deletefile', (req, res) => {
+  const { file } = req.body;
+  if (!file) return res.status(400).json({ error: 'file is required' });
+  const fullPath = path.resolve(repoFolder, '.' + file);
+  if (!fullPath.startsWith(repoFolder + '/') && fullPath !== repoFolder)
+    return res.status(400).json({ error: 'Invalid file path' });
+  try {
+    fs.unlinkSync(fullPath);
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
