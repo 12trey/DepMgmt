@@ -47,6 +47,57 @@ export const getLog = (id) => request(`/execution/logs/${id}`);
 
 export const checkMissingFiles = (appName, version) => request(`/packages/${appName}/${version}/check-files`);
 
+// PSADT toolkit module management
+export const getPsadtStatus = () => request('/psadt/status');
+export const trustPsGallery = () => request('/psadt/trust-gallery', { method: 'POST' });
+export const populateToolkit = (appName, version) =>
+  request(`/packages/${appName}/${version}/populate-toolkit`, { method: 'POST' });
+export const createExtensionStubs = (appName, version) =>
+  request(`/packages/${appName}/${version}/create-extension-stubs`, { method: 'POST' });
+export const createAssetReadme = (appName, version) =>
+  request(`/packages/${appName}/${version}/create-asset-readme`, { method: 'POST' });
+
+export async function installPsadtModule(onLine) {
+  const res = await fetch('/api/psadt/install-module', { method: 'POST' });
+  if (!res.ok) throw new Error('Failed to start installation');
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buf = '';
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += decoder.decode(value, { stream: true });
+    const parts = buf.split('\n\n');
+    buf = parts.pop();
+    for (const part of parts) {
+      const line = part.replace(/^data: /, '').trim();
+      if (line) { try { onLine(JSON.parse(line)); } catch {} }
+    }
+  }
+}
+
+// Folder file management
+export const listFolderFiles = (appName, version, folder) =>
+  request(`/packages/${appName}/${version}/folder/${encodeURIComponent(folder)}`);
+export const deleteFolderFile = (appName, version, folder, filename) =>
+  request(`/packages/${appName}/${version}/folder/${encodeURIComponent(folder)}/${encodeURIComponent(filename)}`, { method: 'DELETE' });
+export const readFolderFile = (appName, version, folder, filename) =>
+  request(`/packages/${appName}/${version}/folder/${encodeURIComponent(folder)}/text/${encodeURIComponent(filename)}`);
+export const saveFolderFile = (appName, version, folder, filename, content) =>
+  request(`/packages/${appName}/${version}/folder/${encodeURIComponent(folder)}/text/${encodeURIComponent(filename)}`, {
+    method: 'PUT', body: JSON.stringify({ content }),
+  });
+export const folderFileRawUrl = (appName, version, folder, filename) =>
+  `/api/packages/${appName}/${version}/folder/${encodeURIComponent(folder)}/raw/${encodeURIComponent(filename)}`;
+
+export async function uploadFolderFiles(appName, version, folder, files) {
+  const form = new FormData();
+  for (const f of files) form.append('files', f);
+  const res = await fetch(`/api/packages/${appName}/${version}/folder/${encodeURIComponent(folder)}/upload`, { method: 'POST', body: form });
+  if (!res.ok) throw new Error('Upload failed');
+  return res.json();
+}
+
 // Git
 export const gitClone = (url) => request('/git/clone', { method: 'POST', body: JSON.stringify({ url }) });
 export const gitPull = () => request('/git/pull', { method: 'POST' });

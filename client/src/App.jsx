@@ -1,5 +1,5 @@
 import { Routes, Route, NavLink } from 'react-router-dom';
-import { LayoutDashboard, PackagePlus, FolderOpen, Play, GitBranch, Settings, Monitor, Package, Archive, UsersRound } from 'lucide-react';
+import { LayoutDashboard, PackagePlus, FolderOpen, Play, GitBranch, Settings, Monitor, Package, Archive, UsersRound, HelpCircle } from 'lucide-react';
 import Dashboard from './pages/Dashboard';
 import CreatePackage from './pages/CreatePackage';
 import ManagePackages from './pages/ManagePackages';
@@ -12,6 +12,7 @@ import DMTTools from './pages/DMTTools';
 import MsiBuilder from './pages/MsiBuilder';
 import IntuneWin from './pages/IntuneWin';
 import ManageGroups from './pages/ManageGroups';
+import Help from './pages/Help';
 
 const navItems = [
   { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
@@ -25,6 +26,8 @@ const navItems = [
   { to: '/config', icon: Settings, label: 'Settings' },
   { divider: true },
   { to: '/dmt-tools', icon: Monitor, label: 'DMT Tools' },
+  { divider: true },
+  { to: '/help', icon: HelpCircle, label: 'Help' },
 ];
 
 export default function App() {
@@ -33,7 +36,7 @@ export default function App() {
       {/* Sidebar */}
       <nav className="w-56 bg-gray-900 text-gray-300 flex flex-col">
         <div className="px-4 py-5 text-white font-bold text-lg border-b border-gray-700">
-          PSADT for DMT
+          Deployment Manager
         </div>
         <div className="flex-1 py-3">
           {/* {navItems.map(({ to, icon: Icon, label }) => (
@@ -90,6 +93,7 @@ export default function App() {
           <Route path="/msi-builder" element={<MsiBuilder />} />
           <Route path="/intune-win" element={<IntuneWin />} />
           <Route path="/manage-groups" element={<ManageGroups />} />
+          <Route path="/help" element={<Help />} />
         </Routes>
       </main>
     </div>

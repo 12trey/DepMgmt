@@ -13,14 +13,32 @@ const msiRoutes = require('./routes/msi');
 const intuneRoutes = require('./routes/intune');
 const groupRoutes = require('./routes/groups');
 const wslRoutes = require('./routes/wsl');
+const psadtRoutes = require('./routes/psadt');
 const { attachWss } = require('./services/logStream');
+const { attachTerminalWss } = wslRoutes;
 
 const app = express();
 const server = http.createServer(app);
 
-// WebSocket server for log streaming
-const wss = new WebSocketServer({ server, path: '/ws/logs' });
+// Both WSS instances use noServer:true — manual upgrade routing avoids the ws
+// library bug where the first instance calls abortHandshake() on unrecognised
+// paths, destroying the socket before the second instance can claim it.
+const wss = new WebSocketServer({ noServer: true });
 attachWss(wss);
+
+const terminalWss = new WebSocketServer({ noServer: true });
+attachTerminalWss(terminalWss);
+
+server.on('upgrade', (req, socket, head) => {
+  const pathname = req.url.split('?')[0];
+  if (pathname === '/ws/logs') {
+    wss.handleUpgrade(req, socket, head, (ws) => wss.emit('connection', ws, req));
+  } else if (pathname === '/ws/terminal') {
+    terminalWss.handleUpgrade(req, socket, head, (ws) => terminalWss.emit('connection', ws, req));
+  } else {
+    socket.destroy();
+  }
+});
 
 app.use(cors());
 app.use(express.json());
@@ -34,6 +52,7 @@ app.use('/api/msi', msiRoutes);
 app.use('/api/intune', intuneRoutes);
 app.use('/api/groups', groupRoutes);
 app.use('/api/wsl', wslRoutes);
+app.use('/api/psadt', psadtRoutes);
 
 // Serve React build in production
 if (fs.existsSync(paths.clientDist)) {

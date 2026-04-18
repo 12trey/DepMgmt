@@ -1,10 +1,10 @@
 {
   "repository": {
     "url": "",
-    "localPath": "./repo"
+    "localPath": ".\\repo"
   },
   "packages": {
-    "basePath": "./packages"
+    "basePath": ".\\packages"
   },
   "server": {
     "port": 4000

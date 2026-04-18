@@ -18,6 +18,20 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage });
 
+const { ALLOWED_FOLDERS } = require('../services/packageService');
+
+const folderStorage = multer.diskStorage({
+  destination: (req, _file, cb) => {
+    const { appName, version, folder } = req.params;
+    if (!ALLOWED_FOLDERS.has(folder)) return cb(new Error('Invalid folder'));
+    const dir = path.join(pkgBase, appName, version, folder);
+    fs.mkdirSync(dir, { recursive: true });
+    cb(null, dir);
+  },
+  filename: (_req, file, cb) => cb(null, file.originalname),
+});
+const folderUpload = multer({ storage: folderStorage });
+
 const router = express.Router();
 
 router.get('/', controller.list);
@@ -31,7 +45,18 @@ router.post('/:appName/:version/upload', upload.array('files'), controller.uploa
 router.get('/:appName/:version/files', controller.listFiles);
 router.delete('/:appName/:version/files/:filename', controller.deleteFile);
 router.post('/:appName/:version/regenerate', controller.regenerate);
+router.post('/:appName/:version/populate-toolkit', controller.populateToolkit);
+router.post('/:appName/:version/create-extension-stubs', controller.createExtensionStubs);
+router.post('/:appName/:version/create-asset-readme', controller.createAssetReadme);
 router.get('/:appName/:version/check-files', controller.checkFiles);
 router.get('/:appName/:version/download', controller.download);
+
+// Folder file management (SupportFiles, Assets, PSAppDeployToolkit, PSAppDeployToolkit.Extensions)
+router.get('/:appName/:version/folder/:folder', controller.listFolderFiles);
+router.post('/:appName/:version/folder/:folder/upload', folderUpload.array('files'), controller.uploadFolderFiles);
+router.get('/:appName/:version/folder/:folder/text/:filename', controller.readFolderFile);
+router.put('/:appName/:version/folder/:folder/text/:filename', controller.saveFolderFile);
+router.get('/:appName/:version/folder/:folder/raw/:filename', controller.serveFolderFile);
+router.delete('/:appName/:version/folder/:folder/:filename', controller.deleteFolderFile);
 
 module.exports = router;

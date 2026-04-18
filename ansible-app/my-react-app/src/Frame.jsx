@@ -1,27 +1,31 @@
-import { useState } from "react";
+import { useState } from 'react';
+import './Frame.css';
+import App from './App.jsx';
+import Welcome from './Welcome.jsx';
+import GitPanel from './GitPanel.jsx';
+import KerberosBar from './KerberosBar.jsx';
 
-import "./Frame.css";
-import App from "./App.jsx";
-import Welcome from "./Welcome.jsx";
+function Frame() {
+    const [view, setView] = useState('close');
 
-function Frame({ children }) {
-    const [view, setView] = useState("close");
-
-    function switchView(newView) {
-        setView(newView);
-    }
     return (
-        <>
+        <div style={{ display: 'flex', flexDirection: 'column', height: '100svh', overflow: 'hidden' }}>
             <div className="header">
-                <span style={{ margin: "0 10px" }}>DMT Tools UI v1.0</span> /  
-                <button className="headerbutton" onClick={() => switchView("app")}>Ansible</button> / 
-                <button className="headerbutton" onClick={() => switchView("close")}>AVD group manager</button> / 
-                <button className="headerbutton" onClick={() => switchView("close")}>Close</button> /
+                <span style={{ margin: '0 10px' }}>DMT Tools UI v1.0</span> /
+                <button className="headerbutton" onClick={() => setView('app')}>Ansible</button> /
+                <button className="headerbutton" onClick={() => setView('git')}>Git</button> /
+                <button className="headerbutton" onClick={() => setView('close')}>Home</button> /
             </div>
-            {view === "app" ? <App/> : "" }
-            {view === "close" ? <Welcome/> : "" }
-        </>
-    )
+            <KerberosBar />
+            {/* Content area fills the remaining height and provides the
+                positioning context for the absolutely-placed panels in App */}
+            <div style={{ flex: 1, position: 'relative', overflow: 'hidden', minHeight: 0 }}>
+                {view === 'app' && <App />}
+                {view === 'git' && <GitPanel />}
+                {view === 'close' && <Welcome />}
+            </div>
+        </div>
+    );
 }
 
 export default Frame;

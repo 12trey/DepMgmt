@@ -29,8 +29,8 @@ function Welcome() {
     return (
         <div className="welcome">
             <h1>Welcome to DMT Tools UI</h1>
-            <p style={{ color: '#c6c6c6', fontSize: '.7em' }}>Click the Ansible button in the header to get started with ansible.<br />AVD group management requires the winendpoints.ps1</p>
-            <p style={{ margin: '20px', marginTop: '60px', color: '#c6c6c6', fontSize: '.7em' }}>Get winendpoints.ps1</p>
+            <p style={{ color: '#c6c6c6', fontSize: '.7em' }}>Click the Ansible button in the header to get started with ansible.</p>
+            {/* <p style={{ margin: '20px', marginTop: '60px', color: '#c6c6c6', fontSize: '.7em' }}>Get winendpoints.ps1</p>
             <div style={{ fontSize: '.7em', border: '1px solid #ccc', borderRadius: '6px', padding: '6px', margin: '6px',  marginTop: '10px', display: 'inline-block', verticalAlign: 'middle', color: 'white' }}>irm ./winendpoints.ps1 | iex
                 <a href="#" onClick={() => copyToClipboard(`irm ${baseUrl}/winendpoints.ps1 | iex`)} title="Copy">
                     <svg style={{ verticalAlign: 'middle' }} width="30px" height="30px" viewBox="0 0 1024 1024" class="icon" version="1.1" xmlns="http://www.w3.org/2000/svg">
@@ -49,7 +49,7 @@ function Welcome() {
                         <path d="M360.5 196.5h65.4v21.8h-65.4zM404.1 174.7h152.5v21.8H404.1zM578.4 196.5h21.8v108.9h-21.8z" fill="#446EB1" />
                     </svg>
                 </a>
-            </div>
+            </div> */}
         </div>
     );
 }
