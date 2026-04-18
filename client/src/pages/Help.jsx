@@ -110,7 +110,7 @@ export default function Help() {
               { icon: Package,      label: 'MSI Builder',       desc: 'Author and build MSI installers.' },
               { icon: Archive,      label: 'Intune Packager',   desc: 'Wrap installers into .intunewin files.' },
               { icon: GitBranch,    label: 'Git Integration',   desc: 'Version-control your package repository.' },
-              { icon: UsersRound,   label: 'Group Management',  desc: 'Query and manage AD / Azure AD groups.' },
+              { icon: UsersRound,   label: 'Group Management',  desc: 'Query and manage on-premises Active Directory groups.' },
               { icon: Monitor,      label: 'DMT Tools',         desc: 'Ansible playbook execution via WSL.' },
             ].map(({ icon: Icon, label, desc }) => (
               <div key={label} className="flex gap-2 p-2 bg-gray-50 rounded border border-gray-100">
@@ -350,8 +350,7 @@ export default function Help() {
         {/* ── Group Management ── */}
         <Section id="groups" title="Group Management" icon={UsersRound}>
           <p>
-            Query and manage Active Directory (on-prem) or Azure AD / Entra ID groups without
-            leaving the app.
+            Query and manage on-premises <strong>Active Directory</strong> groups without leaving the app.
           </p>
           <ul className="list-disc list-inside space-y-1">
             <li>Verify whether a group or user exists.</li>

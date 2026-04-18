@@ -14,7 +14,14 @@
       "Bash(grep -n \"Remove-TypeData\\\\|FormatXml\\\\|ObjectSecurity\" \"$\\(node -e \"const p=require\\('./server/paths'\\);console.log\\(p.packagesDir\\)\"\\)/test/1/Invoke-AppDeployToolkit.ps1\")",
       "Bash(del:*)",
       "WebFetch(domain:192.168.4.44)",
-      "Bash(npm run:*)"
+      "Bash(npm run:*)",
+      "Bash(netstat -ano)",
+      "Bash(ls \"C:/Users/trey/source/aipsadt/packages/CoffeeBreak/\"*/PSAppDeployToolkit/)",
+      "Bash(wmic process:*)",
+      "Bash(ls \"C:/Users/trey/source/aipsadt/packages/test/\"*/PSAppDeployToolkit/)",
+      "Bash(taskkill:*)",
+      "Bash(cmd:*)",
+      "Bash(grep -v \"^$\")"
     ]
   }
 }

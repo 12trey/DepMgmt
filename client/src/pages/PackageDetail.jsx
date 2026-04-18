@@ -319,6 +319,7 @@ function ToolkitSection({ appName, version }) {
   const [installing, setInstalling] = useState(false);
   const [populating, setPopulating] = useState(false);
   const [populateMsg, setPopulateMsg] = useState('');
+  const [folderKey, setFolderKey] = useState(0);
   const logBottomRef = useRef(null);
 
   const loadStatus = useCallback(() => {
@@ -356,7 +357,8 @@ function ToolkitSection({ appName, version }) {
     setPopulating(true); setPopulateMsg(''); setStatusErr('');
     try {
       const result = await populateToolkit(appName, version);
-      setPopulateMsg(`Toolkit files copied (${result.fileCount} items from ${result.modulePath}).`);
+      setPopulateMsg(`Toolkit folder refreshed — ${result.fileCount} items copied from ${result.modulePath}.`);
+      setFolderKey(k => k + 1);
     } catch (e) {
       setStatusErr(e.message);
     } finally {
@@ -368,10 +370,9 @@ function ToolkitSection({ appName, version }) {
     <div className="space-y-4">
       {/* Info banner */}
       <div className="bg-purple-50 border border-purple-200 rounded-lg p-3 text-xs text-purple-800">
-        <strong>PSAppDeployToolkit module</strong> — The toolkit needs to be installed as a PowerShell
-        module on this machine. Once installed, click <em>Populate Toolkit Folder</em> to copy the
-        module files into this package's <code>PSAppDeployToolkit/</code> folder so the package is
-        fully self-contained for deployment.
+        <strong>PSAppDeployToolkit module</strong> — New packages are populated automatically when
+        the module is installed. Use <em>Re-populate Toolkit Folder</em> to refresh the files after
+        a module upgrade, or to populate an imported package that is missing its toolkit files.
       </div>
 
       {/* Module status card */}
@@ -404,25 +405,29 @@ function ToolkitSection({ appName, version }) {
               )}
             </div>
 
-            {/* PSGallery trust status */}
-            <div className="flex items-center justify-between py-2 border-b">
-              <div>
-                <span className="text-sm font-medium">PSGallery</span>
-                <span className="ml-2 text-xs text-gray-400">
-                  {status.galleryAvailable ? 'repository available' : 'not configured'}
-                </span>
-              </div>
-              {status.galleryTrusted ? (
-                <span className="px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-700">Trusted</span>
-              ) : (
-                <div className="flex items-center gap-2">
-                  <span className="px-2 py-0.5 rounded text-xs font-medium bg-amber-100 text-amber-700">Untrusted</span>
-                  <button onClick={handleTrust} disabled={trusting || !status.galleryAvailable} className="btn-secondary text-xs">
-                    {trusting ? 'Trusting…' : 'Trust PSGallery'}
-                  </button>
+            {/* PSGallery trust status — only relevant when module is not yet installed */}
+            {!status.installed && (
+              <div className="flex items-center justify-between py-2 border-b">
+                <div>
+                  <span className="text-sm font-medium">PSGallery</span>
+                  <span className="ml-2 text-xs text-gray-400">
+                    {status.galleryAvailable ? 'required to install module' : 'not configured — run Install-Module manually'}
+                  </span>
                 </div>
-              )}
-            </div>
+                {status.galleryTrusted ? (
+                  <span className="px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-700">Trusted</span>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <span className="px-2 py-0.5 rounded text-xs font-medium bg-amber-100 text-amber-700">Untrusted</span>
+                    {status.galleryAvailable && (
+                      <button onClick={handleTrust} disabled={trusting} className="btn-secondary text-xs">
+                        {trusting ? 'Trusting…' : 'Trust PSGallery'}
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Actions */}
             <div className="flex flex-wrap gap-2 pt-1">
@@ -437,8 +442,8 @@ function ToolkitSection({ appName, version }) {
                 </button>
               )}
               {status.installed && (
-                <button onClick={handlePopulate} disabled={populating} className="btn-primary text-sm">
-                  {populating ? <><RefreshCw size={14} className="animate-spin" /> Copying files…</> : 'Populate Toolkit Folder'}
+                <button onClick={handlePopulate} disabled={populating} className="btn-secondary text-sm">
+                  {populating ? <><RefreshCw size={14} className="animate-spin" /> Copying files…</> : 'Re-populate Toolkit Folder'}
                 </button>
               )}
             </div>
@@ -472,6 +477,7 @@ function ToolkitSection({ appName, version }) {
 
       {/* Current toolkit folder contents */}
       <FolderSection
+        key={folderKey}
         appName={appName} version={version}
         folder="PSAppDeployToolkit"
         hint="Contents of this package's PSAppDeployToolkit folder — populated from the installed module above"

@@ -24,9 +24,10 @@ const navItems = [
   { to: '/manage-groups', icon: UsersRound, label: 'Manage Groups' },
   { to: '/git', icon: GitBranch, label: 'Git' },
   { to: '/config', icon: Settings, label: 'Settings' },
-  { to: '/help', icon: HelpCircle, label: 'Help' },
   { divider: true },
   { to: '/dmt-tools', icon: Monitor, label: 'DMT Tools' },
+  { divider: true },
+  { to: '/help', icon: HelpCircle, label: 'Help' },
 ];
 
 export default function App() {

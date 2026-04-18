@@ -1,8 +1,47 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const { execFile } = require('child_process');
+const { promisify } = require('util');
 const Handlebars = require('handlebars');
 const paths = require('../paths');
+
+const execFileAsync = promisify(execFile);
+
+function runPS(script) {
+  const encoded = Buffer.from(script, 'utf16le').toString('base64');
+  return execFileAsync(
+    'powershell.exe',
+    ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', encoded],
+    { windowsHide: true }
+  );
+}
+
+// Locate the installed PSAppDeployToolkit module and copy it into destDir.
+// Returns { ok, modulePath, fileCount } or { ok: false, reason } without throwing.
+async function populateToolkitDir(destDir) {
+  try {
+    const { stdout } = await runPS(`
+$mod = Get-Module -ListAvailable -Name PSAppDeployToolkit |
+         Sort-Object Version -Descending |
+         Select-Object -First 1
+if ($mod) { $mod.ModuleBase } else { '' }
+`);
+    const modulePath = stdout.trim();
+    if (!modulePath) return { ok: false, reason: 'PSAppDeployToolkit module is not installed' };
+
+    fs.mkdirSync(destDir, { recursive: true });
+    for (const entry of fs.readdirSync(destDir)) {
+      fs.rmSync(path.join(destDir, entry), { recursive: true, force: true });
+    }
+    fs.cpSync(modulePath, destDir, { recursive: true });
+
+    return { ok: true, modulePath, fileCount: fs.readdirSync(destDir).length };
+  } catch (err) {
+    return { ok: false, reason: err.message };
+  }
+}
+exports.populateToolkitDir = populateToolkitDir;
 
 const pkgBase = paths.packagesDir;
 
@@ -174,7 +213,16 @@ exports.create = async (data) => {
   fs.writeFileSync(path.join(dir, 'metadata.json'), JSON.stringify(metadata, null, 2));
 
   generateScripts(dir, metadata);
-  return metadata;
+
+  // Auto-populate PSAppDeployToolkit folder for v4 packages if module is installed.
+  // Failure is non-fatal — the user can populate manually from the package detail page.
+  let toolkitPopulated = false;
+  if (data.psadtVersion === 'v4') {
+    const result = await populateToolkitDir(path.join(dir, 'PSAppDeployToolkit'));
+    toolkitPopulated = result.ok;
+  }
+
+  return { ...metadata, toolkitPopulated };
 };
 
 exports.update = async (appName, version, data) => {

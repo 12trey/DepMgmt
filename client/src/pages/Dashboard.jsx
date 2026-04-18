@@ -47,7 +47,7 @@ const FEATURES = [
     label: 'Group Management',
     color: 'teal',
     to: '/manage-groups',
-    desc: 'Query and manage Active Directory and Azure AD / Entra ID groups. Verify users, list members, and add or remove group memberships.',
+    desc: 'Query and manage on-premises Active Directory groups. Verify users, list members, and add or remove group memberships.',
   },
   {
     icon: Monitor,

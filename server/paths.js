@@ -30,9 +30,15 @@ const clientDist = path.join(appRoot, 'client', 'dist');
 
 // Writable paths
 const configPath = path.join(userDataDir, 'config.json');
-const packagesDir = path.join(userDataDir, 'packages');
+
+// Read optional path overrides from config.json (strip any accidental surrounding quotes)
+function stripQuotes(s) { return typeof s === 'string' ? s.replace(/^["']|["']$/g, '').trim() : s; }
+let _configOverrides = {};
+try { _configOverrides = JSON.parse(fs.readFileSync(configPath, 'utf-8')); } catch (_) {}
+
+const packagesDir = stripQuotes(_configOverrides?.packages?.basePath) || path.join(userDataDir, 'packages');
 const logsDir = path.join(userDataDir, 'logs');
-const repoDir = path.join(userDataDir, 'repo');
+const repoDir = stripQuotes(_configOverrides?.repository?.localPath) || path.join(userDataDir, 'repo');
 
 // On first run in packaged mode, copy default config if it doesn't exist yet
 if (isPackaged && !fs.existsSync(configPath)) {

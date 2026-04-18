@@ -1,21 +1,8 @@
 const path = require('path');
 const fs = require('fs');
-const { execFile } = require('child_process');
-const { promisify } = require('util');
 const archiver = require('archiver');
 const packageService = require('../services/packageService');
 const paths = require('../paths');
-
-const execFileAsync = promisify(execFile);
-
-function runPS(script) {
-  const encoded = Buffer.from(script, 'utf16le').toString('base64');
-  return execFileAsync(
-    'powershell.exe',
-    ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', encoded],
-    { windowsHide: true }
-  );
-}
 
 // Map common file extensions to MIME types for raw file serving
 const MIME_MAP = {
@@ -158,29 +145,10 @@ exports.createAssetReadme = async (req, res) => {
 exports.populateToolkit = async (req, res) => {
   const { appName, version } = req.params;
   const destDir = path.join(paths.packagesDir, appName, version, 'PSAppDeployToolkit');
-
   try {
-    // Find the installed PSAppDeployToolkit module base path
-    const { stdout } = await runPS(`
-$mod = Get-Module -ListAvailable -Name PSAppDeployToolkit |
-         Sort-Object Version -Descending |
-         Select-Object -First 1
-if ($mod) { $mod.ModuleBase } else { '' }
-`);
-    const modulePath = stdout.trim();
-    if (!modulePath) {
-      return res.status(400).json({ error: 'PSAppDeployToolkit module is not installed. Install it first using the Toolkit tab.' });
-    }
-
-    // Wipe the existing contents and copy fresh module files
-    fs.mkdirSync(destDir, { recursive: true });
-    for (const entry of fs.readdirSync(destDir)) {
-      fs.rmSync(path.join(destDir, entry), { recursive: true, force: true });
-    }
-    fs.cpSync(modulePath, destDir, { recursive: true });
-
-    const fileCount = fs.readdirSync(destDir).length;
-    res.json({ ok: true, modulePath, fileCount });
+    const result = await packageService.populateToolkitDir(destDir);
+    if (!result.ok) return res.status(400).json({ error: result.reason });
+    res.json(result);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

@@ -10,7 +10,7 @@ const { v4: uuidv4, v5: uuidv5 } = require('uuid');
 // RFC 4122 URL namespace — guaranteed valid variant/version nibbles
 const GUID_NS = '6ba7b811-9dad-11d1-80b4-00c04fd430c8';
 
-const WIX3_CACHE = path.join(os.homedir(), '.aipsadt', 'wix3');
+const WIX3_CACHE = path.join(os.homedir(), '.depmgmt', 'wix3');
 const WIX3_URL = 'https://github.com/wixtoolset/wix3/releases/download/wix314rtm/wix314-binaries.zip';
 
 const WIX3_DIRS = [
@@ -87,6 +87,14 @@ function wixHive(root) {
 
 function wixRegType(type) {
   return { string: 'string', integer: 'integer', binary: 'binary', expandable: 'expandable', multiString: 'multiString' }[type] || 'string';
+}
+
+// WiX binary registry values must be "#x" followed by hex bytes with no separators.
+// Input may be "32,bc,37,c5,59,ef,47,d1" (from .reg hex: parsing) or already "#x...".
+function wixBinaryValue(val) {
+  let s = String(val).toLowerCase().replace(/[,\s]/g, '');
+  while (s.startsWith('#x')) s = s.slice(2);
+  return s; // WiX Type="binary" expects plain hex digits — no prefix
 }
 
 function buildDirMap(nodes) {
@@ -169,7 +177,8 @@ function buildRegistryComponents(registryEntries, indent) {
       for (let i = 0; i < entry.values.length; i++) {
         const v = entry.values[i];
         const kp = i === 0 ? ' KeyPath="yes"' : '';
-        xml += `${pad}  <RegistryValue Root="${wixHive(entry.root)}" Key="${esc(entry.key)}" Name="${esc(v.name)}" Type="${wixRegType(v.type)}" Value="${esc(v.value)}"${kp} />\n`;
+        const wixVal = v.type === 'binary' ? wixBinaryValue(v.value) : esc(v.value);
+        xml += `${pad}  <RegistryValue Root="${wixHive(entry.root)}" Key="${esc(entry.key)}" Name="${esc(v.name)}" Type="${wixRegType(v.type)}" Value="${wixVal}"${kp} />\n`;
       }
     }
     xml += `${pad}</Component>\n`;
