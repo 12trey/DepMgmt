@@ -506,17 +506,16 @@ function App() {
 
   async function doRename() {
     if (!renameFile?.name?.trim()) return;
-    const dir = renameFile.item.includes('/')
-      ? renameFile.item.substring(0, renameFile.item.lastIndexOf('/') + 1)
-      : (cwd === '/' ? '/' : cwd + '/');
     const safe = renameFile.name.trim().replace(/[^\w.\-]/g, '_');
     try {
       const r = await fetch(`${BASE}/renamefile`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ file: renameFile.item, newName: safe }),
+        body: JSON.stringify({ file: renameFile.path, newName: safe }),
       });
       if (!r.ok) throw new Error((await r.json()).error);
+      // Close editor if the renamed file was open
+      if (activeEditor?.path === renameFile.path) setActiveEditor(null);
       setRenameFile(null);
       getFiles(cwd);
     } catch (err) {
@@ -525,16 +524,16 @@ function App() {
   }
 
   async function doDelete() {
-    if (!deleteFile?.item) return;
+    if (!deleteFile?.path) return;
     try {
       const r = await fetch(`${BASE}/deletefile`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ file: deleteFile.item }),
+        body: JSON.stringify({ file: deleteFile.path }),
       });
       if (!r.ok) throw new Error((await r.json()).error);
       // Close editor if the deleted file was open
-      if (activeEditor?.path === fullPath(deleteFile.item)) setActiveEditor(null);
+      if (activeEditor?.path === deleteFile.path) setActiveEditor(null);
       setDeleteFile(null);
       getFiles(cwd);
     } catch (err) {
@@ -632,13 +631,13 @@ function App() {
           <div style={{ borderTop: '1px solid var(--border)', marginTop: '2px', paddingTop: '2px' }} />
           <CtxItem onClick={() => {
             const name = ctxMenu.item.split('/').pop();
-            setRenameFile({ item: ctxMenu.item, name });
+            setRenameFile({ item: ctxMenu.item, path: fullPath(ctxMenu.item), name });
             setCtxMenu(null);
           }}>
             ✏ Rename
           </CtxItem>
           <CtxItem onClick={() => {
-            setDeleteFile({ item: ctxMenu.item });
+            setDeleteFile({ item: ctxMenu.item, path: fullPath(ctxMenu.item) });
             setCtxMenu(null);
           }}>
             <span style={{ color: '#f87171' }}>🗑 Delete</span>

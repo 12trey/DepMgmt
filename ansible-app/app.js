@@ -205,22 +205,44 @@ function writeConfig(data) {
 
 app.get('/git/config', (req, res) => {
   const config = readConfig();
-  res.json({ repoUrl: config.ansibleRepoUrl || '' });
+  res.json({
+    repoUrl: config.ansibleRepoUrl || '',
+    gitUsername: config.gitUsername || '',
+    gitToken: config.gitToken || '',
+  });
 });
 
 app.post('/git/config', (req, res) => {
-  const { repoUrl } = req.body;
+  const { repoUrl, gitUsername, gitToken } = req.body;
   if (repoUrl === undefined) return res.status(400).json({ error: 'repoUrl required' });
   const config = readConfig();
   config.ansibleRepoUrl = repoUrl;
+  if (gitUsername !== undefined) config.gitUsername = gitUsername;
+  if (gitToken !== undefined) config.gitToken = gitToken;
   writeConfig(config);
   res.json({ ok: true });
 });
+
+// Inject credentials into an HTTPS repo URL without modifying the stored remote.
+// The URL API setter handles percent-encoding automatically — do NOT pre-encode.
+function buildAuthUrl(repoUrl, username, token) {
+  if (!username && !token) return repoUrl;
+  try {
+    const u = new URL(repoUrl);
+    if (username) u.username = username;
+    if (token)    u.password = token;
+    return u.toString();
+  } catch {
+    return repoUrl;
+  }
+}
 
 app.post('/git/clone', async (req, res) => {
   const config = readConfig();
   const repoUrl = config.ansibleRepoUrl;
   if (!repoUrl) return res.status(400).json({ error: 'No repo URL configured. Set it first.' });
+
+  const cloneUrl = buildAuthUrl(repoUrl, config.gitUsername, config.gitToken);
 
   // Stream output via SSE so the frontend can show progress
   res.setHeader('Content-Type', 'text/event-stream');
@@ -237,7 +259,7 @@ app.post('/git/clone', async (req, res) => {
     // Ensure parent directory exists before cloning into it.
     await execPromise(`mkdir -p "${path.dirname(repoFolder)}"`, { shell: '/bin/bash', cwd: '/tmp' });
 
-    const proc = spawn('git', ['clone', repoUrl, repoFolder], {
+    const proc = spawn('git', ['clone', cloneUrl, repoFolder], {
       shell: false,
       cwd: path.dirname(repoFolder), // /home/ansibleapp — always exists
     });
@@ -308,11 +330,26 @@ app.post('/git/commit', async (req, res) => {
 
 app.post('/git/push', async (req, res) => {
   try {
-    const { stdout, stderr } = await execPromise(
-      `git -C "${repoFolder}" push`,
-      { shell: '/bin/bash' }
+    const config = readConfig();
+    const pushUrl = buildAuthUrl(
+      config.ansibleRepoUrl || '',
+      config.gitUsername,
+      config.gitToken
     );
-    res.json({ ok: true, output: stdout + stderr });
+    // Spawn directly (no shell) so credentials in the URL are not visible in shell history.
+    await new Promise((resolve, reject) => {
+      const args = ['-C', repoFolder, 'push'];
+      if (pushUrl) args.push(pushUrl);
+      const proc = spawn('git', args, { shell: false });
+      let out = '';
+      proc.stdout.on('data', d => { out += d.toString(); });
+      proc.stderr.on('data', d => { out += d.toString(); });
+      proc.on('close', code => {
+        if (code === 0) resolve(out);
+        else reject(new Error(out.trim() || `git push exited with code ${code}`));
+      });
+      proc.on('error', reject);
+    }).then(output => res.json({ ok: true, output }));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

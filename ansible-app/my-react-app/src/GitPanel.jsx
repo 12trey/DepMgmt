@@ -63,6 +63,8 @@ function PushConfirmModal({ branch, onConfirm, onCancel }) {
 export default function GitPanel() {
   const [repoUrl, setRepoUrl] = useState('');
   const [savedUrl, setSavedUrl] = useState('');
+  const [gitUsername, setGitUsername] = useState('');
+  const [gitToken, setGitToken] = useState('');
   const [urlSaving, setUrlSaving] = useState(false);
 
   const [cloneLog, setCloneLog] = useState(null); // null = hidden
@@ -85,7 +87,12 @@ export default function GitPanel() {
   useEffect(() => {
     api('/git/config')
       .then(r => r.json())
-      .then(d => { setRepoUrl(d.repoUrl || ''); setSavedUrl(d.repoUrl || ''); })
+      .then(d => {
+        setRepoUrl(d.repoUrl || '');
+        setSavedUrl(d.repoUrl || '');
+        setGitUsername(d.gitUsername || '');
+        setGitToken(d.gitToken || '');
+      })
       .catch(() => {});
   }, []);
 
@@ -95,7 +102,7 @@ export default function GitPanel() {
       await api('/git/config', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ repoUrl }),
+        body: JSON.stringify({ repoUrl, gitUsername, gitToken }),
       });
       setSavedUrl(repoUrl);
     } catch (err) {
@@ -106,7 +113,7 @@ export default function GitPanel() {
   }
 
   async function startClone() {
-    if (!savedUrl) { alert('Save a repo URL first.'); return; }
+    if (!savedUrl) return;
     setCloning(true);
     setCloneLog([]);
 
@@ -158,7 +165,7 @@ export default function GitPanel() {
       if (!r.ok) throw new Error(d.error);
       await loadStatus();
     } catch (err) {
-      alert(`Stage failed: ${err.message}`);
+      setStatusError(`Stage failed: ${err.message}`);
     } finally {
       setStaging(false);
     }
@@ -225,13 +232,34 @@ export default function GitPanel() {
             placeholder="https://github.com/you/ansible-repo.git"
             style={inputStyle}
           />
+        </div>
+        <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
+          <input
+            type="text"
+            value={gitUsername}
+            onChange={e => setGitUsername(e.target.value)}
+            placeholder="Username"
+            style={{ ...inputStyle, flex: '1 1 40%' }}
+            autoComplete="username"
+          />
+          <input
+            type="password"
+            value={gitToken}
+            onChange={e => setGitToken(e.target.value)}
+            placeholder="Password / API token"
+            style={{ ...inputStyle, flex: '1 1 60%' }}
+            autoComplete="current-password"
+          />
           <button
             onClick={saveUrl}
-            disabled={urlSaving || repoUrl === savedUrl}
-            style={btnStyle('primary', urlSaving || repoUrl === savedUrl)}
+            disabled={urlSaving}
+            style={btnStyle('primary', urlSaving)}
           >
             {urlSaving ? 'Saving…' : 'Save'}
           </button>
+        </div>
+        <div style={{ fontSize: '11px', color: '#666', marginTop: '4px' }}>
+          Credentials are used for clone and push. Leave blank for public repos or SSH remotes.
         </div>
         {savedUrl && (
           <div style={{ fontSize: '12px', color: '#888', marginTop: '4px' }}>
