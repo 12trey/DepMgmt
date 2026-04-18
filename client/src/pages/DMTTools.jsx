@@ -221,6 +221,7 @@ export default function DMTTools() {
   const pollRef = useRef(null);
   const launchTimerRef = useRef(null);
   const logBottomRef = useRef(null);
+  const iframeRef = useRef(null);
   // Incremented on every reset() so stale async callbacks can detect they've
   // been superseded and skip their setState calls.
   const opGenRef = useRef(0);
@@ -351,7 +352,12 @@ export default function DMTTools() {
     setSyncMsg('');
     try {
       await syncApp(selectedInstance);
-      setSyncMsg('Synced — reload the iframe to pick up changes.');
+      setSyncMsg('Synced — reloading…');
+      // Give the freshly-restarted server a moment to come up before reloading
+      setTimeout(() => {
+        if (iframeRef.current) iframeRef.current.src = DMT_URL;
+        setSyncMsg('Synced.');
+      }, 2000);
     } catch (err) {
       setSyncMsg(`Sync failed: ${err.message}`);
     } finally {
@@ -389,10 +395,18 @@ export default function DMTTools() {
               onClick={handleSync}
               disabled={syncing}
               className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 disabled:opacity-50"
-              title="Sync ansible-app/ from this project to WSL"
+              title="Sync ansible-app/ from this project to WSL, rebuild, and restart"
             >
               {syncing ? <Loader2 size={11} className="animate-spin" /> : <Upload size={11} />}
               Sync to WSL
+            </button>
+            <button
+              onClick={() => { if (iframeRef.current) iframeRef.current.src = DMT_URL; }}
+              className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700"
+              title="Reload the DMT Tools app"
+            >
+              <RefreshCw size={11} />
+              Reload
             </button>
             <button
               onClick={() => setShowTerminal(v => !v)}
@@ -443,6 +457,7 @@ export default function DMTTools() {
 
         {/* Main content: iframe grows to fill space */}
         <iframe
+          ref={iframeRef}
           src={DMT_URL}
           className="w-full flex-1 border-0 min-h-0"
           title="DMT Tools"

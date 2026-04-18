@@ -2,6 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
 const process = require('process');
 const { exec, spawn } = require('child_process');
 const { promisify } = require('util');
@@ -189,18 +190,76 @@ app.post('/deletefile', (req, res) => {
   }
 });
 
+// ── Credential encryption ──────────────────────────────────────────────────────
+// Derives a 32-byte AES-256 key from the WSL machine-id so that the token is
+// bound to this specific machine. Falls back to a fixed salt if machine-id is
+// unreadable (e.g. first boot), but the same salt will always produce the same
+// key on the same machine as long as /etc/machine-id doesn't change.
+
+const MACHINE_ID_PATH = '/etc/machine-id';
+const ENC_PREFIX = 'enc:';
+
+function getMachineKey() {
+  let machineId;
+  try {
+    machineId = fs.readFileSync(MACHINE_ID_PATH, 'utf-8').trim();
+  } catch {
+    machineId = 'fallback-machine-id';
+  }
+  // scryptSync: cost N=2^15, r=8, p=1 — fast enough for startup, strong enough for at-rest storage
+  return crypto.scryptSync(machineId, 'ansible-app-salt', 32);
+}
+
+function encryptToken(plaintext) {
+  const key = getMachineKey();
+  const iv = crypto.randomBytes(12); // 96-bit IV for AES-GCM
+  const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
+  const encrypted = Buffer.concat([cipher.update(plaintext, 'utf-8'), cipher.final()]);
+  const authTag = cipher.getAuthTag();
+  // Format: enc:<iv_hex>:<authTag_hex>:<ciphertext_hex>
+  return `${ENC_PREFIX}${iv.toString('hex')}:${authTag.toString('hex')}:${encrypted.toString('hex')}`;
+}
+
+function decryptToken(stored) {
+  if (!stored.startsWith(ENC_PREFIX)) return stored; // legacy plaintext — return as-is
+  const parts = stored.slice(ENC_PREFIX.length).split(':');
+  if (parts.length !== 3) return stored;
+  const [ivHex, authTagHex, ciphertextHex] = parts;
+  try {
+    const key = getMachineKey();
+    const decipher = crypto.createDecipheriv('aes-256-gcm', key, Buffer.from(ivHex, 'hex'));
+    decipher.setAuthTag(Buffer.from(authTagHex, 'hex'));
+    return decipher.update(Buffer.from(ciphertextHex, 'hex'), undefined, 'utf-8') + decipher.final('utf-8');
+  } catch {
+    return ''; // tampered or unreadable — treat as missing
+  }
+}
+
 // ── Git operations ─────────────────────────────────────────────────────────────
 
 function readConfig() {
   try {
-    return JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+    const raw = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+    // Transparently decrypt token on read; if it was plaintext, re-encrypt and save.
+    if (raw.gitToken && !raw.gitToken.startsWith(ENC_PREFIX)) {
+      raw.gitToken = raw.gitToken; // keep in memory as plaintext for this call
+      const migrated = { ...raw, gitToken: encryptToken(raw.gitToken) };
+      fs.writeFileSync(configPath, JSON.stringify(migrated, null, 4), 'utf-8');
+    } else if (raw.gitToken) {
+      raw.gitToken = decryptToken(raw.gitToken);
+    }
+    return raw;
   } catch {
     return {};
   }
 }
 
 function writeConfig(data) {
-  fs.writeFileSync(configPath, JSON.stringify(data, null, 4), 'utf-8');
+  const toWrite = { ...data };
+  if (toWrite.gitToken) {
+    toWrite.gitToken = encryptToken(toWrite.gitToken);
+  }
+  fs.writeFileSync(configPath, JSON.stringify(toWrite, null, 4), 'utf-8');
 }
 
 app.get('/git/config', (req, res) => {
@@ -416,7 +475,7 @@ app.listen(port, '0.0.0.0', () => {
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
 function objuscate(text) {
-  return text.replace(/password=(.*?)(?=\s|,|$)/gi, 'Password=******');
+  return text.replace(/(password)=(.*?)(?=\s|,|$)/gi, '$1=******');
 }
 
 function extractJSON(text) {

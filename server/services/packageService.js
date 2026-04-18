@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const Handlebars = require('handlebars');
 const paths = require('../paths');
 
@@ -18,8 +19,45 @@ function readTemplate(psadtVersion, name) {
 }
 
 // Standard subdirectories created for each PSADT version
-const V4_SUBDIRS = ['Assets', 'Config', 'Files', 'PSAppDeployToolkit', 'Strings', 'SupportFiles'];
+const V4_SUBDIRS = ['Assets', 'Config', 'Files', 'PSAppDeployToolkit', 'PSAppDeployToolkit.Extensions', 'Strings', 'SupportFiles'];
 const V3_SUBDIRS = ['Files'];
+
+// Allowed subfolders for generic file management (prevent path traversal)
+const ALLOWED_FOLDERS = new Set(['Files', 'SupportFiles', 'Assets', 'PSAppDeployToolkit', 'PSAppDeployToolkit.Extensions']);
+exports.ALLOWED_FOLDERS = ALLOWED_FOLDERS;
+
+// File extensions that can be read/edited as text
+const TEXT_EXTENSIONS = new Set(['.ps1', '.psm1', '.psd1', '.xml', '.json', '.ini', '.txt', '.bat', '.cmd', '.reg', '.yaml', '.yml', '.csv', '.md']);
+
+// Starter content for the Extensions module
+function makeExtPsd1(appName) {
+  const guid = crypto.randomUUID();
+  return `@{
+    RootModule        = 'PSAppDeployToolkit.Extensions.psm1'
+    ModuleVersion     = '1.0.0'
+    GUID              = '${guid}'
+    Author            = ''
+    Description       = 'Custom PSAppDeployToolkit extensions for ${appName}'
+    PowerShellVersion = '5.1'
+    FunctionsToExport = @()
+    CmdletsToExport   = @()
+    VariablesToExport = @()
+    AliasesToExport   = @()
+}
+`;
+}
+
+const EXT_PSM1 = `# PSAppDeployToolkit.Extensions.psm1
+# Place your custom extension functions here.
+# PSAppDeployToolkit automatically imports this module — no dot-sourcing required.
+
+# Example:
+# function Invoke-MyCustomAction {
+#     [CmdletBinding()]
+#     param()
+#     Write-ADTLogEntry -Message 'Running custom action...'
+# }
+`;
 
 function getTemplateSet(psadtVersion) {
   if (psadtVersion === 'v4') {
@@ -125,6 +163,13 @@ exports.create = async (data) => {
   const subdirs = data.psadtVersion === 'v4' ? V4_SUBDIRS : V3_SUBDIRS;
   for (const sub of subdirs) fs.mkdirSync(path.join(dir, sub), { recursive: true });
 
+  // Write extension stub files for v4 packages
+  if (data.psadtVersion === 'v4') {
+    const extDir = path.join(dir, 'PSAppDeployToolkit.Extensions');
+    fs.writeFileSync(path.join(extDir, 'PSAppDeployToolkit.Extensions.psd1'), makeExtPsd1(appName), 'utf-8');
+    fs.writeFileSync(path.join(extDir, 'PSAppDeployToolkit.Extensions.psm1'), EXT_PSM1, 'utf-8');
+  }
+
   const metadata = { ...data, createdAt: new Date().toISOString(), status: 'draft' };
   fs.writeFileSync(path.join(dir, 'metadata.json'), JSON.stringify(metadata, null, 2));
 
@@ -188,6 +233,110 @@ exports.checkMissingFiles = async (appName, version) => {
   const actual = new Set(fs.existsSync(filesDir) ? fs.readdirSync(filesDir) : []);
   const missing = manifest.files.filter(f => !actual.has(f.name));
   return { hasManifest: true, missing, required: manifest.files };
+};
+
+// ── Folder file management ─────────────────────────────────────────────────────
+
+exports.listFolderFiles = async (appName, version, folder) => {
+  if (!ALLOWED_FOLDERS.has(folder)) throw new Error('Invalid folder');
+  const dir = path.join(pkgBase, appName, version, folder);
+  if (!fs.existsSync(dir)) return [];
+  return fs.readdirSync(dir)
+    .filter(f => fs.statSync(path.join(dir, f)).isFile())
+    .map(f => ({
+      name: f,
+      size: fs.statSync(path.join(dir, f)).size,
+      editable: TEXT_EXTENSIONS.has(path.extname(f).toLowerCase()),
+    }));
+};
+
+exports.deleteFolderFile = async (appName, version, folder, filename) => {
+  if (!ALLOWED_FOLDERS.has(folder)) throw new Error('Invalid folder');
+  const filePath = path.join(pkgBase, appName, version, folder, path.basename(filename));
+  if (!fs.existsSync(filePath)) throw new Error('File not found');
+  fs.unlinkSync(filePath);
+};
+
+exports.readFolderFile = async (appName, version, folder, filename) => {
+  if (!ALLOWED_FOLDERS.has(folder)) throw new Error('Invalid folder');
+  const filePath = path.join(pkgBase, appName, version, folder, path.basename(filename));
+  if (!fs.existsSync(filePath)) throw new Error('File not found');
+  const ext = path.extname(filename).toLowerCase();
+  if (!TEXT_EXTENSIONS.has(ext)) throw new Error('File is not text-editable');
+  return fs.readFileSync(filePath, 'utf-8');
+};
+
+exports.saveFolderFile = async (appName, version, folder, filename, content) => {
+  if (!ALLOWED_FOLDERS.has(folder)) throw new Error('Invalid folder');
+  const dir = path.join(pkgBase, appName, version, folder);
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, path.basename(filename)), content, 'utf-8');
+};
+
+exports.getFolderFilePath = (appName, version, folder, filename) => {
+  if (!ALLOWED_FOLDERS.has(folder)) throw new Error('Invalid folder');
+  const filePath = path.join(pkgBase, appName, version, folder, path.basename(filename));
+  if (!fs.existsSync(filePath)) throw new Error('File not found');
+  return filePath;
+};
+
+const ASSET_README = `PSAppDeployToolkit Assets Folder
+=================================
+Place custom branding files here to override the default toolkit UI.
+Leave this folder empty to use the toolkit defaults from PSAppDeployToolkit/Assets/.
+
+Expected files
+--------------
+AppDeployToolkitLogo.png
+  Logo shown in progress dialogs and notification balloons.
+  Recommended: 400 x 100 px, PNG with transparency.
+
+AppDeployToolkitBanner.png
+  Banner image shown at the top of welcome and close dialogs.
+  Recommended: 450 x 50 px, PNG with transparency.
+
+AppDeployToolkitIcon.ico
+  Window and taskbar icon for all toolkit dialogs.
+  Recommended: Multi-size ICO (16 / 32 / 48 / 256 px).
+
+Notes
+-----
+- Files here take precedence over PSAppDeployToolkit/Assets/ equivalents.
+- Maintain the same file names — the toolkit loads assets by exact name.
+- Keep image formats and dimensions consistent to avoid dialog layout issues.
+`;
+
+// Create the .psd1 / .psm1 extension stubs for an existing package that
+// was created before stubs were added, or whose stubs were deleted.
+exports.createExtensionStubs = async (appName, version) => {
+  const dir = path.join(pkgBase, appName, version, 'PSAppDeployToolkit.Extensions');
+  fs.mkdirSync(dir, { recursive: true });
+
+  const psd1Path = path.join(dir, 'PSAppDeployToolkit.Extensions.psd1');
+  const psm1Path = path.join(dir, 'PSAppDeployToolkit.Extensions.psm1');
+  const metaPath = path.join(pkgBase, appName, version, 'metadata.json');
+  const meta = fs.existsSync(metaPath) ? JSON.parse(fs.readFileSync(metaPath, 'utf-8')) : {};
+
+  const created = [];
+  if (!fs.existsSync(psd1Path)) {
+    fs.writeFileSync(psd1Path, makeExtPsd1(meta.appName || appName), 'utf-8');
+    created.push('PSAppDeployToolkit.Extensions.psd1');
+  }
+  if (!fs.existsSync(psm1Path)) {
+    fs.writeFileSync(psm1Path, EXT_PSM1, 'utf-8');
+    created.push('PSAppDeployToolkit.Extensions.psm1');
+  }
+  return { created };
+};
+
+// Create an asset README for packages whose Assets folder is empty.
+exports.createAssetReadme = async (appName, version) => {
+  const dir = path.join(pkgBase, appName, version, 'Assets');
+  fs.mkdirSync(dir, { recursive: true });
+  const readmePath = path.join(dir, '!README.txt');
+  if (fs.existsSync(readmePath)) return { created: [] };
+  fs.writeFileSync(readmePath, ASSET_README, 'utf-8');
+  return { created: ['!README.txt'] };
 };
 
 exports.importFromPath = async (sourcePath) => {

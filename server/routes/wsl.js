@@ -398,14 +398,15 @@ chmod +x /tmp/dmt-launch.sh
   }
 });
 
-// POST /api/wsl/sync — rsync ansible-app/ from the Windows project into the WSL instance
+// POST /api/wsl/sync — rsync ansible-app/ into WSL, rebuild the React app, and restart app.js
 // Body: { instance }
 router.post('/sync', async (req, res) => {
   const { instance } = req.body;
   if (!instance) return res.status(400).json({ error: 'instance is required' });
 
   try {
-    const result = await wslExec(instance, `
+    // 1. Sync files
+    await wslExec(instance, `
 rsync -av --delete \
   --exclude='node_modules' \
   --exclude='.git' \
@@ -413,7 +414,44 @@ rsync -av --delete \
   --exclude='my-react-app/dist' \
   "${ANSIBLE_APP_WSL}/" "${APP_PATH}/"
 `);
-    res.json({ synced: true, output: result.stdout });
+
+    // 2. Rebuild the embedded React app
+    await wslExec(instance, `
+export NVM_DIR="$HOME/.nvm"
+[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+if ! command -v node > /dev/null 2>&1; then
+  NODE_BIN=$(find "$NVM_DIR/versions/node" -maxdepth 2 -name node -type f 2>/dev/null | sort -V | tail -1)
+  [ -n "$NODE_BIN" ] && export PATH="$(dirname "$NODE_BIN"):$PATH"
+fi
+cd "${APP_PATH}/my-react-app" && npm run build
+`);
+
+    // 3. Kill the existing app.js process (ignore error if it wasn't running)
+    await wslExec(instance, `pkill -f "node ${APP_ENTRY}" || true`).catch(() => {});
+
+    // 4. Relaunch app.js (same mechanism as /launch)
+    await wslExec(instance, `
+cat > /tmp/dmt-launch.sh << 'EOLAUNCH'
+#!/bin/bash -l
+export NVM_DIR="$HOME/.nvm"
+[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+if ! command -v node > /dev/null 2>&1; then
+  NODE_BIN=$(find "$NVM_DIR/versions/node" -maxdepth 2 -name node -type f 2>/dev/null | sort -V | tail -1)
+  [ -n "$NODE_BIN" ] && export PATH="$(dirname "$NODE_BIN"):$PATH"
+fi
+[ -f "/opt/.ansiblevenv/bin/activate" ] && . "/opt/.ansiblevenv/bin/activate"
+cd ${APP_PATH}
+exec node ${APP_ENTRY} >> /tmp/dmt-app.log 2>&1
+EOLAUNCH
+chmod +x /tmp/dmt-launch.sh
+`);
+    const child = spawn('wsl.exe', ['-d', instance, '--cd', `${APP_PATH}`, 'bash', '-l', '/tmp/dmt-launch.sh'], {
+      stdio: 'ignore',
+      windowsHide: true,
+    });
+    child.unref();
+
+    res.json({ synced: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

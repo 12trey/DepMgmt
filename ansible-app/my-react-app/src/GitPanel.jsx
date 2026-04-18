@@ -212,7 +212,7 @@ export default function GitPanel() {
   const hasStagedChanges = status?.files?.some(f => f.status && f.status[0] !== '?' && f.status[0] !== ' ');
 
   return (
-    <div style={{ padding: '16px', color: '#eee', maxWidth: '700px' }}>
+    <div style={{ padding: '16px', color: '#eee', maxWidth: '700px', height: '100%', overflowY: 'auto', boxSizing: 'border-box' }}>
       {showPushConfirm && (
         <PushConfirmModal
           branch={status?.branch || 'main'}
