@@ -259,6 +259,11 @@ export default function GitPanel() {
           </button>
         </div>
         <div style={{ fontSize: '11px', color: '#9ca3af', marginTop: '6px' }}>
+          We advise using a personal access token for better security. Credentials are encrypted and 
+          persisted to the WSL disk using the WSL installation's machine-id. Alternatively, you
+          can use the terminal to access the repo at <code style={{ color: '#787878' }}>/home/ansibleapp/repo</code> and push/pull from the command line.
+        </div>
+        <div style={{ fontSize: '11px', color: '#9ca3af', marginTop: '6px' }}>
           Credentials are used for clone and push. Leave blank for public repos or SSH remotes.
         </div>
         {savedUrl && (

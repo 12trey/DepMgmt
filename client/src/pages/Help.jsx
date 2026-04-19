@@ -6,16 +6,16 @@ import {
 } from 'lucide-react';
 
 const SECTIONS = [
-  { id: 'overview',     label: 'Overview' },
-  { id: 'packages',     label: 'Package Management' },
-  { id: 'folders',      label: 'Package Folders' },
-  { id: 'extensions',   label: 'Extensions' },
-  { id: 'execution',    label: 'Execution' },
-  { id: 'msi',          label: 'MSI Builder' },
-  { id: 'intune',       label: 'Intune Packager' },
-  { id: 'git',          label: 'Git Integration' },
-  { id: 'groups',       label: 'Group Management' },
-  { id: 'dmt',          label: 'DMT Tools' },
+  { id: 'overview', label: 'Overview' },
+  { id: 'packages', label: 'Package Management' },
+  { id: 'folders', label: 'Package Folders' },
+  { id: 'extensions', label: 'Extensions' },
+  { id: 'execution', label: 'Execution' },
+  { id: 'msi', label: 'MSI Builder' },
+  { id: 'intune', label: 'Intune Packager' },
+  { id: 'git', label: 'Git Integration' },
+  { id: 'groups', label: 'Group Management' },
+  { id: 'dmt', label: 'DMT Tools' },
 ];
 
 function Section({ id, title, icon: Icon, children }) {
@@ -34,9 +34,9 @@ function Section({ id, title, icon: Icon, children }) {
 
 function Callout({ type = 'info', children }) {
   const styles = {
-    info:  'bg-blue-50 border-blue-200 text-blue-800',
-    tip:   'bg-green-50 border-green-200 text-green-800',
-    warn:  'bg-amber-50 border-amber-200 text-amber-800',
+    info: 'bg-blue-50 border-blue-200 text-blue-800',
+    tip: 'bg-green-50 border-green-200 text-green-800',
+    warn: 'bg-amber-50 border-amber-200 text-amber-800',
   };
   return (
     <div className={`border rounded-lg p-3 text-xs ${styles[type]}`}>
@@ -77,11 +77,10 @@ export default function Help() {
               <button
                 key={s.id}
                 onClick={() => scrollTo(s.id)}
-                className={`w-full text-left px-2 py-1.5 rounded text-xs flex items-center gap-1 transition-colors ${
-                  active === s.id
+                className={`w-full text-left px-2 py-1.5 rounded text-xs flex items-center gap-1 transition-colors ${active === s.id
                     ? 'bg-blue-50 text-blue-700 font-medium'
                     : 'text-gray-600 hover:bg-gray-50'
-                }`}
+                  }`}
               >
                 <ChevronRight size={10} className={active === s.id ? 'text-blue-500' : 'text-gray-300'} />
                 {s.label}
@@ -105,13 +104,13 @@ export default function Help() {
           </p>
           <div className="grid grid-cols-2 gap-3 mt-2">
             {[
-              { icon: PackagePlus,  label: 'PSADT Packages',   desc: 'Generate v3 / v4 deployment packages from templates.' },
-              { icon: Play,         label: 'Execution',         desc: 'Run packages and stream live deployment logs.' },
-              { icon: Package,      label: 'MSI Builder',       desc: 'Author and build MSI installers.' },
-              { icon: Archive,      label: 'Intune Packager',   desc: 'Wrap installers into .intunewin files.' },
-              { icon: GitBranch,    label: 'Git Integration',   desc: 'Version-control your package repository.' },
-              { icon: UsersRound,   label: 'Group Management',  desc: 'Query and manage on-premises Active Directory groups.' },
-              { icon: Monitor,      label: 'DMT Tools',         desc: 'Ansible playbook execution via WSL.' },
+              { icon: PackagePlus, label: 'PSADT Packages', desc: 'Generate v3 / v4 deployment packages from templates.' },
+              { icon: Play, label: 'Execution', desc: 'Run packages and stream live deployment logs.' },
+              { icon: Package, label: 'MSI Builder', desc: 'Author and build MSI installers.' },
+              { icon: Archive, label: 'Intune Packager', desc: 'Wrap installers into .intunewin files.' },
+              { icon: GitBranch, label: 'Git Integration', desc: 'Version-control your package repository.' },
+              { icon: UsersRound, label: 'Group Management', desc: 'Query and manage on-premises Active Directory groups.' },
+              { icon: Monitor, label: 'DMT Tools', desc: 'Ansible playbook execution via WSL.' },
             ].map(({ icon: Icon, label, desc }) => (
               <div key={label} className="flex gap-2 p-2 bg-gray-50 rounded border border-gray-100">
                 <Icon size={16} className="text-blue-500 shrink-0 mt-0.5" />
@@ -153,12 +152,12 @@ export default function Help() {
               </thead>
               <tbody>
                 {[
-                  ['Entry script',    'Deploy-Application.ps1',     'Invoke-AppDeployToolkit.ps1'],
-                  ['Config',          'AppDeployToolkitConfig.xml', 'Config/Config.psd1'],
-                  ['Cmdlet prefix',   'None (Execute-Process…)',    'ADT (Start-ADTProcess…)'],
-                  ['Module loading',  'Dot-source .ps1 files',      'Import-Module PSAppDeployToolkit'],
-                  ['Extensions',      'Not supported',               'PSAppDeployToolkit.Extensions/'],
-                  ['Custom assets',   'Assets/ folder',             'Assets/ folder'],
+                  ['Entry script', 'Deploy-Application.ps1', 'Invoke-AppDeployToolkit.ps1'],
+                  ['Config', 'AppDeployToolkitConfig.xml', 'Config/Config.psd1'],
+                  ['Cmdlet prefix', 'None (Execute-Process…)', 'ADT (Start-ADTProcess…)'],
+                  ['Module loading', 'Dot-source .ps1 files', 'Import-Module PSAppDeployToolkit'],
+                  ['Extensions', 'Not supported', 'PSAppDeployToolkit.Extensions/'],
+                  ['Custom assets', 'Assets/ folder', 'Assets/ folder'],
                 ].map(([feature, v3, v4]) => (
                   <tr key={feature} className="border-b last:border-0">
                     <td className="p-2 font-medium text-gray-600">{feature}</td>
@@ -183,7 +182,11 @@ export default function Help() {
         <Section id="folders" title="Package Folders" icon={FolderIcon}>
           <p>
             Every v4 package contains the following subfolders. Click the corresponding tab in the
-            package detail view to manage each one.
+            package detail view to manage each one. If you have the PSADT 4.1.x module installed,
+            the app can auto-populate the <Code>PSAppDeployToolkit/</Code> folder with the necessary
+            .psm1 and .psd1 files for your scripts to work out of the box. Alternatively, you can
+            populate that folder manually from the official PSADT GitHub repo or your own custom
+            toolkit module.
           </p>
           {[
             {
@@ -372,7 +375,7 @@ export default function Help() {
           </p>
           <h3 className="font-semibold mt-3 mb-1">First-time setup</h3>
           <div className="space-y-1.5">
-            <Step n={1}>Open <strong>DMT Tools</strong> and select your WSL instance from the dropdown.</Step>
+            <Step n={1}>Open <strong>DMT Tools</strong> and select your WSL instance from the dropdown. (see NOTE below)</Step>
             <Step n={2}>The app checks whether the required tools (Node.js, Ansible, Python venv) are installed. If not, click <strong>Run Setup</strong>.</Step>
             <Step n={3}>Once setup completes, the Ansible UI loads in an embedded frame.</Step>
           </div>
@@ -385,6 +388,33 @@ export default function Help() {
           <Callout type="info">
             Use the <strong>Terminal</strong> button in the DMT Tools header to open an integrated
             terminal directly inside the WSL instance without leaving the app.
+          </Callout>
+          <Callout type="info">
+            <p className="font-semibold">NOTE:</p>
+            <p>
+              The most current Ubuntu <Code>"Noble Numbat" version 24.04 LTS for WSL</Code> can be downloaded from here:
+            </p>
+            <p className="mt-2">
+              <a href="https://cdimages.ubuntu.com/ubuntu-wsl/noble/daily-live/current/" target="_blank">https://cdimages.ubuntu.com/ubuntu-wsl/noble/daily-live/current/</a>
+            </p>
+            <p className="mt-2">
+              From a powershell terminal, run the following to import the image.
+            </p>
+
+            <p className="mt-2">
+            <Code>wsl --import MyAnsibleUbuntu $env:userprofile\MyAnsibleUbuntu "&lt;PATH TO&gt;\noble-wsl-amd64.wsl"</Code>
+            </p>
+
+            <p className="mt-2">
+              This will create a new WSL distribution on your PC named <strong>MyAnsibleUbuntu</strong>, stored in <strong>$env:userprofile\MyAnsibleUbuntu</strong>.
+              The default user when importing a base image will be root. You can create the initial WSL user manually or continue using root. If you add a default user (UID 1000), or install the ansible ui to an existing wsl distribution created uses the normal method (wsl --install -d Ubuntu-24.04), you will need to use the "Run as root" checkbox to install the app to your WSL instance.
+            </p>
+            <p className="mt-2">
+              To remove the image if you no longer need it, run the following:
+            </p>
+            <p className="mt-2">
+            <Code>wsl --unregister MyAnsibleUbuntu</Code>
+            </p>
           </Callout>
         </Section>
       </div>
