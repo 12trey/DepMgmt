@@ -926,7 +926,7 @@ function App() {
                                 <span style={{ color: '#6b7280', fontWeight: 500 }}>Start</span><span>{taskValue.task.duration.start}</span>
                                 <span style={{ color: '#6b7280', fontWeight: 500 }}>End</span><span>{taskValue.task.duration.end}</span>
                               </div>
-                              <pre style={{ fontFamily: 'ui-monospace, Consolas, monospace', fontSize: '12px', margin: 0, background: '#fff', padding: '8px', borderRadius: '4px', border: '1px solid #e5e7eb', overflow: 'auto', whiteSpace: 'pre-wrap' }}>{hostValue.stdout}</pre>
+                              <pre style={{ fontFamily: 'ui-monospace, Consolas, monospace', fontSize: '12px', margin: 0, background: '#fff', padding: '8px', borderRadius: '4px', border: '1px solid #e5e7eb', overflow: 'auto', whiteSpace: 'pre-wrap' }}>{ hostValue.stdout ? hostValue.stdout : hostValue.output ? hostValue.output : hostValue.msg ? hostValue.msg : "" }</pre>
                             </div>
                           ))
                           : null
