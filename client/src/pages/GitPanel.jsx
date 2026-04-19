@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { gitClone, gitPull, gitPush, gitLog } from '../api';
 import { GitBranch, ArrowUp, ArrowDown, RefreshCw, Upload, Download } from 'lucide-react';
+import { useConfigContext } from '../context/ConfigContext';
 
 export default function GitPanel() {
   const [repoLog, setRepoLog] = useState(null);
@@ -9,8 +10,9 @@ export default function GitPanel() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState('');
 
+  const { configVersion } = useConfigContext();
   const loadLog = () => gitLog().then(setRepoLog).catch(() => {});
-  useEffect(() => { loadLog(); }, []);
+  useEffect(() => { loadLog(); }, [configVersion]);
 
   const action = async (name, fn) => {
     setLoading(name); setMsg(''); setError('');

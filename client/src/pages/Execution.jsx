@@ -13,6 +13,7 @@ export default function Execution() {
   const [activeExecId, setActiveExecId] = useState(null);
   const [tab, setTab] = useState('single'); // 'single' | 'wrapper'
   const [singleForm, setSingleForm] = useState({ appName: navState?.appName || '', version: navState?.version || '', deploymentType: 'Install', mode: 'Silent', target: '', username: '', password: '' });
+  const [useAltCreds, setUseAltCreds] = useState(false);
   const [wrapperSteps, setWrapperSteps] = useState([]);
   const { messages, subscribe, clear } = useWebSocket(activeExecId);
   const terminalRef = useRef();
@@ -29,7 +30,8 @@ export default function Execution() {
   const handleRunSingle = async () => {
     clear();
     const { appName, version, deploymentType, mode, target, username, password } = singleForm;
-    const result = await runPackage(appName, version, mode, deploymentType, target || undefined, username || undefined, password || undefined);
+    const creds = useAltCreds && username && password ? { username, password } : {};
+    const result = await runPackage(appName, version, mode, deploymentType, target || undefined, creds.username, creds.password);
     setActiveExecId(result.id);
     subscribe(result.id);
   };
@@ -86,7 +88,7 @@ export default function Execution() {
               </label>
               <button onClick={handleRunSingle} disabled={!singleForm.appName} className="btn-primary"><Play size={16} /> Run</button>
             </div>
-            <div className="border-t pt-3">
+            <div className="border-t pt-3 space-y-3">
               <label className="block">
                 <span className="text-sm font-medium text-gray-700">Remote Target <span className="text-gray-400 font-normal">(optional — leave blank to run locally)</span></span>
                 <input
@@ -97,19 +99,49 @@ export default function Execution() {
                 />
               </label>
               {singleForm.target && (
-                <div className="flex gap-3 mt-2">
-                  <label className="block flex-1">
-                    <span className="text-sm font-medium text-gray-700">Username <span className="text-gray-400 font-normal">(optional)</span></span>
-                    <input className="input mt-1" placeholder="DOMAIN\user" value={singleForm.username} onChange={(e) => setSingleForm({ ...singleForm, username: e.target.value })} autoComplete="username" />
-                  </label>
-                  <label className="block flex-1">
-                    <span className="text-sm font-medium text-gray-700">Password <span className="text-gray-400 font-normal">(optional)</span></span>
-                    <input className="input mt-1" type="password" value={singleForm.password} onChange={(e) => setSingleForm({ ...singleForm, password: e.target.value })} autoComplete="current-password" />
-                  </label>
-                </div>
+                <p className="text-xs text-gray-400">Requires WinRM enabled on the target. Package files are copied to a temp directory, executed, then removed.</p>
               )}
-              {singleForm.target && (
-                <p className="text-xs text-gray-400 mt-1">Requires WinRM enabled on the target. Package files are copied to a temp directory, executed, then removed. Remote output is displayed when execution completes.</p>
+
+              <label className="flex items-center gap-2 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  className="rounded"
+                  checked={useAltCreds}
+                  onChange={(e) => setUseAltCreds(e.target.checked)}
+                />
+                <span className="text-sm font-medium text-gray-700">Use alternate credentials</span>
+              </label>
+
+              {useAltCreds && (
+                <div className="space-y-2 pl-1">
+                  <div className="flex gap-3">
+                    <label className="block flex-1">
+                      <span className="text-sm font-medium text-gray-700">Username</span>
+                      <input
+                        className="input mt-1"
+                        placeholder={singleForm.target ? 'DOMAIN\\user or .\\localuser' : '.\\localuser or DOMAIN\\user'}
+                        value={singleForm.username}
+                        onChange={(e) => setSingleForm({ ...singleForm, username: e.target.value })}
+                        autoComplete="username"
+                      />
+                    </label>
+                    <label className="block flex-1">
+                      <span className="text-sm font-medium text-gray-700">Password</span>
+                      <input
+                        className="input mt-1"
+                        type="password"
+                        value={singleForm.password}
+                        onChange={(e) => setSingleForm({ ...singleForm, password: e.target.value })}
+                        autoComplete="current-password"
+                      />
+                    </label>
+                  </div>
+                  <p className="text-xs text-gray-400">
+                    {singleForm.target
+                      ? 'Used for WinRM authentication to the remote target. Supports local accounts (MACHINE\\user or .\\user) and domain accounts (DOMAIN\\user or user@domain.com).'
+                      : 'Runs the deployment as this user on the local machine via Start-Process -Credential. Use .\\user for local workgroup accounts or DOMAIN\\user for domain accounts.'}
+                  </p>
+                </div>
               )}
             </div>
           </div>

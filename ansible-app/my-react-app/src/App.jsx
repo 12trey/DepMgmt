@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import Editor from '@monaco-editor/react';
+import { Folder, FileText, ChevronUp, Play, Server } from 'lucide-react';
 import './App.css';
 
 const BASE = 'http://localhost:7000';
@@ -283,30 +284,31 @@ const WIN_TASKS = [
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 const ctxItemStyle = {
-  padding: '7px 14px',
+  padding: '6px 12px',
   fontSize: '13px',
-  color: 'var(--text)',
+  color: '#374151',
   cursor: 'pointer',
   userSelect: 'none',
   whiteSpace: 'nowrap',
 };
 
 const ctxLabelStyle = {
-  padding: '6px 14px 4px',
+  padding: '6px 12px 5px',
   fontSize: '11px',
-  color: '#888',
-  borderBottom: '1px solid var(--border)',
-  fontFamily: 'monospace',
+  color: '#6b7280',
+  borderBottom: '1px solid #e5e7eb',
+  fontFamily: 'ui-monospace, Consolas, monospace',
   overflow: 'hidden',
   textOverflow: 'ellipsis',
-  maxWidth: '200px',
+  maxWidth: '220px',
+  background: '#f9fafb',
 };
 
 function CtxItem({ children, onClick }) {
   return (
     <div
       style={ctxItemStyle}
-      onMouseEnter={e => (e.currentTarget.style.background = 'var(--accent-bg)')}
+      onMouseEnter={e => (e.currentTarget.style.background = '#f3f4f6')}
       onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
       onClick={onClick}
     >
@@ -600,15 +602,15 @@ function App() {
           onClick={e => e.stopPropagation()}
           style={{
             position: 'fixed', top: ctxMenu.y, left: ctxMenu.x,
-            zIndex: 9999, background: 'var(--code-bg)',
-            border: '1px solid var(--border)', borderRadius: '6px',
-            minWidth: '160px', boxShadow: '0 4px 14px rgba(0,0,0,0.4)',
-            overflow: 'hidden',
+            zIndex: 9999, background: '#fff',
+            border: '1px solid #e5e7eb', borderRadius: '8px',
+            minWidth: '170px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -1px rgba(0,0,0,0.06)',
+            overflow: 'hidden', padding: '4px 0',
           }}
         >
           <div style={ctxLabelStyle}>{ctxMenu.name}</div>
           <CtxItem onClick={() => { openEditor(ctxMenu.item); setCtxMenu(null); }}>
-            ✏️ Edit
+            Edit
           </CtxItem>
           {ctxMenu.isYaml && (
             <CtxItem onClick={() => {
@@ -616,7 +618,7 @@ function App() {
               setSelectedYaml(prev => prev === fp ? '' : fp);
               setCtxMenu(null);
             }}>
-              {selectedYaml === fullPath(ctxMenu.item) ? '☑ Deselect Playbook' : '▶ Set as Playbook'}
+              {selectedYaml === fullPath(ctxMenu.item) ? 'Deselect Playbook' : 'Set as Playbook'}
             </CtxItem>
           )}
           {ctxMenu.isIni && (
@@ -625,80 +627,70 @@ function App() {
               setSelectedIni(prev => prev === fp ? '' : fp);
               setCtxMenu(null);
             }}>
-              {selectedIni === fullPath(ctxMenu.item) ? '☑ Deselect Hosts' : '🖥 Set as Hosts'}
+              {selectedIni === fullPath(ctxMenu.item) ? 'Deselect Hosts' : 'Set as Hosts'}
             </CtxItem>
           )}
-          <div style={{ borderTop: '1px solid var(--border)', marginTop: '2px', paddingTop: '2px' }} />
+          <div style={{ borderTop: '1px solid #e5e7eb', margin: '4px 0' }} />
           <CtxItem onClick={() => {
             const name = ctxMenu.item.split('/').pop();
             setRenameFile({ item: ctxMenu.item, path: fullPath(ctxMenu.item), name });
             setCtxMenu(null);
           }}>
-            ✏ Rename
+            Rename
           </CtxItem>
           <CtxItem onClick={() => {
             setDeleteFile({ item: ctxMenu.item, path: fullPath(ctxMenu.item) });
             setCtxMenu(null);
           }}>
-            <span style={{ color: '#f87171' }}>🗑 Delete</span>
+            <span style={{ color: '#dc2626' }}>Delete</span>
           </CtxItem>
         </div>
       )}
 
       {/* ── File browser ── */}
       <section id="filebrowser">
-        <div className="filebrowser" style={{ textAlign: 'left' }}>
-          <div style={{ fontSize: '11px', color: '#888', marginBottom: '6px' }}>
-            📂 <span title={cwd}>{cwd}</span>
+        <div className="filebrowser">
+          {/* Path breadcrumb */}
+          <div style={{ fontSize: '11px', color: '#6b7280', marginBottom: '8px', fontFamily: 'ui-monospace, Consolas, monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {cwd}
           </div>
 
           {parentFolder !== cwd && (
-            <div className="fileName" onClick={() => getFiles(parentFolder)} title="Go up">
-              ↖ ..
+            <div className="fileName" onClick={() => getFiles(parentFolder)} title="Go up one folder">
+              <ChevronUp size={14} style={{ marginRight: '5px', color: '#9ca3af', flexShrink: 0 }} />
+              <span>..</span>
             </div>
           )}
 
           {files?.folders?.map((item, i) => (
-            <div key={i} className="fileName" title={item.split('/').pop()}
-              onClick={() => getFiles(item)}>
-              📁 {item.split('/').pop()}
+            <div key={i} className="fileName" title={item.split('/').pop()} onClick={() => getFiles(item)}>
+              <Folder size={14} style={{ marginRight: '6px', color: '#f59e0b', flexShrink: 0 }} />
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.split('/').pop()}</span>
             </div>
-          )) ?? <p>Loading…</p>}
+          )) ?? <p style={{ fontSize: '13px', color: '#9ca3af' }}>Loading…</p>}
 
           {files?.files?.map((item, i) => {
             const fp = fullPath(item);
             const name = item.split('/').pop();
-            const isSelected = fp === selectedYaml || fp === selectedIni;
+            const isYamlSel = fp === selectedYaml;
+            const isIniSel  = fp === selectedIni;
+            const isSelected = isYamlSel || isIniSel;
             const isRenaming = renameFile?.item === item;
             const isDeleting = deleteFile?.item === item;
 
             if (isRenaming) {
               return (
-                <div key={i} style={{ marginBottom: '8px' }}>
+                <div key={i} style={{ marginBottom: '6px' }}>
                   <input
                     ref={renameInputRef}
                     value={renameFile.name}
                     onChange={e => setRenameFile(f => ({ ...f, name: e.target.value }))}
-                    onKeyDown={e => {
-                      if (e.key === 'Enter') doRename();
-                      if (e.key === 'Escape') setRenameFile(null);
-                    }}
-                    style={{
-                      width: '100%', boxSizing: 'border-box',
-                      background: '#0f0f1a', border: '1px solid #6366f1',
-                      borderRadius: '4px', padding: '3px 6px',
-                      color: 'var(--text)', fontSize: '12px', outline: 'none',
-                    }}
+                    onKeyDown={e => { if (e.key === 'Enter') doRename(); if (e.key === 'Escape') setRenameFile(null); }}
+                    className="app-input"
                   />
-                  <div style={{ display: 'flex', gap: '4px', marginTop: '3px' }}>
-                    <button onClick={doRename}
-                      style={{ flex: 1, background: '#3b82f6', color: '#fff', border: 'none', borderRadius: '4px', padding: '2px 0', fontSize: '11px', cursor: 'pointer' }}>
-                      Rename
-                    </button>
-                    <button onClick={() => setRenameFile(null)}
-                      style={{ background: 'var(--accent-bg)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: '4px', padding: '2px 6px', fontSize: '11px', cursor: 'pointer' }}>
-                      ✕
-                    </button>
+                  <div style={{ display: 'flex', gap: '4px', marginTop: '4px' }}>
+                    <button onClick={doRename} className="btn-primary" style={{ flex: 1, padding: '4px 0', fontSize: '12px', justifyContent: 'center' }}>Rename</button>
+                    <button onClick={() => setRenameFile(null)} className="btn-secondary" style={{ padding: '4px 8px', fontSize: '12px' }}>✕</button>
                   </div>
                 </div>
               );
@@ -706,17 +698,11 @@ function App() {
 
             if (isDeleting) {
               return (
-                <div key={i} style={{ marginBottom: '8px', padding: '4px 6px', background: '#1f0000', border: '1px solid #7f1d1d', borderRadius: '4px', fontSize: '12px' }}>
-                  <div style={{ color: '#fca5a5', marginBottom: '4px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Delete {name}?</div>
+                <div key={i} style={{ marginBottom: '6px', padding: '8px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '6px', fontSize: '12px' }}>
+                  <div style={{ color: '#991b1b', marginBottom: '6px', fontWeight: 500 }}>Delete {name}?</div>
                   <div style={{ display: 'flex', gap: '4px' }}>
-                    <button onClick={doDelete}
-                      style={{ flex: 1, background: '#dc2626', color: '#fff', border: 'none', borderRadius: '4px', padding: '2px 0', fontSize: '11px', cursor: 'pointer' }}>
-                      Delete
-                    </button>
-                    <button onClick={() => setDeleteFile(null)}
-                      style={{ background: 'var(--accent-bg)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: '4px', padding: '2px 6px', fontSize: '11px', cursor: 'pointer' }}>
-                      Cancel
-                    </button>
+                    <button onClick={doDelete} style={{ flex: 1, background: '#dc2626', color: '#fff', border: 'none', borderRadius: '5px', padding: '4px 0', fontSize: '12px', cursor: 'pointer', fontWeight: 500 }}>Delete</button>
+                    <button onClick={() => setDeleteFile(null)} className="btn-secondary" style={{ padding: '4px 8px', fontSize: '12px' }}>Cancel</button>
                   </div>
                 </div>
               );
@@ -725,61 +711,49 @@ function App() {
             return (
               <div
                 key={i}
-                className="fileName"
+                className={`fileName${isSelected ? ' selected' : ''}`}
                 title={`Left-click to select · Right-click for options\n${item}`}
                 onClick={() => selectFile(item)}
                 onContextMenu={e => handleContextMenu(e, item)}
-                style={isSelected ? { background: '#2a2a3e', borderColor: '#6366f1' } : {}}
               >
-                📄 {name}
-                {fp === selectedYaml && <span style={{ float: 'right', fontSize: '10px', color: '#818cf8' }}>▶</span>}
-                {fp === selectedIni  && <span style={{ float: 'right', fontSize: '10px', color: '#34d399' }}>H</span>}
+                <FileText size={14} style={{ marginRight: '6px', color: '#6b7280', flexShrink: 0 }} />
+                <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis' }}>{name}</span>
+                {isYamlSel && <Play size={10} style={{ color: '#2563eb', flexShrink: 0, marginLeft: '4px' }} />}
+                {isIniSel  && <Server size={10} style={{ color: '#059669', flexShrink: 0, marginLeft: '4px' }} />}
               </div>
             );
           }) ?? null}
 
           {/* New file controls */}
-          <div style={{ marginTop: '10px', borderTop: '1px solid var(--border)', paddingTop: '8px', display: 'flex', gap: '4px' }}>
+          <div style={{ marginTop: '10px', paddingTop: '10px', borderTop: '1px solid #e5e7eb', display: 'flex', gap: '6px' }}>
             <button
               onClick={() => setNewFile(f => f?.type === 'yaml' ? null : { type: 'yaml', name: '' })}
-              style={{ flex: 1, background: 'var(--accent-bg)', color: 'var(--accent)', border: '1px solid var(--border)', borderRadius: '4px', padding: '3px 0', fontSize: '11px', cursor: 'pointer' }}
+              className="btn-secondary"
+              style={{ flex: 1, justifyContent: 'center', padding: '4px 0', fontSize: '12px' }}
             >+ YAML</button>
             <button
               onClick={() => setNewFile(f => f?.type === 'ini' ? null : { type: 'ini', name: '' })}
-              style={{ flex: 1, background: 'var(--accent-bg)', color: 'var(--accent)', border: '1px solid var(--border)', borderRadius: '4px', padding: '3px 0', fontSize: '11px', cursor: 'pointer' }}
+              className="btn-secondary"
+              style={{ flex: 1, justifyContent: 'center', padding: '4px 0', fontSize: '12px' }}
             >+ INI</button>
           </div>
 
           {newFile && (
-            <div style={{ marginTop: '6px' }}>
-              <div style={{ fontSize: '11px', color: '#888', marginBottom: '3px' }}>
-                New .{newFile.type} in {cwd}
+            <div style={{ marginTop: '8px' }}>
+              <div style={{ fontSize: '11px', color: '#6b7280', marginBottom: '4px' }}>
+                New .{newFile.type} file in <span style={{ fontFamily: 'monospace' }}>{cwd}</span>
               </div>
               <input
                 ref={newFileInputRef}
                 placeholder={`filename.${newFile.type}`}
                 value={newFile.name}
                 onChange={e => setNewFile(f => ({ ...f, name: e.target.value }))}
-                onKeyDown={e => {
-                  if (e.key === 'Enter') createFile();
-                  if (e.key === 'Escape') setNewFile(null);
-                }}
-                style={{
-                  width: '100%', boxSizing: 'border-box',
-                  background: '#0f0f1a', border: '1px solid var(--border)',
-                  borderRadius: '4px', padding: '4px 6px',
-                  color: 'var(--text)', fontSize: '12px', outline: 'none',
-                }}
+                onKeyDown={e => { if (e.key === 'Enter') createFile(); if (e.key === 'Escape') setNewFile(null); }}
+                className="app-input"
               />
-              <div style={{ display: 'flex', gap: '4px', marginTop: '4px' }}>
-                <button
-                  onClick={createFile}
-                  style={{ flex: 1, background: '#3b82f6', color: '#fff', border: 'none', borderRadius: '4px', padding: '3px 0', fontSize: '11px', cursor: 'pointer' }}
-                >Create</button>
-                <button
-                  onClick={() => setNewFile(null)}
-                  style={{ background: 'var(--accent-bg)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: '4px', padding: '3px 8px', fontSize: '11px', cursor: 'pointer' }}
-                >✕</button>
+              <div style={{ display: 'flex', gap: '4px', marginTop: '6px' }}>
+                <button onClick={createFile} className="btn-primary" style={{ flex: 1, justifyContent: 'center', padding: '5px 0', fontSize: '12px' }}>Create</button>
+                <button onClick={() => setNewFile(null)} className="btn-secondary" style={{ padding: '5px 10px', fontSize: '12px' }}>✕</button>
               </div>
             </div>
           )}
@@ -789,33 +763,22 @@ function App() {
       {/* ── Editor overlay ── */}
       {activeEditor && (
         <>
-          {/* Backdrop */}
-          <div
-            onClick={() => setActiveEditor(null)}
-            style={{
-              position: 'fixed', inset: 0,
-              background: 'rgba(0,0,0,0.55)',
-              zIndex: 999,
-            }}
-          />
-          {/* Panel */}
+          <div onClick={() => setActiveEditor(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 999 }} />
           <div style={{
-            position: 'fixed', inset: '16px',
-            zIndex: 1000,
-            background: '#0f0f1a',
-            border: '1px solid var(--border)',
+            position: 'fixed', inset: '16px', zIndex: 1000,
+            background: '#1e1e1e',
+            border: '1px solid #e5e7eb',
             borderRadius: '10px',
-            boxShadow: '0 24px 64px rgba(0,0,0,0.7)',
-            display: 'flex', flexDirection: 'column',
-            overflow: 'hidden',
+            boxShadow: '0 20px 60px rgba(0,0,0,0.35)',
+            display: 'flex', flexDirection: 'column', overflow: 'hidden',
           }}>
             {/* Header */}
             <div style={{
               display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-              padding: '8px 14px', borderBottom: '1px solid var(--border)',
+              padding: '8px 14px', borderBottom: '1px solid #374151',
               background: '#111827', gap: '8px', flexShrink: 0,
             }}>
-              <span style={{ fontSize: '12px', color: '#888', fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', flexShrink: 1 }}>
+              <span style={{ fontSize: '12px', color: '#9ca3af', fontFamily: 'ui-monospace, Consolas, monospace', overflow: 'hidden', textOverflow: 'ellipsis', flexShrink: 1 }}>
                 {activeEditor.path}
               </span>
               <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexShrink: 0 }}>
@@ -823,16 +786,18 @@ function App() {
                   <button
                     onClick={() => setShowTaskPanel(v => !v)}
                     style={{
-                      background: showTaskPanel ? '#4f46e5' : '#374151',
-                      color: '#fff', border: 'none', borderRadius: '5px',
-                      padding: '3px 10px', fontSize: '11px', cursor: 'pointer',
+                      background: showTaskPanel ? '#1e3a5f' : '#1f2937',
+                      color: showTaskPanel ? '#93c5fd' : '#d1d5db',
+                      border: `1px solid ${showTaskPanel ? '#3b82f6' : '#374151'}`,
+                      borderRadius: '5px', padding: '3px 10px',
+                      fontSize: '12px', cursor: 'pointer', fontWeight: 500,
                     }}
                   >
                     {showTaskPanel ? '▴ Tasks' : '▾ Insert Task'}
                   </button>
                 )}
                 {saveMsg && (
-                  <span style={{ fontSize: '11px', color: saveMsg.startsWith('Error') ? '#f87171' : '#86efac' }}>
+                  <span style={{ fontSize: '12px', color: saveMsg.startsWith('Error') ? '#fca5a5' : '#86efac', fontWeight: 500 }}>
                     {saveMsg}
                   </span>
                 )}
@@ -840,16 +805,17 @@ function App() {
                   onClick={saveFile}
                   disabled={saving}
                   style={{
-                    background: '#3b82f6', color: '#fff', border: 'none',
-                    borderRadius: '5px', padding: '3px 12px', fontSize: '12px',
-                    cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.6 : 1,
+                    background: saving ? '#1d4ed8' : '#2563eb', color: '#fff', border: 'none',
+                    borderRadius: '6px', padding: '4px 14px', fontSize: '13px',
+                    fontWeight: 500, cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.7 : 1,
                   }}
                 >{saving ? 'Saving…' : 'Save'}</button>
                 <button
                   onClick={() => setActiveEditor(null)}
                   style={{
-                    background: 'transparent', color: '#aaa', border: '1px solid var(--border)',
-                    borderRadius: '4px', padding: '2px 8px', fontSize: '13px', cursor: 'pointer',
+                    background: 'transparent', color: '#9ca3af',
+                    border: '1px solid #374151', borderRadius: '5px',
+                    padding: '3px 10px', fontSize: '13px', cursor: 'pointer',
                   }}
                 >✕</button>
               </div>
@@ -857,14 +823,9 @@ function App() {
 
             {/* Task injection panel */}
             {showTaskPanel && activeEditor.language === 'yaml' && (
-              <div style={{
-                padding: '8px 12px',
-                background: '#111827',
-                borderBottom: '1px solid #1f2937',
-                flexShrink: 0,
-              }}>
+              <div style={{ padding: '8px 12px', background: '#111827', borderBottom: '1px solid #1f2937', flexShrink: 0 }}>
                 <div style={{ fontSize: '11px', color: '#6b7280', marginBottom: '6px' }}>
-                  Click a module to scaffold it at the cursor position
+                  Click a module to insert a scaffold at the cursor
                 </div>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
                   {WIN_TASKS.map(task => (
@@ -873,13 +834,12 @@ function App() {
                       title={task.desc}
                       onClick={() => insertTask(task.snippet)}
                       style={{
-                        background: '#1e293b', color: '#a5b4fc',
+                        background: '#1e293b', color: '#93c5fd',
                         border: '1px solid #334155', borderRadius: '4px',
                         padding: '3px 8px', fontSize: '11px',
-                        cursor: 'pointer', fontFamily: 'monospace',
-                        transition: 'background 0.15s',
+                        cursor: 'pointer', fontFamily: 'ui-monospace, Consolas, monospace',
                       }}
-                      onMouseEnter={e => (e.currentTarget.style.background = '#293548')}
+                      onMouseEnter={e => (e.currentTarget.style.background = '#1e3a5f')}
                       onMouseLeave={e => (e.currentTarget.style.background = '#1e293b')}
                     >
                       {task.name}
@@ -889,7 +849,6 @@ function App() {
               </div>
             )}
 
-            {/* Editor fills remaining height */}
             <div style={{ flex: 1, overflow: 'hidden' }}>
               <Editor
                 height="100%"
@@ -897,17 +856,8 @@ function App() {
                 value={editorContent}
                 onChange={val => setEditorContent(val ?? '')}
                 theme="vs-dark"
-                onMount={(editor, monaco) => {
-                  editorRef.current = editor;
-                  monacoRef.current = monaco;
-                }}
-                options={{
-                  fontSize: 13,
-                  minimap: { enabled: false },
-                  scrollBeyondLastLine: false,
-                  wordWrap: 'on',
-                  automaticLayout: true,
-                }}
+                onMount={(editor, monaco) => { editorRef.current = editor; monacoRef.current = monaco; }}
+                options={{ fontSize: 13, minimap: { enabled: false }, scrollBeyondLastLine: false, wordWrap: 'on', automaticLayout: true }}
               />
             </div>
           </div>
@@ -916,74 +866,74 @@ function App() {
 
       {/* ── Center panel ── */}
       <section id="center">
+        <div className="card">
+          <h3 style={{ marginBottom: '12px' }}>Ansible Playbook Runner</h3>
 
-        <hr style={{ margin: '20px', backgroundColor: '#252525', border: 'none', borderTop: '1px solid #252525' }} />
-
-        {/* Playbook runner */}
-        <div>
-          <h3>Ansible playbook results</h3>
-          <div style={{ fontSize: '13px', color: '#aaa' }}>
-            Playbook: {selectedYaml
-              ? <span style={{ color: '#818cf8' }}>{selectedYaml}</span>
-              : <span style={{ color: '#555' }}>none selected — right-click a YAML file</span>}
-          </div>
-          <div style={{ fontSize: '13px', color: '#aaa', marginBottom: '8px' }}>
-            Hosts: {selectedIni
-              ? <span style={{ color: '#34d399' }}>{selectedIni}</span>
-              : <span style={{ color: '#555' }}>none selected — right-click an INI file</span>}
-          </div>
-
-          <button
-            className="counter"
-            onClick={SendTask}
-            disabled={!selectedYaml || !selectedIni}
-          >
-            Run playbook
-          </button>
-          {playbookStatus && (
-            <span style={{
-              marginLeft: '12px', fontSize: '13px',
-              color: playbookStatus.startsWith('✔') ? '#86efac'
-                   : playbookStatus.startsWith('✗') ? '#fca5a5'
-                   : '#94a3b8',
-            }}>
-              {playbookStatus}
-            </span>
-          )}
-
-          <div id="taskoutput" className="subpanel" style={{ maxHeight: '400px', margin: '20px' }}>
-            <div style={{ textAlign: 'left' }}>
-              <h4>Task output:</h4>
-              <div style={{ font: '12px monospace', margin: '10px' }}>
-                {typeof taskResult === 'string' ? <pre>{taskResult}</pre> : JSON.stringify(taskResult)}
-              </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '14px' }}>
+            <div style={{ fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <span style={{ color: '#6b7280', width: '64px', flexShrink: 0 }}>Playbook:</span>
+              {selectedYaml
+                ? <span style={{ color: '#2563eb', fontFamily: 'ui-monospace, Consolas, monospace', fontSize: '12px', background: '#eff6ff', padding: '2px 6px', borderRadius: '4px' }}>{selectedYaml}</span>
+                : <span style={{ color: '#9ca3af', fontSize: '12px' }}>none — right-click a YAML file to select</span>}
+            </div>
+            <div style={{ fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <span style={{ color: '#6b7280', width: '64px', flexShrink: 0 }}>Hosts:</span>
+              {selectedIni
+                ? <span style={{ color: '#059669', fontFamily: 'ui-monospace, Consolas, monospace', fontSize: '12px', background: '#f0fdf4', padding: '2px 6px', borderRadius: '4px' }}>{selectedIni}</span>
+                : <span style={{ color: '#9ca3af', fontSize: '12px' }}>none — right-click an INI file to select</span>}
             </div>
           </div>
 
-          <div className="subpanel" style={{ maxHeight: '400px', margin: '20px' }}>
-            <div style={{ textAlign: 'left' }}>
-              <h4>Play output:</h4>
-              {typeof playResults === 'object' && playResults != null
-                ? Object.entries(playResults.msg.plays).map(([key, value]) =>
-                    value.tasks
-                      ? Object.entries(value.tasks).map(([taskKey, taskValue]) =>
-                          taskValue.hosts
-                            ? Object.entries(taskValue.hosts).map(([hostKey, hostValue]) => (
-                              <div style={{ font: '14px Segoe UI', margin: '10px' }} key={`${key}-${taskKey}-${hostKey}`}>
-                                <h4>Task: {taskValue.task.name}</h4>
-                                <h4>Host: {hostKey}</h4>
-                                <h4>Start: {taskValue.task.duration.start}</h4>
-                                <h4>End: {taskValue.task.duration.end}</h4>
-                                <hr style={{ margin: '20px', backgroundColor: '#252525' }} />
-                                <pre>{hostValue.stdout}</pre>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <button className="counter" onClick={SendTask} disabled={!selectedYaml || !selectedIni}>
+              ▶ Run Playbook
+            </button>
+            {playbookStatus && (
+              <span style={{
+                fontSize: '13px', fontWeight: 500,
+                color: playbookStatus.startsWith('✔') ? '#059669'
+                     : playbookStatus.startsWith('✗') ? '#dc2626'
+                     : '#6b7280',
+              }}>
+                {playbookStatus}
+              </span>
+            )}
+          </div>
+        </div>
+
+        <div className="subpanel" style={{ maxHeight: '340px' }}>
+          <h4 style={{ marginBottom: '8px' }}>Task output</h4>
+          <div id="taskoutput" style={{ fontFamily: 'ui-monospace, Consolas, monospace', fontSize: '12px', color: '#374151', overflow: 'auto', maxHeight: '260px' }}>
+            {typeof taskResult === 'string'
+              ? <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>{taskResult || <span style={{ color: '#9ca3af' }}>No output yet.</span>}</pre>
+              : JSON.stringify(taskResult)}
+          </div>
+        </div>
+
+        <div className="subpanel" style={{ maxHeight: '340px' }}>
+          <h4 style={{ marginBottom: '8px' }}>Play output</h4>
+          <div style={{ overflow: 'auto', maxHeight: '270px' }}>
+            {typeof playResults === 'object' && playResults != null
+              ? Object.entries(playResults.msg.plays).map(([key, value]) =>
+                  value.tasks
+                    ? Object.entries(value.tasks).map(([taskKey, taskValue]) =>
+                        taskValue.hosts
+                          ? Object.entries(taskValue.hosts).map(([hostKey, hostValue]) => (
+                            <div key={`${key}-${taskKey}-${hostKey}`} style={{ marginBottom: '12px', padding: '10px', background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: '6px', fontSize: '13px' }}>
+                              <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '2px 10px', marginBottom: '8px' }}>
+                                <span style={{ color: '#6b7280', fontWeight: 500 }}>Task</span><span>{taskValue.task.name}</span>
+                                <span style={{ color: '#6b7280', fontWeight: 500 }}>Host</span><span>{hostKey}</span>
+                                <span style={{ color: '#6b7280', fontWeight: 500 }}>Start</span><span>{taskValue.task.duration.start}</span>
+                                <span style={{ color: '#6b7280', fontWeight: 500 }}>End</span><span>{taskValue.task.duration.end}</span>
                               </div>
-                            ))
-                            : ''
-                        )
-                      : ''
-                  )
-                : ''}
-            </div>
+                              <pre style={{ fontFamily: 'ui-monospace, Consolas, monospace', fontSize: '12px', margin: 0, background: '#fff', padding: '8px', borderRadius: '4px', border: '1px solid #e5e7eb', overflow: 'auto', whiteSpace: 'pre-wrap' }}>{hostValue.stdout}</pre>
+                            </div>
+                          ))
+                          : null
+                      )
+                    : null
+                )
+              : <span style={{ color: '#9ca3af', fontSize: '13px' }}>No results yet.</span>}
           </div>
         </div>
       </section>

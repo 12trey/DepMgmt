@@ -180,6 +180,28 @@ exports.deleteFolderFile = async (req, res) => {
   }
 };
 
+exports.readEntryScript = async (req, res) => {
+  try {
+    const { appName, version } = req.params;
+    const result = await packageService.readEntryScript(appName, version);
+    res.json(result);
+  } catch (err) {
+    res.status(404).json({ error: err.message });
+  }
+};
+
+exports.saveEntryScript = async (req, res) => {
+  try {
+    const { appName, version } = req.params;
+    const { content } = req.body;
+    if (content === undefined) return res.status(400).json({ error: 'content is required' });
+    await packageService.saveEntryScript(appName, version, content);
+    res.json({ message: 'Entry script saved' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
 exports.readFolderFile = async (req, res) => {
   try {
     const { appName, version, folder, filename } = req.params;

@@ -24,6 +24,10 @@ export const importPackage = (sourcePath) =>
   request('/packages/import', { method: 'POST', body: JSON.stringify({ sourcePath }) });
 export const regeneratePackage = (appName, version) =>
   request(`/packages/${appName}/${version}/regenerate`, { method: 'POST' });
+export const readEntryScript = (appName, version) =>
+  request(`/packages/${appName}/${version}/entry-script`);
+export const saveEntryScript = (appName, version, content) =>
+  request(`/packages/${appName}/${version}/entry-script`, { method: 'PUT', body: JSON.stringify({ content }) });
 export const listFiles = (appName, version) => request(`/packages/${appName}/${version}/files`);
 export const deleteFile = (appName, version, filename) =>
   request(`/packages/${appName}/${version}/files/${filename}`, { method: 'DELETE' });

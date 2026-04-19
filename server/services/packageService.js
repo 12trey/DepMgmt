@@ -51,7 +51,6 @@ if ($mod) { $mod.ModuleBase } else { '' }
 }
 exports.populateToolkitDir = populateToolkitDir;
 
-const pkgBase = paths.packagesDir;
 
 // Convert a comma-separated string like "excel,winword" into a PS array literal @('excel', 'winword')
 Handlebars.registerHelper('psArray', function (value) {
@@ -162,11 +161,11 @@ function parseExistingScript(dir, psadtVersion) {
 }
 
 exports.listAll = async () => {
-  if (!fs.existsSync(pkgBase)) return [];
-  const apps = fs.readdirSync(pkgBase, { withFileTypes: true }).filter((d) => d.isDirectory());
+  if (!fs.existsSync(paths.packagesDir)) return [];
+  const apps = fs.readdirSync(paths.packagesDir, { withFileTypes: true }).filter((d) => d.isDirectory());
   const result = [];
   for (const app of apps) {
-    const appDir = path.join(pkgBase, app.name);
+    const appDir = path.join(paths.packagesDir, app.name);
     const versions = fs.readdirSync(appDir, { withFileTypes: true }).filter((d) => d.isDirectory());
     for (const ver of versions) {
       const metaPath = path.join(appDir, ver.name, 'metadata.json');
@@ -181,7 +180,7 @@ exports.listAll = async () => {
 };
 
 exports.getApp = async (appName) => {
-  const appDir = path.join(pkgBase, appName);
+  const appDir = path.join(paths.packagesDir, appName);
   if (!fs.existsSync(appDir)) throw new Error('App not found');
   const versions = fs.readdirSync(appDir, { withFileTypes: true }).filter((d) => d.isDirectory());
   return { appName, versions: versions.map((v) => v.name) };
@@ -189,7 +188,7 @@ exports.getApp = async (appName) => {
 
 // Regenerate scripts for a package from its saved metadata and the current templates
 exports.regenerate = async (appName, version) => {
-  const dir = path.join(pkgBase, appName, version);
+  const dir = path.join(paths.packagesDir, appName, version);
   const metaPath = path.join(dir, 'metadata.json');
   if (!fs.existsSync(metaPath)) throw new Error('Package not found');
   const metadata = JSON.parse(fs.readFileSync(metaPath, 'utf-8'));
@@ -198,7 +197,7 @@ exports.regenerate = async (appName, version) => {
 };
 
 exports.getVersion = async (appName, version) => {
-  const metaPath = path.join(pkgBase, appName, version, 'metadata.json');
+  const metaPath = path.join(paths.packagesDir, appName, version, 'metadata.json');
   if (!fs.existsSync(metaPath)) throw new Error('Package not found');
   return JSON.parse(fs.readFileSync(metaPath, 'utf-8'));
 };
@@ -206,7 +205,7 @@ exports.getVersion = async (appName, version) => {
 exports.create = async (data) => {
   const { appName, version } = data;
   if (!appName || !version) throw new Error('appName and version are required');
-  const dir = path.join(pkgBase, appName, version);
+  const dir = path.join(paths.packagesDir, appName, version);
   const subdirs = data.psadtVersion === 'v4' ? V4_SUBDIRS : V3_SUBDIRS;
   for (const sub of subdirs) fs.mkdirSync(path.join(dir, sub), { recursive: true });
 
@@ -234,7 +233,7 @@ exports.create = async (data) => {
 };
 
 exports.update = async (appName, version, data) => {
-  const dir = path.join(pkgBase, appName, version);
+  const dir = path.join(paths.packagesDir, appName, version);
   const metaPath = path.join(dir, 'metadata.json');
   if (!fs.existsSync(metaPath)) throw new Error('Package not found');
 
@@ -247,7 +246,7 @@ exports.update = async (appName, version, data) => {
 };
 
 exports.getEntryScript = (appName, version) => {
-  const dir = path.join(pkgBase, appName, version);
+  const dir = path.join(paths.packagesDir, appName, version);
   const metaPath = path.join(dir, 'metadata.json');
   if (fs.existsSync(metaPath)) {
     const meta = JSON.parse(fs.readFileSync(metaPath, 'utf-8'));
@@ -258,30 +257,45 @@ exports.getEntryScript = (appName, version) => {
   return path.join(dir, 'Deploy-Application.ps1');
 };
 
+exports.readEntryScript = async (appName, version) => {
+  const scriptPath = exports.getEntryScript(appName, version);
+  if (!fs.existsSync(scriptPath)) throw new Error('Entry script not found');
+  return {
+    filename: path.basename(scriptPath),
+    content: fs.readFileSync(scriptPath, 'utf-8'),
+  };
+};
+
+exports.saveEntryScript = async (appName, version, content) => {
+  const scriptPath = exports.getEntryScript(appName, version);
+  if (!fs.existsSync(scriptPath)) throw new Error('Entry script not found');
+  fs.writeFileSync(scriptPath, content, 'utf-8');
+};
+
 exports.remove = async (appName, version) => {
-  const dir = path.join(pkgBase, appName, version);
+  const dir = path.join(paths.packagesDir, appName, version);
   if (!fs.existsSync(dir)) throw new Error('Package not found');
   fs.rmSync(dir, { recursive: true, force: true });
-  const appDir = path.join(pkgBase, appName);
+  const appDir = path.join(paths.packagesDir, appName);
   if (fs.existsSync(appDir) && fs.readdirSync(appDir).length === 0) {
     fs.rmdirSync(appDir);
   }
 };
 
 exports.listFiles = async (appName, version) => {
-  const filesDir = path.join(pkgBase, appName, version, 'Files');
+  const filesDir = path.join(paths.packagesDir, appName, version, 'Files');
   if (!fs.existsSync(filesDir)) return [];
   return fs.readdirSync(filesDir);
 };
 
 exports.deleteFile = async (appName, version, filename) => {
-  const filePath = path.join(pkgBase, appName, version, 'Files', filename);
+  const filePath = path.join(paths.packagesDir, appName, version, 'Files', filename);
   if (!fs.existsSync(filePath)) throw new Error('File not found');
   fs.unlinkSync(filePath);
 };
 
 exports.checkMissingFiles = async (appName, version) => {
-  const dir = path.join(pkgBase, appName, version);
+  const dir = path.join(paths.packagesDir, appName, version);
   const manifestPath = path.join(dir, 'files-manifest.json');
   if (!fs.existsSync(manifestPath)) return { hasManifest: false, missing: [], required: [] };
   const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'));
@@ -295,7 +309,7 @@ exports.checkMissingFiles = async (appName, version) => {
 
 exports.listFolderFiles = async (appName, version, folder) => {
   if (!ALLOWED_FOLDERS.has(folder)) throw new Error('Invalid folder');
-  const dir = path.join(pkgBase, appName, version, folder);
+  const dir = path.join(paths.packagesDir, appName, version, folder);
   if (!fs.existsSync(dir)) return [];
   return fs.readdirSync(dir)
     .filter(f => fs.statSync(path.join(dir, f)).isFile())
@@ -308,14 +322,14 @@ exports.listFolderFiles = async (appName, version, folder) => {
 
 exports.deleteFolderFile = async (appName, version, folder, filename) => {
   if (!ALLOWED_FOLDERS.has(folder)) throw new Error('Invalid folder');
-  const filePath = path.join(pkgBase, appName, version, folder, path.basename(filename));
+  const filePath = path.join(paths.packagesDir, appName, version, folder, path.basename(filename));
   if (!fs.existsSync(filePath)) throw new Error('File not found');
   fs.unlinkSync(filePath);
 };
 
 exports.readFolderFile = async (appName, version, folder, filename) => {
   if (!ALLOWED_FOLDERS.has(folder)) throw new Error('Invalid folder');
-  const filePath = path.join(pkgBase, appName, version, folder, path.basename(filename));
+  const filePath = path.join(paths.packagesDir, appName, version, folder, path.basename(filename));
   if (!fs.existsSync(filePath)) throw new Error('File not found');
   const ext = path.extname(filename).toLowerCase();
   if (!TEXT_EXTENSIONS.has(ext)) throw new Error('File is not text-editable');
@@ -324,14 +338,14 @@ exports.readFolderFile = async (appName, version, folder, filename) => {
 
 exports.saveFolderFile = async (appName, version, folder, filename, content) => {
   if (!ALLOWED_FOLDERS.has(folder)) throw new Error('Invalid folder');
-  const dir = path.join(pkgBase, appName, version, folder);
+  const dir = path.join(paths.packagesDir, appName, version, folder);
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(path.join(dir, path.basename(filename)), content, 'utf-8');
 };
 
 exports.getFolderFilePath = (appName, version, folder, filename) => {
   if (!ALLOWED_FOLDERS.has(folder)) throw new Error('Invalid folder');
-  const filePath = path.join(pkgBase, appName, version, folder, path.basename(filename));
+  const filePath = path.join(paths.packagesDir, appName, version, folder, path.basename(filename));
   if (!fs.existsSync(filePath)) throw new Error('File not found');
   return filePath;
 };
@@ -365,12 +379,12 @@ Notes
 // Create the .psd1 / .psm1 extension stubs for an existing package that
 // was created before stubs were added, or whose stubs were deleted.
 exports.createExtensionStubs = async (appName, version) => {
-  const dir = path.join(pkgBase, appName, version, 'PSAppDeployToolkit.Extensions');
+  const dir = path.join(paths.packagesDir, appName, version, 'PSAppDeployToolkit.Extensions');
   fs.mkdirSync(dir, { recursive: true });
 
   const psd1Path = path.join(dir, 'PSAppDeployToolkit.Extensions.psd1');
   const psm1Path = path.join(dir, 'PSAppDeployToolkit.Extensions.psm1');
-  const metaPath = path.join(pkgBase, appName, version, 'metadata.json');
+  const metaPath = path.join(paths.packagesDir, appName, version, 'metadata.json');
   const meta = fs.existsSync(metaPath) ? JSON.parse(fs.readFileSync(metaPath, 'utf-8')) : {};
 
   const created = [];
@@ -387,7 +401,7 @@ exports.createExtensionStubs = async (appName, version) => {
 
 // Create an asset README for packages whose Assets folder is empty.
 exports.createAssetReadme = async (appName, version) => {
-  const dir = path.join(pkgBase, appName, version, 'Assets');
+  const dir = path.join(paths.packagesDir, appName, version, 'Assets');
   fs.mkdirSync(dir, { recursive: true });
   const readmePath = path.join(dir, '!README.txt');
   if (fs.existsSync(readmePath)) return { created: [] };
@@ -413,7 +427,7 @@ exports.importFromPath = async (sourcePath) => {
   const appName = parsed.appName || path.basename(sourcePath);
   const version = parsed.version || '1.0';
 
-  const destDir = path.join(pkgBase, appName, version);
+  const destDir = path.join(paths.packagesDir, appName, version);
   if (fs.existsSync(destDir)) throw new Error(`Package ${appName} v${version} already exists.`);
 
   fs.cpSync(sourcePath, destDir, { recursive: true });

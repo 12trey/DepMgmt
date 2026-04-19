@@ -73,21 +73,21 @@ export default function KerberosBar() {
 
   if (status === null) {
     return (
-      <div style={barStyle('#1a1a2e', '#334155')}>
-        <span style={{ color: '#94a3b8', fontSize: '12px' }}>Checking Kerberos…</span>
+      <div style={barStyle('#f9fafb', '#e5e7eb')}>
+        <span style={{ color: '#6b7280', fontSize: '12px' }}>Checking Kerberos…</span>
       </div>
     );
   }
 
   if (status.valid) {
     return (
-      <div style={barStyle('#0f2420', '#166534')}>
-        <span style={{ fontSize: '11px' }}>🟢</span>
-        <span style={{ color: '#86efac', fontSize: '12px', fontWeight: 500 }}>
+      <div style={barStyle('#f0fdf4', '#bbf7d0')}>
+        <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#16a34a', display: 'inline-block', flexShrink: 0 }} />
+        <span style={{ color: '#15803d', fontSize: '12px', fontWeight: 500 }}>
           {status.principal}
         </span>
         {status.expires && (
-          <span style={{ color: '#6ee7b7', fontSize: '11px' }}>
+          <span style={{ color: '#6b7280', fontSize: '11px' }}>
             expires {status.expires}
           </span>
         )}
@@ -95,7 +95,7 @@ export default function KerberosBar() {
           <button
             onClick={() => checkStatus()}
             disabled={checking}
-            style={smallBtn('#1e3a2f')}
+            style={smallBtn()}
             title="Refresh ticket status"
           >
             {checking ? '…' : '↻ Refresh'}
@@ -103,7 +103,7 @@ export default function KerberosBar() {
           <button
             onClick={destroy}
             disabled={destroying}
-            style={smallBtn('#450a0a')}
+            style={smallBtn('#fee2e2', '#dc2626', '#b91c1c')}
             title="Destroy Kerberos ticket (kdestroy)"
           >
             {destroying ? 'Logging out…' : 'Log out'}
@@ -115,15 +115,15 @@ export default function KerberosBar() {
 
   // No valid ticket — show status + inline credential form
   return (
-    <div style={{ borderBottom: '1px solid #4a1942', background: '#1a0a1a' }}>
+    <div style={{ borderBottom: '1px solid #fecaca', background: '#fff5f5' }}>
       {/* Status row */}
-      <div style={{ ...barStyle('#1a0a1a', '#4a1942'), borderBottom: showForm ? '1px solid #4a1942' : 'none' }}>
-        <span style={{ fontSize: '11px' }}>🔴</span>
-        <span style={{ color: '#fca5a5', fontSize: '12px' }}>No valid Kerberos ticket</span>
+      <div style={{ ...barStyle('#fef2f2', '#fecaca'), borderBottom: showForm ? '1px solid #fecaca' : 'none' }}>
+        <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#dc2626', display: 'inline-block', flexShrink: 0 }} />
+        <span style={{ color: '#b91c1c', fontSize: '12px' }}>No valid Kerberos ticket</span>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: '8px' }}>
           <button
             onClick={() => { setShowForm(v => !v); setAuthError(''); }}
-            style={smallBtn('#7c2d12')}
+            style={smallBtn()}
           >
             {showForm ? 'Cancel' : 'Authenticate…'}
           </button>
@@ -134,7 +134,8 @@ export default function KerberosBar() {
       {showForm && (
         <form onSubmit={authenticate} style={{
           display: 'flex', alignItems: 'center', gap: '8px',
-          padding: '8px 12px', flexWrap: 'wrap',
+          padding: '8px 12px', background: '#fff', flexWrap: 'wrap',
+          borderTop: '1px solid #e5e7eb',
         }}>
           <input
             type="text"
@@ -156,17 +157,18 @@ export default function KerberosBar() {
             type="submit"
             disabled={authenticating}
             style={{
-              background: authenticating ? '#374151' : '#7c3aed',
+              background: authenticating ? '#93c5fd' : '#2563eb',
               color: '#fff', border: 'none', borderRadius: '5px',
-              padding: '5px 14px', fontSize: '12px',
+              padding: '5px 14px', fontSize: '12px', fontWeight: 500,
               cursor: authenticating ? 'not-allowed' : 'pointer',
+              transition: 'background 0.15s',
             }}
           >
             {authenticating ? 'Running kinit…' : 'Authenticate (kinit)'}
           </button>
           {authError && (
-            <span style={{ color: '#fca5a5', fontSize: '12px', width: '100%' }}>
-              ✗ {authError}
+            <span style={{ color: '#dc2626', fontSize: '12px', width: '100%' }}>
+              {authError}
             </span>
           )}
         </form>
@@ -187,16 +189,16 @@ function barStyle(bg, border) {
   };
 }
 
-function smallBtn(bg) {
+function smallBtn(bg = '#f3f4f6', color = '#374151', hoverBg = '#e5e7eb') {
   return {
-    background: bg, color: '#d1d5db', border: 'none',
+    background: bg, color, border: '1px solid #d1d5db',
     borderRadius: '4px', padding: '3px 10px',
-    fontSize: '11px', cursor: 'pointer',
+    fontSize: '11px', cursor: 'pointer', fontWeight: 500,
   };
 }
 
 const inputStyle = {
-  background: '#0f0f1a', border: '1px solid #6b21a8', borderRadius: '5px',
-  padding: '4px 8px', color: '#e2e8f0', fontSize: '12px', outline: 'none',
+  background: '#fff', border: '1px solid #d1d5db', borderRadius: '5px',
+  padding: '4px 8px', color: '#111827', fontSize: '12px', outline: 'none',
   width: '200px',
 };

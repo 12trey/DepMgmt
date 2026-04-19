@@ -83,17 +83,91 @@ function runScript(scriptPath, mode, execId, deploymentType = 'Install') {
   });
 }
 
-exports.runPackage = async (appName, version, mode, deploymentType = 'Install') => {
+function runScriptWithCredentials(scriptPath, mode, execId, deploymentType, username, password) {
+  return new Promise((resolve, reject) => {
+    const config = getConfig();
+    const psEsc = (s) => String(s).replace(/'/g, "''");
+
+    const script = [
+      `$ErrorActionPreference = 'Continue'`,
+      `$secPass = ConvertTo-SecureString '${psEsc(password)}' -AsPlainText -Force`,
+      `$cred = New-Object System.Management.Automation.PSCredential('${psEsc(username)}', $secPass)`,
+      `$tmpOut = [System.IO.Path]::Combine([System.IO.Path]::GetTempPath(), [System.Guid]::NewGuid().ToString('N') + '.out')`,
+      `$tmpErr = [System.IO.Path]::Combine([System.IO.Path]::GetTempPath(), [System.Guid]::NewGuid().ToString('N') + '.err')`,
+      `try {`,
+      `    $psArgs = "-NoProfile -NonInteractive -ExecutionPolicy Bypass -File \`"${psEsc(scriptPath)}\`" -DeploymentType ${psEsc(deploymentType)} -DeployMode ${psEsc(mode)}"`,
+      `    $proc = Start-Process powershell.exe -Credential $cred -ArgumentList $psArgs -Wait -WindowStyle Hidden -RedirectStandardOutput $tmpOut -RedirectStandardError $tmpErr -PassThru`,
+      `    if (Test-Path $tmpOut) { Get-Content $tmpOut | ForEach-Object { Write-Host $_ } }`,
+      `    if (Test-Path $tmpErr) { Get-Content $tmpErr | ForEach-Object { if ($_) { Write-Warning $_ } } }`,
+      `    exit $proc.ExitCode`,
+      `} finally {`,
+      `    Remove-Item $tmpOut, $tmpErr -ErrorAction SilentlyContinue`,
+      `}`,
+    ].join('\n');
+
+    const encoded = Buffer.from(script, 'utf16le').toString('base64');
+
+    const userProfile = process.env.USERPROFILE || '';
+    const sysRoot = process.env.SystemRoot || 'C:\\Windows';
+    const progFiles = process.env.ProgramFiles || 'C:\\Program Files';
+    const standardModPaths = [
+      ...(userProfile ? [
+        path.join(userProfile, 'Documents', 'WindowsPowerShell', 'Modules'),
+        path.join(userProfile, 'Documents', 'PowerShell', 'Modules'),
+      ] : []),
+      path.join(progFiles, 'WindowsPowerShell', 'Modules'),
+      path.join(progFiles, 'PowerShell', 'Modules'),
+      path.join(sysRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'Modules'),
+    ];
+    const baseParts = (process.env.PSModulePath || '').split(';').filter(Boolean);
+    const mergedParts = [...new Set([...standardModPaths, ...baseParts])];
+    const spawnEnv = { ...process.env, PSModulePath: mergedParts.join(';') };
+
+    const psArgs = [...config.execution.defaultArgs, '-EncodedCommand', encoded];
+    const child = spawn(config.execution.powershellPath, psArgs, { cwd: path.dirname(scriptPath), env: spawnEnv });
+    const logLines = [];
+
+    const onData = (stream) => (chunk) => {
+      const text = chunk.toString();
+      logLines.push(text);
+      broadcast(execId, text, stream);
+    };
+
+    child.stdout.on('data', onData('stdout'));
+    child.stderr.on('data', onData('stderr'));
+
+    child.on('close', (code) => {
+      const status = code === 0 ? 'Success' : 'Failed';
+      executions.set(execId, { ...executions.get(execId), status, exitCode: code, endedAt: new Date().toISOString() });
+      fs.writeFileSync(path.join(logsDir, `${execId}.log`), logLines.join(''));
+      fs.writeFileSync(path.join(logsDir, `${execId}.json`), JSON.stringify(executions.get(execId), null, 2));
+      broadcast(execId, `\n--- Execution ${status} (exit code ${code}) ---\n`, 'system');
+      resolve({ status, exitCode: code });
+    });
+
+    child.on('error', (err) => {
+      executions.set(execId, { ...executions.get(execId), status: 'Failed', error: err.message });
+      broadcast(execId, `Error: ${err.message}\n`, 'stderr');
+      reject(err);
+    });
+  });
+}
+
+exports.runPackage = async (appName, version, mode, deploymentType = 'Install', username, password) => {
   const scriptPath = packageService.getEntryScript(appName, version);
   if (!fs.existsSync(scriptPath)) throw new Error('Deploy script not found');
 
   const execId = uuidv4();
   const meta = { id: execId, appName, version, mode, deploymentType, status: 'Running', startedAt: new Date().toISOString() };
   executions.set(execId, meta);
-  broadcast(execId, `Starting deployment: ${appName} v${version} [${deploymentType}/${mode}]\n`, 'system');
 
-  // Run in background, don't await
-  runScript(scriptPath, mode, execId, deploymentType).catch(() => {});
+  if (username && password) {
+    broadcast(execId, `Starting deployment as '${username}': ${appName} v${version} [${deploymentType}/${mode}]\n`, 'system');
+    runScriptWithCredentials(scriptPath, mode, execId, deploymentType, username, password).catch(() => {});
+  } else {
+    broadcast(execId, `Starting deployment: ${appName} v${version} [${deploymentType}/${mode}]\n`, 'system');
+    runScript(scriptPath, mode, execId, deploymentType).catch(() => {});
+  }
 
   return { id: execId, status: 'Running' };
 };

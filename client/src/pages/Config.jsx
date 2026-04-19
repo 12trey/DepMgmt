@@ -2,10 +2,13 @@ import { useEffect, useState } from 'react';
 import { Plus, Trash2, CheckCircle, AlertCircle, Loader, FolderOpen } from 'lucide-react';
 import { getConfig, updateConfig, verifyGroup, browseFolder } from '../api';
 import { useAdCredential } from '../context/AdCredentialContext';
+import { useConfigContext } from '../context/ConfigContext';
 
 export default function Config() {
   const { adUsername, adPassword } = useAdCredential();
+  const { notifyConfigSaved } = useConfigContext();
   const [config, setConfig] = useState(null);
+  const [savedPaths, setSavedPaths] = useState({ repoPath: '', basePath: '' });
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState('');
   const [msgType, setMsgType] = useState('info'); // 'info' | 'error'
@@ -16,7 +19,10 @@ export default function Config() {
   const [verifyResult, setVerifyResult] = useState(null); // { exists, name, description, error }
 
   useEffect(() => {
-    getConfig().then(setConfig).catch(() => {});
+    getConfig().then((c) => {
+      setConfig(c);
+      setSavedPaths({ repoPath: c.repository?.localPath || '', basePath: c.packages?.basePath || '' });
+    }).catch(() => {});
   }, []);
 
   const handleSave = async () => {
@@ -24,9 +30,15 @@ export default function Config() {
     setMsg('');
     try {
       const result = await updateConfig(config);
+      const newRepoPath = result.repository?.localPath || '';
+      const newBasePath = result.packages?.basePath || '';
+      const pathsChanged =
+        newRepoPath !== savedPaths.repoPath || newBasePath !== savedPaths.basePath;
       setConfig(result);
+      setSavedPaths({ repoPath: newRepoPath, basePath: newBasePath });
       setMsg('Configuration saved.');
       setMsgType('info');
+      if (pathsChanged) notifyConfigSaved();
     } catch (err) {
       setMsg(`Error: ${err.message}`);
       setMsgType('error');

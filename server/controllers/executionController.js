@@ -5,7 +5,7 @@ exports.run = async (req, res) => {
     const { appName, version, mode, deploymentType, target, username, password } = req.body;
     const result = target
       ? await executionService.runRemote(appName, version, mode || 'Silent', target, username, password, deploymentType || 'Install')
-      : await executionService.runPackage(appName, version, mode || 'Silent', deploymentType || 'Install');
+      : await executionService.runPackage(appName, version, mode || 'Silent', deploymentType || 'Install', username || undefined, password || undefined);
     res.json(result);
   } catch (err) {
     res.status(500).json({ error: err.message });
