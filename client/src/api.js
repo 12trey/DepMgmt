@@ -109,6 +109,8 @@ export const gitLog = () => request('/git/log');
 // Config
 export const getConfig = () => request('/config');
 export const updateConfig = (data) => request('/config', { method: 'PUT', body: JSON.stringify(data) });
+export const browseFolder = (initialPath = '') =>
+  request('/config/browse-folder', { method: 'POST', body: JSON.stringify({ initialPath }) });
 
 // MSI Builder
 export const detectMsiTools = () => request('/msi/detect-tools');

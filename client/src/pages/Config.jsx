@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Plus, Trash2, CheckCircle, AlertCircle, Loader } from 'lucide-react';
-import { getConfig, updateConfig, verifyGroup } from '../api';
+import { Plus, Trash2, CheckCircle, AlertCircle, Loader, FolderOpen } from 'lucide-react';
+import { getConfig, updateConfig, verifyGroup, browseFolder } from '../api';
 import { useAdCredential } from '../context/AdCredentialContext';
 
 export default function Config() {
@@ -109,12 +109,20 @@ export default function Config() {
           label="Repository Local Path"
           value={config.repository?.localPath || ''}
           onChange={(v) => setNested('repository', 'localPath', v)}
+          onBrowse={async () => {
+            const result = await browseFolder(config.repository?.localPath || '');
+            if (result.path) setNested('repository', 'localPath', result.path);
+          }}
           className="mt-3"
         />
         <Field
           label="Packages Base Path"
           value={config.packages?.basePath || ''}
           onChange={(v) => setNested('packages', 'basePath', v)}
+          onBrowse={async () => {
+            const result = await browseFolder(config.packages?.basePath || '');
+            if (result.path) setNested('packages', 'basePath', result.path);
+          }}
           className="mt-3"
         />
         <Field
@@ -287,17 +295,38 @@ function Section({ title, children }) {
   );
 }
 
-function Field({ label, hint, value, onChange, className = '', placeholder = '' }) {
+function Field({ label, hint, value, onChange, onBrowse, className = '', placeholder = '' }) {
+  const [browsing, setBrowsing] = useState(false);
+
+  const handleBrowse = async () => {
+    setBrowsing(true);
+    try { await onBrowse(); } finally { setBrowsing(false); }
+  };
+
   return (
-    <label className={`block ${className}`}>
+    <div className={`block ${className}`}>
       <span className="text-sm font-medium text-gray-700">{label}</span>
       {hint && <span className="text-xs text-gray-400 ml-2">{hint}</span>}
-      <input
-        className="input mt-1"
-        value={value}
-        placeholder={placeholder}
-        onChange={(e) => onChange(e.target.value)}
-      />
-    </label>
+      <div className="flex gap-2 mt-1">
+        <input
+          className="input flex-1"
+          value={value}
+          placeholder={placeholder}
+          onChange={(e) => onChange(e.target.value)}
+        />
+        {onBrowse && (
+          <button
+            type="button"
+            onClick={handleBrowse}
+            disabled={browsing}
+            className="btn-secondary flex-shrink-0 flex items-center gap-1.5 px-3"
+            title="Browse for folder"
+          >
+            {browsing ? <Loader size={14} className="animate-spin" /> : <FolderOpen size={14} />}
+            Browse
+          </button>
+        )}
+      </div>
+    </div>
   );
 }

@@ -93,7 +93,7 @@ export default function GitPanel() {
         setGitUsername(d.gitUsername || '');
         setGitToken(d.gitToken || '');
       })
-      .catch(() => {});
+      .catch(() => { });
   }, []);
 
   async function saveUrl() {
@@ -134,7 +134,7 @@ export default function GitPanel() {
       for (const part of parts) {
         const line = part.replace(/^data: /, '');
         if (line) {
-          try { setCloneLog(prev => [...prev, JSON.parse(line)]); } catch {}
+          try { setCloneLog(prev => [...prev, JSON.parse(line)]); } catch { }
         }
       }
     }
@@ -330,33 +330,37 @@ export default function GitPanel() {
       {/* ── Commit ── */}
       {status && (
         <section style={sectionStyle}>
-          <h3 style={headingStyle}>Commit</h3>
-          <input
-            type="text"
-            value={commitMsg}
-            onChange={e => { setCommitMsg(e.target.value); setCommitError(''); }}
-            placeholder="Commit message…"
-            style={inputStyle}
-            onKeyDown={e => { if (e.key === 'Enter') doCommit(); }}
-          />
-          {commitError && (
-            <div style={{ color: '#f88', fontSize: '12px', marginTop: '4px' }}>{commitError}</div>
-          )}
-          <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
-            <button
-              onClick={doCommit}
-              disabled={committing || !commitMsg.trim()}
-              style={btnStyle('primary', committing || !commitMsg.trim())}
-            >
-              {committing ? 'Committing…' : 'Commit'}
-            </button>
-            <button
-              onClick={() => setShowPushConfirm(true)}
-              disabled={pushing}
-              style={btnStyle('danger', pushing)}
-            >
-              {pushing ? 'Pushing…' : 'Push to Remote'}
-            </button>
+          <div style={{ display: 'flex', gap: '8px', marginTop: '8px', flexDirection: 'column' }}>
+            <h3 style={headingStyle}>Commit</h3>
+            <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
+              <input
+                type="text"
+                value={commitMsg}
+                onChange={e => { setCommitMsg(e.target.value); setCommitError(''); }}
+                placeholder="Commit message…"
+                style={inputStyle}
+                onKeyDown={e => { if (e.key === 'Enter') doCommit(); }}
+              />
+              {commitError && (
+                <div style={{ color: '#f88', fontSize: '12px', marginTop: '4px' }}>{commitError}</div>
+              )}
+            </div>
+            <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
+              <button
+                onClick={doCommit}
+                disabled={committing || !commitMsg.trim()}
+                style={btnStyle('primary', committing || !commitMsg.trim())}
+              >
+                {committing ? 'Committing…' : 'Commit'}
+              </button>
+              <button
+                onClick={() => setShowPushConfirm(true)}
+                disabled={pushing}
+                style={btnStyle('danger', pushing)}
+              >
+                {pushing ? 'Pushing…' : 'Push to Remote'}
+              </button>
+            </div>
           </div>
           {pushResult && (
             <pre style={{
