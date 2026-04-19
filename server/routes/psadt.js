@@ -21,6 +21,15 @@ function runPS(script) {
 router.get('/status', async (_req, res) => {
   try {
     const { stdout } = await runPS(`
+# Ensure standard CurrentUser module paths are in PSModulePath (may be stripped in Electron)
+$userDocs = [Environment]::GetFolderPath('MyDocuments')
+$ps5Path  = Join-Path $userDocs 'WindowsPowerShell\\Modules'
+$ps7Path  = Join-Path $userDocs 'PowerShell\\Modules'
+foreach ($p in @($ps5Path, $ps7Path)) {
+    if ((Test-Path $p) -and ($env:PSModulePath -notlike "*$p*")) {
+        $env:PSModulePath = $p + ';' + $env:PSModulePath
+    }
+}
 $mod     = Get-Module -ListAvailable -Name PSAppDeployToolkit |
              Sort-Object Version -Descending |
              Select-Object -First 1
@@ -59,9 +68,12 @@ router.post('/install-module', (req, res) => {
   res.setHeader('Connection', 'keep-alive');
   const send = (data) => res.write(`data: ${JSON.stringify(data)}\n\n`);
 
+  // Install NuGet provider first (required in NonInteractive mode), then the module.
   // Redirect verbose/information streams (4>) to stdout so we can show progress.
   const script = `
 $ProgressPreference = 'SilentlyContinue'
+Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -Scope CurrentUser 4>&1 |
+  ForEach-Object { Write-Output $_.ToString() }
 Install-Module -Name PSAppDeployToolkit -Scope CurrentUser -Force -AllowClobber 4>&1 |
   ForEach-Object { Write-Output $_.ToString() }
 Write-Output "Done."

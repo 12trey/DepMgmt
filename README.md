@@ -5,6 +5,8 @@ A modern, web-based desktop application for building, managing, and deploying
 IT administration tools. Runs as a standalone **Electron** desktop app or as a
 browser-accessible **web application**.
 
+**Disclaimer:** Claude Sonnet was used to generate some of the code and to change some of my own human written code. Though I've thoroughly reviewed the code, there could still be bugs and misspelled words.
+
 ---
 
 ## Overview

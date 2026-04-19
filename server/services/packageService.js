@@ -22,6 +22,14 @@ function runPS(script) {
 async function populateToolkitDir(destDir) {
   try {
     const { stdout } = await runPS(`
+$userDocs = [Environment]::GetFolderPath('MyDocuments')
+$ps5Path  = Join-Path $userDocs 'WindowsPowerShell\\Modules'
+$ps7Path  = Join-Path $userDocs 'PowerShell\\Modules'
+foreach ($p in @($ps5Path, $ps7Path)) {
+    if ((Test-Path $p) -and ($env:PSModulePath -notlike "*$p*")) {
+        $env:PSModulePath = $p + ';' + $env:PSModulePath
+    }
+}
 $mod = Get-Module -ListAvailable -Name PSAppDeployToolkit |
          Sort-Object Version -Descending |
          Select-Object -First 1

@@ -327,6 +327,16 @@ if [ -f package.json ]; then
   npm run build
 fi
 
+
+# Fix ownership so the default WSL user can write to the app directory after root install
+DEFAULT_USER=$(getent passwd 1000 | cut -d: -f1 2>/dev/null || id -un 1000 2>/dev/null || echo "")
+if [ -n "$DEFAULT_USER" ]; then
+  echo "==> Transferring ownership of ${APP_PATH} to $DEFAULT_USER..."
+  chown -R "$DEFAULT_USER:$DEFAULT_USER" "${APP_PATH}"
+else
+  echo "==> [WARN] Could not determine UID 1000 user — skipping chown."
+fi
+
 echo "==> Setup complete!"
 `;
 
