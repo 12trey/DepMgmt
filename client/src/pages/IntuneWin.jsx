@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { Download, FolderOpen, FileSearch, Package, CheckCircle, AlertCircle, Play } from 'lucide-react';
-import { getIntuneToolStatus, downloadIntuneTool, buildIntuneWin } from '../api';
+import { getIntuneToolStatus, downloadIntuneTool, buildIntuneWin, checkIntuneOutput, clearIntuneOutput } from '../api';
 import { useWebSocket } from '../hooks/useWebSocket';
 
 const isElectron = !!window.electronAPI?.isElectron;
@@ -24,10 +24,10 @@ export default function IntuneWin() {
     setupFolder: '',
     sourceFile: '',
     outputFolder: '',
-    quiet: false,
     addCatalog: false,
     catalogFolder: '',
   });
+  const [confirmClear, setConfirmClear] = useState(null); // { count } when prompt is open
   const [building, setBuilding] = useState(false);
   const [buildExecId, setBuildExecId] = useState(null);
   const [buildDone, setBuildDone] = useState(false);
@@ -98,11 +98,7 @@ export default function IntuneWin() {
     }
   };
 
-  const handleBuild = async () => {
-    if (!form.setupFolder || !form.sourceFile || !form.outputFolder) {
-      setError('Setup folder, source file, and output folder are all required.');
-      return;
-    }
+  const startBuild = async () => {
     clearBuild();
     setBuilding(true);
     setBuildDone(false);
@@ -115,6 +111,36 @@ export default function IntuneWin() {
       setError(err.message);
       setBuilding(false);
     }
+  };
+
+  const handleBuild = async () => {
+    if (!form.setupFolder || !form.sourceFile || !form.outputFolder) {
+      setError('Setup folder, source file, and output folder are all required.');
+      return;
+    }
+    setError('');
+    try {
+      const { hasContent, count } = await checkIntuneOutput(form.outputFolder);
+      if (hasContent) {
+        setConfirmClear({ count });
+        return;
+      }
+    } catch {
+      // If check fails, proceed anyway
+    }
+    await startBuild();
+  };
+
+  const handleConfirmClear = async (confirmed) => {
+    setConfirmClear(null);
+    if (!confirmed) return;
+    try {
+      await clearIntuneOutput(form.outputFolder);
+    } catch (err) {
+      setError(`Failed to clear output folder: ${err.message}`);
+      return;
+    }
+    await startBuild();
   };
 
   const set = (key, value) => setForm((f) => ({ ...f, [key]: value }));
@@ -268,17 +294,6 @@ export default function IntuneWin() {
             <label className="flex items-center gap-2 cursor-pointer select-none">
               <input
                 type="checkbox"
-                checked={form.quiet}
-                onChange={(e) => set('quiet', e.target.checked)}
-                className="accent-blue-600"
-              />
-              <span className="text-sm font-medium">Quiet mode</span>
-              <span className="text-xs text-gray-400">(-q) suppress prompts</span>
-            </label>
-
-            <label className="flex items-center gap-2 cursor-pointer select-none">
-              <input
-                type="checkbox"
                 checked={form.addCatalog}
                 onChange={(e) => set('addCatalog', e.target.checked)}
                 className="accent-blue-600"
@@ -313,8 +328,7 @@ export default function IntuneWin() {
                 {form.sourceFile}
                 {'" -o "'}
                 {form.outputFolder}
-                {'"'}
-                {form.quiet ? ' -q' : ''}
+                {'" -q'}
                 {form.addCatalog && form.catalogFolder ? ` -a "${form.catalogFolder}"` : ''}
               </code>
             </div>
@@ -361,6 +375,38 @@ export default function IntuneWin() {
               </div>
             ))}
             {building && <div className="text-gray-400 animate-pulse">...</div>}
+          </div>
+        </div>
+      )}
+      {/* Output folder clear confirmation modal */}
+      {confirmClear && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-lg shadow-xl p-6 max-w-sm w-full mx-4 space-y-4">
+            <div className="flex items-start gap-3">
+              <AlertCircle size={20} className="text-amber-500 flex-shrink-0 mt-0.5" />
+              <div>
+                <p className="font-semibold text-gray-800">Output folder is not empty</p>
+                <p className="text-sm text-gray-500 mt-1">
+                  The output folder contains {confirmClear.count} item{confirmClear.count !== 1 ? 's' : ''}.
+                  IntuneWinAppUtil.exe requires an empty output folder when running non-interactively.
+                  Delete the existing contents and continue?
+                </p>
+              </div>
+            </div>
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => handleConfirmClear(false)}
+                className="btn-secondary text-sm"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => handleConfirmClear(true)}
+                className="btn-primary text-sm"
+              >
+                Delete &amp; Continue
+              </button>
+            </div>
           </div>
         </div>
       )}

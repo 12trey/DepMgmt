@@ -140,6 +140,10 @@ export const getIntuneToolStatus = () => request('/intune/status');
 export const downloadIntuneTool = () => request('/intune/download', { method: 'POST' });
 export const buildIntuneWin = (data) =>
   request('/intune/build', { method: 'POST', body: JSON.stringify(data) });
+export const checkIntuneOutput = (folder) =>
+  request(`/intune/check-output?folder=${encodeURIComponent(folder)}`);
+export const clearIntuneOutput = (folder) =>
+  request('/intune/clear-output', { method: 'POST', body: JSON.stringify({ folder }) });
 
 // Group management — credential = { adUsername, adPassword } | null | undefined
 const creds = (c) => (c ? { adUsername: c.adUsername, adPassword: c.adPassword } : {});

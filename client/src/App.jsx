@@ -32,7 +32,11 @@ const navItems = [
 
 export default function App() {
   return (
-    <div className="flex h-screen">
+    // <div style={{ overflow: 'hidden', height: '100vh' }}>
+    //   <div style={{ WebkitAppRegion: 'drag', height: '31px', backgroundColor: '#2f3241', color: '#ffffff' }}>
+    //     <h5 style={{ fontSize: '14px', verticalAlign: 'middle', paddingLeft: '20px', paddingTop: '6px'}}>Deployment Manager</h5>
+    //   </div>
+    <div className="flex h-[calc(100vh)]">
       {/* Sidebar */}
       <nav className="w-56 bg-gray-900 text-gray-300 flex flex-col">
         <div className="px-4 py-5 text-white font-bold text-lg border-b border-gray-700">
@@ -97,5 +101,6 @@ export default function App() {
         </Routes>
       </main>
     </div>
+    // </div>
   );
 }

@@ -27,6 +27,12 @@ const SERVER_PORT = 4000;
 
 function createWindow() {
   mainWindow = new BrowserWindow({
+    // titleBarStyle: 'hidden',
+    // titleBarOverlay: {
+    //   color: '#2f3241',
+    //   symbolColor: '#74c1ff',
+    //   height: 30
+    // },
     width: 1280,
     height: 860,
     show: false,

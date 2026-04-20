@@ -116,9 +116,22 @@ function TerminalPanel({ instance, onClose }) {
       term.loadAddon(fitAddon);
       term.open(containerRef.current);
 
+      // FitAddon.fit() calculates cols from the full container width, but xterm's
+      // internal scrollbar overlays the rightmost ~17px of the canvas, cutting off
+      // the last 1-2 characters. Use proposeDimensions() and subtract 2 cols so
+      // text never reaches the scrollbar zone.
+      const fit = () => {
+        const dims = fitAddon.proposeDimensions();
+        if (!dims) return;
+        const cols = Math.max(2, dims.cols - 2);
+        if (term.cols !== cols || term.rows !== dims.rows) {
+          term.resize(cols, dims.rows);
+        }
+      };
+
       // Defer fit until the browser has resolved the flex container's dimensions.
       await new Promise(resolve => requestAnimationFrame(resolve));
-      fitAddon.fit();
+      fit();
       termRef.current = term;
 
       // Focus the underlying textarea with preventScroll:true.
@@ -168,7 +181,15 @@ function TerminalPanel({ instance, onClose }) {
 
     init().catch(console.error);
 
-    const onResize = () => { try { fitAddon?.fit(); } catch {} };
+    const onResize = () => {
+      try {
+        if (!fitAddon) return;
+        const dims = fitAddon.proposeDimensions();
+        if (!dims) return;
+        const cols = Math.max(2, dims.cols - 2);
+        if (term.cols !== cols || term.rows !== dims.rows) term.resize(cols, dims.rows);
+      } catch {}
+    };
     window.addEventListener('resize', onResize);
 
     return () => {
