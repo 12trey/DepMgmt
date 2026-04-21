@@ -333,6 +333,7 @@ function App() {
   const [parentFolder, setParentFolder] = useState('/');
   const [ctxMenu, setCtxMenu] = useState(null); // { x, y, file, name, isYaml, isIni }
   const [newFile, setNewFile] = useState(null);  // { type: 'yaml'|'ini', name: '' }
+  const [newDir, setNewDir] = useState(null);    // { name: '' }
   const [renameFile, setRenameFile] = useState(null); // { item, name }
   const [deleteFile, setDeleteFile] = useState(null); // { item }
 
@@ -346,6 +347,7 @@ function App() {
   const editorRef = useRef(null);
   const monacoRef = useRef(null);
   const newFileInputRef = useRef(null);
+  const newDirInputRef = useRef(null);
   const renameInputRef = useRef(null);
 
   useEffect(() => {
@@ -359,6 +361,11 @@ function App() {
   useEffect(() => {
     if (newFile !== null) newFileInputRef.current?.focus();
   }, [newFile?.type]);
+
+  // Focus the new-dir input when it appears
+  useEffect(() => {
+    if (newDir !== null) newDirInputRef.current?.focus();
+  }, [newDir]);
 
   // Focus rename input when it appears
   useEffect(() => {
@@ -482,6 +489,25 @@ function App() {
         ? filename
         : `${cwd.replace(/^\//, '')}/${filename}`;
       setTimeout(() => openEditorAbsolute(filePath, getLanguage(filename)), 300);
+    } catch (err) {
+      console.error(err);
+    }
+  }
+
+  async function createDir() {
+    if (!newDir?.name?.trim()) return;
+    const safe = newDir.name.trim().replace(/[^\w.\-]/g, '_');
+    const folder = cwd === '/' ? '' : cwd;
+    const dirPath = `${folder}/${safe}`;
+    try {
+      const r = await fetch(`${BASE}/mkdir`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dir: dirPath }),
+      });
+      if (!r.ok) throw new Error((await r.json()).error);
+      setNewDir(null);
+      getFiles(cwd);
     } catch (err) {
       console.error(err);
     }
@@ -724,18 +750,23 @@ function App() {
             );
           }) ?? null}
 
-          {/* New file controls */}
+          {/* New file/folder controls */}
           <div style={{ marginTop: '10px', paddingTop: '10px', borderTop: '1px solid #e5e7eb', display: 'flex', gap: '6px' }}>
             <button
-              onClick={() => setNewFile(f => f?.type === 'yaml' ? null : { type: 'yaml', name: '' })}
+              onClick={() => { setNewFile(f => f?.type === 'yaml' ? null : { type: 'yaml', name: '' }); setNewDir(null); }}
               className="btn-secondary"
               style={{ flex: 1, justifyContent: 'center', padding: '4px 0', fontSize: '12px' }}
             >+ YAML</button>
             <button
-              onClick={() => setNewFile(f => f?.type === 'ini' ? null : { type: 'ini', name: '' })}
+              onClick={() => { setNewFile(f => f?.type === 'ini' ? null : { type: 'ini', name: '' }); setNewDir(null); }}
               className="btn-secondary"
               style={{ flex: 1, justifyContent: 'center', padding: '4px 0', fontSize: '12px' }}
             >+ INI</button>
+            <button
+              onClick={() => { setNewDir(d => d ? null : { name: '' }); setNewFile(null); }}
+              className="btn-secondary"
+              style={{ flex: 1, justifyContent: 'center', padding: '4px 0', fontSize: '12px' }}
+            >+ Folder</button>
           </div>
 
           {newFile && (
@@ -754,6 +785,26 @@ function App() {
               <div style={{ display: 'flex', gap: '4px', marginTop: '6px' }}>
                 <button onClick={createFile} className="btn-primary" style={{ flex: 1, justifyContent: 'center', padding: '5px 0', fontSize: '12px' }}>Create</button>
                 <button onClick={() => setNewFile(null)} className="btn-secondary" style={{ padding: '5px 10px', fontSize: '12px' }}>✕</button>
+              </div>
+            </div>
+          )}
+
+          {newDir && (
+            <div style={{ marginTop: '8px' }}>
+              <div style={{ fontSize: '11px', color: '#6b7280', marginBottom: '4px' }}>
+                New folder in <span style={{ fontFamily: 'monospace' }}>{cwd}</span>
+              </div>
+              <input
+                ref={newDirInputRef}
+                placeholder="folder-name"
+                value={newDir.name}
+                onChange={e => setNewDir(d => ({ ...d, name: e.target.value }))}
+                onKeyDown={e => { if (e.key === 'Enter') createDir(); if (e.key === 'Escape') setNewDir(null); }}
+                className="app-input"
+              />
+              <div style={{ display: 'flex', gap: '4px', marginTop: '6px' }}>
+                <button onClick={createDir} className="btn-primary" style={{ flex: 1, justifyContent: 'center', padding: '5px 0', fontSize: '12px' }}>Create</button>
+                <button onClick={() => setNewDir(null)} className="btn-secondary" style={{ padding: '5px 10px', fontSize: '12px' }}>✕</button>
               </div>
             </div>
           )}
