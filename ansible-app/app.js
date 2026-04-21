@@ -158,6 +158,20 @@ app.post('/savefile', async (req, res) => {
   }
 });
 
+app.post('/mkdir', (req, res) => {
+  const { dir } = req.body;
+  if (!dir) return res.status(400).json({ error: 'dir is required' });
+  const fullPath = path.resolve(repoFolder, '.' + dir);
+  if (!fullPath.startsWith(repoFolder + '/') && fullPath !== repoFolder)
+    return res.status(400).json({ error: 'Invalid directory path' });
+  try {
+    fs.mkdirSync(fullPath, { recursive: true });
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.post('/renamefile', (req, res) => {
   const { file, newName } = req.body;
   if (!file || !newName) return res.status(400).json({ error: 'file and newName are required' });
