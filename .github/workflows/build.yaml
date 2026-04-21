@@ -11,16 +11,20 @@ jobs:
             - name: Setup Node.js
               uses: actions/setup-node@v4
               with:
-                node-version: 24
-                cache: 'npm'
+                  node-version: 24
+                  cache: "npm"
             - name: Install client dependencies
               run: cd client && npm install && cd ..
             - name: Install dependencies
               run: npm install
             - name: Build Deployment Manager
               run: npm run electron:build
-            - name: Upload artifact
-              uses: actions/upload-artifact@v4
+            - name: Create GitHub Release
+              id: create_release
+              uses: softprops/action-gh-release@v2
               with:
-                name: deployment-manager-build
-                path: dist-electron/Deployment Manager Setup 1.0.1.exe
+                tag_name: v1.0.0
+                name: Release v1.0.0
+                files: "dist-electron/Deployment Manager Setup 1.0.1.exe"
+              env:
+                GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
