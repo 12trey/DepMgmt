@@ -1,0 +1,25 @@
+name: Build Deployment Manager
+
+on:
+    workflow_dispatch:
+jobs:
+    build:
+        runs-on: windows-latest
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@v2
+            - name: Setup Node.js
+              uses: actions/setup-node@v4
+              with:
+                node-version: 24
+                cache: 'npm'
+            - name: Install dependencies
+              run: npm install
+            - name: Build Deployment Manager
+              run: npm run electron:build
+            - name: Upload artifact
+              uses: actions/upload-artifact@v3
+              with:
+                name: deployment-manager-build
+                path: dist-electron/Deployment Manager Setup 1.0.1.exe
+                
