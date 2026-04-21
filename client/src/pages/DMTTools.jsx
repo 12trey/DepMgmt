@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
-import { RefreshCw, ChevronDown, CheckCircle, XCircle, AlertCircle, Loader2, Settings, Upload, TerminalSquare, X, Wrench } from 'lucide-react';
+import { RefreshCw, ChevronDown, CheckCircle, XCircle, AlertCircle, Loader2, Settings, Upload, TerminalSquare, X, Wrench, Plus, Minus } from 'lucide-react';
 
 const STORAGE_KEY = 'dmt-wsl-instance';
 
@@ -45,11 +45,11 @@ async function launchApp(instance) {
   return r.json();
 }
 
-async function runSetup(instance, onLine, runAsRoot) {
+async function runSetup(instance, onLine, runAsRoot, krb5) {
   const r = await fetch('/api/wsl/setup', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ instance, runAsRoot: runAsRoot || undefined }),
+    body: JSON.stringify({ instance, runAsRoot: runAsRoot || undefined, krb5 }),
   });
   if (!r.ok) throw new Error(await r.text());
 
@@ -226,6 +226,14 @@ function TerminalPanel({ instance, onClose }) {
 
 // ── Main component ─────────────────────────────────────────────────────────────
 
+const DEFAULT_KRB5 = {
+  realm: '',
+  kdcServers: [''],
+  adminServer: '',
+  defaultDomain: '',
+  timezone: 'America/New_York',
+};
+
 export default function DMTTools() {
   const [stage, setStage] = useState('select-instance');
   const [instances, setInstances] = useState([]);
@@ -237,8 +245,9 @@ export default function DMTTools() {
   const [syncing, setSyncing] = useState(false);
   const [syncMsg, setSyncMsg] = useState('');
   const [showTerminal, setShowTerminal] = useState(false);
-  const [confirmRerun, setConfirmRerun] = useState(false);
   const [requiresSudo, setRequiresSudo] = useState(false);
+  const [krb5Config, setKrb5Config] = useState(DEFAULT_KRB5);
+  const [krb5Open, setKrb5Open] = useState(true);
   const pollRef = useRef(null);
   const launchTimerRef = useRef(null);
   const logBottomRef = useRef(null);
@@ -297,6 +306,39 @@ export default function DMTTools() {
     clearTimeout(launchTimerRef.current);
   }, []);
 
+  // ── Krb5 config helpers ──────────────────────────────────────────────────────
+
+  const updateKrb5 = (field, value) => setKrb5Config(c => ({ ...c, [field]: value }));
+
+  const handleRealmChange = (value) => {
+    const upper = value.toUpperCase();
+    setKrb5Config(c => ({
+      ...c,
+      realm: upper,
+      // Auto-fill defaultDomain when it's empty or still tracks the old realm
+      defaultDomain: (!c.defaultDomain || c.defaultDomain === c.realm.toLowerCase())
+        ? upper.toLowerCase()
+        : c.defaultDomain,
+    }));
+  };
+
+  const updateKdc = (i, value) => setKrb5Config(c => {
+    const servers = [...c.kdcServers];
+    servers[i] = value;
+    return { ...c, kdcServers: servers };
+  });
+
+  const addKdc = () => setKrb5Config(c => ({ ...c, kdcServers: [...c.kdcServers, ''] }));
+
+  const removeKdc = (i) => setKrb5Config(c => {
+    const servers = c.kdcServers.filter((_, idx) => idx !== i);
+    const next = servers.length ? servers : [''];
+    // Clear adminServer if it was the removed entry
+    const removed = c.kdcServers[i];
+    const admin = c.adminServer === removed ? next[0] || '' : c.adminServer;
+    return { ...c, kdcServers: next, adminServer: admin };
+  });
+
   // ── Actions ──────────────────────────────────────────────────────────────────
 
   const handleInstanceSelect = async (instance) => {
@@ -334,13 +376,28 @@ export default function DMTTools() {
     }
   };
 
+  const handleRerunSetup = async () => {
+    // Re-check the environment so badges are fresh, then drop into the setup form
+    // so the user can review/edit Kerberos config before running.
+    setStage('checking');
+    try {
+      const result = await checkSetup(selectedInstance);
+      setCheckResult(result);
+      setKrb5Open(true);
+      setStage('setup-needed');
+    } catch (err) {
+      setError(err.message);
+      setStage('error');
+    }
+  };
+
   const handleRunSetup = async () => {
     setStage('setting-up');
     setSetupLog([]);
     try {
       await runSetup(selectedInstance, (msg) => {
         setSetupLog(prev => [...prev, msg]);
-      }, requiresSudo ? true : undefined);
+      }, requiresSudo ? true : undefined, krb5Config);
       const result = await checkSetup(selectedInstance);
       setCheckResult(result);
       if (result.ready) {
@@ -437,36 +494,13 @@ export default function DMTTools() {
               <TerminalSquare size={13} />
               Terminal
             </button>
-            {confirmRerun ? (
-              <span className="flex items-center gap-1 text-xs flex-wrap">
-                <span className="text-amber-600">Re-run setup?</span>
-                <label className="flex items-center gap-1 text-gray-500 cursor-pointer select-none">
-                  <input
-                    type="checkbox"
-                    checked={requiresSudo}
-                    onChange={e => setRequiresSudo(e.target.checked)}
-                    className="rounded"
-                  />
-                  run as root
-                </label>
-                <button
-                  onClick={() => { setConfirmRerun(false); handleRunSetup(); }}
-                  className="text-red-600 hover:text-red-800 font-medium"
-                >Yes</button>
-                <button
-                  onClick={() => setConfirmRerun(false)}
-                  className="text-gray-500 hover:text-gray-700"
-                >Cancel</button>
-              </span>
-            ) : (
-              <button
-                onClick={() => setConfirmRerun(true)}
-                className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-700"
-                title="Re-run setup on this WSL instance"
-              >
-                <Wrench size={11} /> Re-run Setup
-              </button>
-            )}
+            <button
+              onClick={handleRerunSetup}
+              className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-700"
+              title="Re-run setup — returns to setup form so you can review Kerberos config"
+            >
+              <Wrench size={11} /> Re-run Setup
+            </button>
             <button
               onClick={() => { localStorage.removeItem(STORAGE_KEY); reset(); }}
               className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-700"
@@ -532,49 +566,159 @@ export default function DMTTools() {
           </div>
         )}
 
-        {checkResult && stage === 'setup-needed' && (
-          <div className="space-y-2">
-            <p className="text-xs font-medium text-gray-600">Environment checks:</p>
-            <div className="flex flex-wrap gap-1.5">
-              <Badge ok={checkResult.checks.node} label={`Node ${checkResult.checks.nodeVersion || ''}`} />
-              <Badge ok={checkResult.checks.ansible} label="Ansible" />
-              <Badge ok={checkResult.checks.pythonVenv} label="Python venv" />
-              <Badge ok={checkResult.checks.appDir} label="App directory" />
-              <Badge ok={checkResult.checks.appEntry} label="app.js" />
-            </div>
-            {checkResult.checks.missingPackages?.length > 0 && (
-              <p className="text-xs text-amber-600">
-                Missing packages: {checkResult.checks.missingPackages.join(', ')}
-              </p>
-            )}
-            <div className="pt-1">
-              <label className="flex items-center gap-2 text-xs text-gray-600 cursor-pointer select-none">
-                <input
-                  type="checkbox"
-                  checked={requiresSudo}
-                  onChange={e => setRequiresSudo(e.target.checked)}
-                  className="rounded"
-                />
-                Default user is not root — run setup as root
-              </label>
-              {requiresSudo && (
-                <p className="text-xs text-amber-600 mt-1 ml-5">
-                  Setup will run as root via <code>wsl -u root</code>. No password needed.
+        {checkResult && stage === 'setup-needed' && (() => {
+          const validKdcs = krb5Config.kdcServers.filter(Boolean);
+          const krb5Valid = krb5Config.realm.trim().length > 0 && validKdcs.length > 0;
+          return (
+            <div className="space-y-3">
+              <p className="text-xs font-medium text-gray-600">Environment checks:</p>
+              <div className="flex flex-wrap gap-1.5">
+                <Badge ok={checkResult.checks.node} label={`Node ${checkResult.checks.nodeVersion || ''}`} />
+                <Badge ok={checkResult.checks.ansible} label="Ansible" />
+                <Badge ok={checkResult.checks.pythonVenv} label="Python venv" />
+                <Badge ok={checkResult.checks.appDir} label="App directory" />
+                <Badge ok={checkResult.checks.appEntry} label="app.js" />
+              </div>
+              {checkResult.checks.missingPackages?.length > 0 && (
+                <p className="text-xs text-amber-600">
+                  Missing packages: {checkResult.checks.missingPackages.join(', ')}
                 </p>
               )}
-            </div>
-            <div className="flex gap-2">
-              <button onClick={handleRunSetup} className="btn-primary text-sm">
-                Run Setup
-              </button>
-              {checkResult.checks.node && checkResult.checks.appEntry && (
-                <button onClick={handleLaunch} className="btn-secondary text-sm">
-                  Skip — Launch Anyway
+
+              {/* Kerberos configuration */}
+              <div className="border border-gray-200 rounded-lg overflow-hidden">
+                <button
+                  type="button"
+                  onClick={() => setKrb5Open(v => !v)}
+                  className="w-full flex items-center justify-between px-3 py-2 bg-gray-50 text-xs font-medium text-gray-700 hover:bg-gray-100"
+                >
+                  <span className="flex items-center gap-1.5">
+                    {krb5Valid
+                      ? <CheckCircle size={12} className="text-green-500" />
+                      : <AlertCircle size={12} className="text-amber-500" />}
+                    Kerberos Configuration
+                    {!krb5Valid && <span className="text-amber-500 font-normal">(required)</span>}
+                  </span>
+                  <ChevronDown size={12} className={`transition-transform ${krb5Open ? 'rotate-180' : ''}`} />
                 </button>
-              )}
+
+                {krb5Open && (
+                  <div className="p-3 space-y-2.5 text-xs border-t border-gray-100">
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="block text-gray-600 mb-0.5 font-medium">Realm *</label>
+                        <input
+                          type="text"
+                          value={krb5Config.realm}
+                          onChange={e => handleRealmChange(e.target.value)}
+                          placeholder="CORP.EXAMPLE.COM"
+                          className="w-full border border-gray-300 rounded px-2 py-1 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-gray-600 mb-0.5 font-medium">Default Domain</label>
+                        <input
+                          type="text"
+                          value={krb5Config.defaultDomain}
+                          onChange={e => updateKrb5('defaultDomain', e.target.value)}
+                          placeholder="corp.example.com"
+                          className="w-full border border-gray-300 rounded px-2 py-1 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-gray-600 mb-0.5 font-medium">Timezone</label>
+                      <input
+                        type="text"
+                        value={krb5Config.timezone}
+                        onChange={e => updateKrb5('timezone', e.target.value)}
+                        placeholder="America/New_York"
+                        className="w-full border border-gray-300 rounded px-2 py-1 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-blue-500"
+                      />
+                    </div>
+
+                    <div>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="text-gray-600 font-medium">KDC Servers *</label>
+                        <button
+                          type="button"
+                          onClick={addKdc}
+                          className="flex items-center gap-0.5 text-blue-600 hover:text-blue-800 text-xs"
+                        >
+                          <Plus size={11} /> Add
+                        </button>
+                      </div>
+                      <div className="space-y-1">
+                        {krb5Config.kdcServers.map((kdc, i) => (
+                          <div key={i} className="flex gap-1">
+                            <input
+                              type="text"
+                              value={kdc}
+                              onChange={e => updateKdc(i, e.target.value)}
+                              placeholder="kdc.example.com"
+                              className="flex-1 border border-gray-300 rounded px-2 py-1 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-blue-500"
+                            />
+                            {krb5Config.kdcServers.length > 1 && (
+                              <button
+                                type="button"
+                                onClick={() => removeKdc(i)}
+                                className="text-red-400 hover:text-red-600 px-1"
+                                title="Remove this KDC"
+                              >
+                                <Minus size={12} />
+                              </button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-gray-600 mb-0.5 font-medium">Admin Server</label>
+                      <input
+                        type="text"
+                        value={krb5Config.adminServer}
+                        onChange={e => updateKrb5('adminServer', e.target.value)}
+                        placeholder={validKdcs[0] || 'admin.example.com'}
+                        className="w-full border border-gray-300 rounded px-2 py-1 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-blue-500"
+                      />
+                      <p className="text-gray-400 mt-0.5">Leave blank to use the first KDC</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="pt-0.5">
+                <label className="flex items-center gap-2 text-xs text-gray-600 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={requiresSudo}
+                    onChange={e => setRequiresSudo(e.target.checked)}
+                    className="rounded"
+                  />
+                  Default user is not root — run setup as root
+                </label>
+                {requiresSudo && (
+                  <p className="text-xs text-amber-600 mt-1 ml-5">
+                    Setup will run as root via <code>wsl -u root</code>. No password needed.
+                  </p>
+                )}
+              </div>
+              <div className="flex gap-2">
+                <button onClick={handleRunSetup} disabled={!krb5Valid} className="btn-primary text-sm disabled:opacity-40 disabled:cursor-not-allowed">
+                  Run Setup
+                </button>
+                {checkResult.checks.node && checkResult.checks.appEntry && (
+                  <button onClick={handleLaunch} className="btn-secondary text-sm">
+                    Skip — Launch Anyway
+                  </button>
+                )}
+              </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
 
         {(stage === 'setting-up' || (stage === 'error' && setupLog.length > 0)) && (
           <div className="space-y-2">

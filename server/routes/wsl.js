@@ -170,41 +170,28 @@ router.post('/check', async (req, res) => {
 });
 
 // POST /api/wsl/setup — run ansible setup script in a WSL instance (streams output via SSE)
-// Body: { instance }
+// Body: { instance, runAsRoot?, krb5?: { realm, kdcServers, adminServer, defaultDomain, timezone } }
 router.post('/setup', (req, res) => {
-  const { instance, runAsRoot } = req.body;
+  const { instance, runAsRoot, krb5 = {} } = req.body;
   if (!instance) return res.status(400).json({ error: 'instance is required' });
 
-  res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache');
-  res.setHeader('Connection', 'keep-alive');
+  // Build krb5.conf content in JS so it works for any user (not reliant on bash variables
+  // that only exist under the root user's environment).
+  const realm         = (krb5.realm        || '').trim().toUpperCase();
+  const kdcServers    = (Array.isArray(krb5.kdcServers) ? krb5.kdcServers : []).map(s => s.trim()).filter(Boolean);
+  const adminServer   = (krb5.adminServer  || '').trim() || kdcServers[0] || '';
+  const defaultDomain = (krb5.defaultDomain || '').trim() || realm.toLowerCase();
+  const timezone      = (krb5.timezone     || 'America/New_York').trim();
+  const kdcLines      = kdcServers.map(s => `        kdc = ${s}`).join('\n');
 
-  const send = (data) => res.write(`data: ${JSON.stringify(data)}\n\n`);
-
-  // Build the script as a plain string and pipe it via stdin.
-  // Passing a large multi-line script as a -c argument through Windows spawn
-  // mangles double-quote assignments (e.g. VAR="value" arrives as VAR=).
-  const setupScript = `
-set -e
-
-# Set the desired timezone for configuration files
-TIMEZONE="America/New_York"
-# Define the Kerberos Realm and KDC details
-KERB_REALM="CORP.AD.SENTARA.COM"
-KDC_SERVER="corpadsen01-ind.corp.ad.sentara.com"
-
-# Set timezone
-if [ -f /etc/timezone ]; then
-    echo "    [INFO] Setting timezone to $TIMEZONE..."
-    sudo sh -c "echo $TIMEZONE > /etc/timezone"
-else
-    echo "    [WARN] Could not find /etc/timezone, skipping timezone setup."
-fi
-
-# Set krb5.conf
-KRB5_CONF_CONTENT=$(cat <<EOF
+  // Emit either the full krb5.conf tee block or a skip notice
+  const krb5ConfBlock = realm && kdcServers.length ? `\
+# Write krb5.conf if not already configured for this realm
+if ! grep -q "default_realm = ${realm}" /etc/krb5.conf 2>/dev/null; then
+    echo "    [INFO] Configuring /etc/krb5.conf for realm ${realm}..."
+    sudo tee /etc/krb5.conf > /dev/null << 'KRBEREALM'
 [libdefaults]
-    default_realm = \${KERB_REALM}
+    default_realm = ${realm}
 
 # The following krb5.conf variables are only for MIT Kerberos.
     kdc_timesync = 1
@@ -218,23 +205,41 @@ KRB5_CONF_CONTENT=$(cat <<EOF
     fcc-mit-ticketflags = true
 
 [realms]
-    \${KERB_REALM} = {
-            kdc = \${KDC_SERVER}
-            admin_server = \${KDC_SERVER}
-            default_domain = corp.ad.sentara.com
+    ${realm} = {
+${kdcLines}
+        admin_server = ${adminServer}
+        default_domain = ${defaultDomain}
     }
 
 [domain_realm]
-    .corp.ad.sentara.com = \${KERB_REALM}
-    corp.ad.sentara.com = \${KERB_REALM}
-EOF
-)
-if ! grep -q "default_realm = \${KERB_REALM}" /etc/krb5.conf; then
-    echo "    [INFO] Configuring /etc/krb5.conf..."
-    echo "$KRB5_CONF_CONTENT" | sudo tee /etc/krb5.conf > /dev/null
+    .${defaultDomain} = ${realm}
+    ${defaultDomain} = ${realm}
+KRBEREALM
 else
-    echo "    [INFO] /etc/krb5.conf appears correctly configured. Skipping write."
+    echo "    [INFO] /etc/krb5.conf already configured for ${realm}. Skipping."
+fi` : `echo "    [WARN] No Kerberos realm provided — skipping krb5.conf setup."`;
+
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+
+  const send = (data) => res.write(`data: ${JSON.stringify(data)}\n\n`);
+
+  // Build the script as a plain string and pipe it via stdin.
+  // Passing a large multi-line script as a -c argument through Windows spawn
+  // mangles double-quote assignments (e.g. VAR="value" arrives as VAR=).
+  const setupScript = `
+set -e
+
+# Set timezone
+if [ -f /etc/timezone ]; then
+    echo "    [INFO] Setting timezone to ${timezone}..."
+    sudo sh -c "echo ${timezone} > /etc/timezone"
+else
+    echo "    [WARN] Could not find /etc/timezone, skipping timezone setup."
 fi
+
+${krb5ConfBlock}
 
 export DEBIAN_FRONTEND=noninteractive
 
