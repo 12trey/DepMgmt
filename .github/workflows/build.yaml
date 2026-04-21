@@ -18,8 +18,7 @@ jobs:
             - name: Build Deployment Manager
               run: npm run electron:build
             - name: Upload artifact
-              uses: actions/upload-artifact@v3
+              uses: actions/upload-artifact@v7
               with:
                 name: deployment-manager-build
                 path: dist-electron/Deployment Manager Setup 1.0.1.exe
-                
