@@ -1,4 +1,5 @@
 import { Routes, Route, NavLink } from 'react-router-dom';
+import FindBar from './components/FindBar';
 import { LayoutDashboard, PackagePlus, FolderOpen, Play, GitBranch, Settings, Monitor, Package, Archive, UsersRound, HelpCircle } from 'lucide-react';
 import Dashboard from './pages/Dashboard';
 import CreatePackage from './pages/CreatePackage';
@@ -37,6 +38,7 @@ export default function App() {
     //     <h5 style={{ fontSize: '14px', verticalAlign: 'middle', paddingLeft: '20px', paddingTop: '6px'}}>Deployment Manager</h5>
     //   </div>
     <div className="flex h-[calc(100vh)]">
+      <FindBar />
       {/* Sidebar */}
       <nav className="w-56 bg-gray-900 text-gray-300 flex flex-col">
         <div className="px-4 py-5 text-white font-bold text-lg border-b border-gray-700">
