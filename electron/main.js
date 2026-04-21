@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, clipboard } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, clipboard, Menu } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { fork } = require('child_process');
@@ -27,6 +27,12 @@ const SERVER_PORT = 4000;
 
 function createWindow() {
   mainWindow = new BrowserWindow({
+    // titleBarStyle: 'hidden',
+    // titleBarOverlay: {
+    //   color: '#2f3241',
+    //   symbolColor: '#74c1ff',
+    //   height: 30
+    // },
     width: 1280,
     height: 860,
     show: false,
@@ -55,6 +61,33 @@ function createWindow() {
   });
   
   mainWindow.removeMenu();
+
+  // Right-click context menu
+  mainWindow.webContents.on('context-menu', (event, params) => {
+    const template = [];
+
+    if (params.selectionText) {
+      template.push({ label: 'Copy', click: () => mainWindow.webContents.copy() });
+    }
+
+    if (params.isEditable) {
+      template.push({ label: 'Paste', click: () => mainWindow.webContents.paste() });
+    }
+
+    if (template.length > 0) template.push({ type: 'separator' });
+
+    template.push({
+      label: 'Find on Page',
+      click: () => mainWindow.webContents.send('show-find-bar'),
+    });
+
+    Menu.buildFromTemplate(template).popup({ window: mainWindow });
+  });
+
+  // Relay find-in-page results back to renderer
+  mainWindow.webContents.on('found-in-page', (event, result) => {
+    mainWindow.webContents.send('found-in-page', result);
+  });
 
   mainWindow.once('ready-to-show', () => {
     mainWindow.show();
@@ -94,6 +127,15 @@ ipcMain.handle('pick-folder', async () => {
   const win = BrowserWindow.getFocusedWindow();
   const result = await dialog.showOpenDialog(win, { properties: ['openDirectory'] });
   return result.canceled ? null : result.filePaths[0];
+});
+
+ipcMain.on('find-in-page', (event, text) => {
+  if (text) mainWindow?.webContents.findInPage(text);
+  else mainWindow?.webContents.stopFindInPage('clearSelection');
+});
+
+ipcMain.on('stop-find', () => {
+  mainWindow?.webContents.stopFindInPage('clearSelection');
 });
 
 ipcMain.handle('pick-file', async (_event, options = {}) => {

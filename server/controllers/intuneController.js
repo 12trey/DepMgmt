@@ -23,7 +23,7 @@ exports.download = (req, res) => {
 };
 
 exports.build = (req, res) => {
-  const { setupFolder, sourceFile, outputFolder, quiet, addCatalog, catalogFolder } = req.body;
+  const { setupFolder, sourceFile, outputFolder, addCatalog, catalogFolder } = req.body;
   if (!setupFolder || !sourceFile || !outputFolder) {
     return res.status(400).json({ error: 'setupFolder, sourceFile, and outputFolder are required' });
   }
@@ -31,9 +31,25 @@ exports.build = (req, res) => {
     setupFolder,
     sourceFile,
     outputFolder,
-    quiet: !!quiet,
     addCatalog: !!addCatalog,
     catalogFolder,
   });
   res.json({ id: execId });
+};
+
+exports.checkOutput = (req, res) => {
+  const { folder } = req.query;
+  if (!folder) return res.status(400).json({ error: 'folder is required' });
+  res.json(intuneService.checkOutputFolder(folder));
+};
+
+exports.clearOutput = (req, res) => {
+  const { folder } = req.body;
+  if (!folder) return res.status(400).json({ error: 'folder is required' });
+  try {
+    intuneService.clearOutputFolder(folder);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 };

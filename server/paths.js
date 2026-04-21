@@ -33,12 +33,17 @@ const configPath = path.join(userDataDir, 'config.json');
 
 // Read optional path overrides from config.json (strip any accidental surrounding quotes)
 function stripQuotes(s) { return typeof s === 'string' ? s.replace(/^["']|["']$/g, '').trim() : s; }
-let _configOverrides = {};
-try { _configOverrides = JSON.parse(fs.readFileSync(configPath, 'utf-8')); } catch (_) {}
 
-const packagesDir = stripQuotes(_configOverrides?.packages?.basePath) || path.join(userDataDir, 'packages');
+// Read the current config from disk each time (so path changes take effect without restart)
+function readConfig() {
+  try { return JSON.parse(fs.readFileSync(configPath, 'utf-8')); } catch { return {}; }
+}
+
+// Startup-time defaults (used for initial directory creation only)
+const _startupConfig = readConfig();
+const _startupPackagesDir = stripQuotes(_startupConfig?.packages?.basePath) || path.join(userDataDir, 'packages');
+
 const logsDir = path.join(userDataDir, 'logs');
-const repoDir = stripQuotes(_configOverrides?.repository?.localPath) || path.join(userDataDir, 'repo');
 
 // On first run in packaged mode, copy default config if it doesn't exist yet
 if (isPackaged && !fs.existsSync(configPath)) {
@@ -54,7 +59,7 @@ if (isPackaged && !fs.existsSync(configPath)) {
 const ansibleAppDir = path.join(appRoot, 'ansible-app');
 
 // Ensure writable directories exist
-fs.mkdirSync(packagesDir, { recursive: true });
+fs.mkdirSync(_startupPackagesDir, { recursive: true });
 fs.mkdirSync(logsDir, { recursive: true });
 
 module.exports = {
@@ -64,8 +69,16 @@ module.exports = {
   templatesDir,
   clientDist,
   configPath,
-  packagesDir,
+  // Dynamic getters — re-read config.json on every access so path changes
+  // made via the Settings UI take effect immediately without a server restart.
+  get packagesDir() {
+    const c = readConfig();
+    return stripQuotes(c?.packages?.basePath) || path.join(userDataDir, 'packages');
+  },
+  get repoDir() {
+    const c = readConfig();
+    return stripQuotes(c?.repository?.localPath) || path.join(userDataDir, 'repo');
+  },
   logsDir,
-  repoDir,
   ansibleAppDir,
 };

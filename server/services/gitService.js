@@ -76,33 +76,31 @@ function copyPackageToRepo(src, dest) {
   }
 }
 
-const repoPath = paths.repoDir;
-
 function getConfig() {
   return JSON.parse(fs.readFileSync(paths.configPath, 'utf-8'));
 }
 
 function getGit() {
-  return simpleGit(repoPath);
+  return simpleGit(paths.repoDir);
 }
 
 exports.clone = async (url) => {
   const config = getConfig();
   const repoUrl = url || config.repository.url;
   if (!repoUrl) throw new Error('No repository URL configured');
-  fs.mkdirSync(repoPath, { recursive: true });
-  await simpleGit().clone(repoUrl, repoPath);
-  return { message: 'Repository cloned', path: repoPath };
+  fs.mkdirSync(paths.repoDir, { recursive: true });
+  await simpleGit().clone(repoUrl, paths.repoDir);
+  return { message: 'Repository cloned', path: paths.repoDir };
 };
 
 exports.pull = async () => {
-  if (!fs.existsSync(path.join(repoPath, '.git'))) throw new Error('No git repository found');
+  if (!fs.existsSync(path.join(paths.repoDir, '.git'))) throw new Error('No git repository found');
   const result = await getGit().pull();
   return { message: 'Pull complete', summary: result };
 };
 
 exports.push = async () => {
-  if (!fs.existsSync(path.join(repoPath, '.git'))) throw new Error('No git repository found');
+  if (!fs.existsSync(path.join(paths.repoDir, '.git'))) throw new Error('No git repository found');
   const git = getGit();
   const status = await git.status();
   const branch = status.current;
@@ -112,7 +110,7 @@ exports.push = async () => {
 };
 
 exports.status = async () => {
-  if (!fs.existsSync(path.join(repoPath, '.git'))) {
+  if (!fs.existsSync(path.join(paths.repoDir, '.git'))) {
     return { initialized: false };
   }
   const result = await getGit().status();
@@ -120,12 +118,12 @@ exports.status = async () => {
 };
 
 exports.publish = async (appName, version) => {
-  if (!fs.existsSync(path.join(repoPath, '.git'))) throw new Error('No git repository found. Clone one first.');
+  if (!fs.existsSync(path.join(paths.repoDir, '.git'))) throw new Error('No git repository found. Clone one first.');
 
   const pkgSrc = path.join(paths.packagesDir, appName, version);
   if (!fs.existsSync(pkgSrc)) throw new Error('Package not found');
 
-  const pkgDest = path.join(repoPath, appName, version);
+  const pkgDest = path.join(paths.repoDir, appName, version);
 
   // Build manifest from actual installer files
   const entries = await buildFilesManifest(path.join(pkgSrc, 'Files'));
@@ -146,7 +144,7 @@ exports.publish = async (appName, version) => {
 
   // Stage and commit
   const git = getGit();
-  const relPath = path.relative(repoPath, pkgDest).replace(/\\/g, '/');
+  const relPath = path.relative(paths.repoDir, pkgDest).replace(/\\/g, '/');
   await git.add(relPath);
 
   const staged = await git.status();
@@ -163,7 +161,7 @@ exports.publish = async (appName, version) => {
 };
 
 exports.log = async () => {
-  if (!fs.existsSync(path.join(repoPath, '.git'))) return { initialized: false, commits: [], ahead: 0, behind: 0 };
+  if (!fs.existsSync(path.join(paths.repoDir, '.git'))) return { initialized: false, commits: [], ahead: 0, behind: 0 };
   const git = getGit();
   const [status, allLog] = await Promise.all([
     git.status().catch(() => ({})),

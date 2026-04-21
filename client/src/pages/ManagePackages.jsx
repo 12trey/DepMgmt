@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Search, Trash2, Play, Download, FolderInput } from 'lucide-react';
 import { listPackages, deletePackage, importPackage } from '../api';
+import { useConfigContext } from '../context/ConfigContext';
 
 export default function ManagePackages() {
   const [packages, setPackages] = useState([]);
@@ -12,8 +13,9 @@ export default function ManagePackages() {
   const navigate = useNavigate();
   const isElectron = !!window.electronAPI?.isElectron;
 
+  const { configVersion } = useConfigContext();
   const load = () => listPackages().then(setPackages).catch(() => {});
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, [configVersion]);
 
   const filtered = packages.filter(
     (p) => p.appName?.toLowerCase().includes(search.toLowerCase()) || p.vendor?.toLowerCase().includes(search.toLowerCase())

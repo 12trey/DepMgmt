@@ -5,12 +5,10 @@ const fs = require('fs');
 const controller = require('../controllers/packageController');
 
 const paths = require('../paths');
-const pkgBase = paths.packagesDir;
-
 const storage = multer.diskStorage({
   destination: (req, _file, cb) => {
     const { appName, version } = req.params;
-    const dir = path.join(pkgBase, appName, version, 'Files');
+    const dir = path.join(paths.packagesDir, appName, version, 'Files');
     fs.mkdirSync(dir, { recursive: true });
     cb(null, dir);
   },
@@ -50,6 +48,10 @@ router.post('/:appName/:version/create-extension-stubs', controller.createExtens
 router.post('/:appName/:version/create-asset-readme', controller.createAssetReadme);
 router.get('/:appName/:version/check-files', controller.checkFiles);
 router.get('/:appName/:version/download', controller.download);
+
+// Entry script (root-level .ps1)
+router.get('/:appName/:version/entry-script', controller.readEntryScript);
+router.put('/:appName/:version/entry-script', controller.saveEntryScript);
 
 // Folder file management (SupportFiles, Assets, PSAppDeployToolkit, PSAppDeployToolkit.Extensions)
 router.get('/:appName/:version/folder/:folder', controller.listFolderFiles);

@@ -24,6 +24,10 @@ export const importPackage = (sourcePath) =>
   request('/packages/import', { method: 'POST', body: JSON.stringify({ sourcePath }) });
 export const regeneratePackage = (appName, version) =>
   request(`/packages/${appName}/${version}/regenerate`, { method: 'POST' });
+export const readEntryScript = (appName, version) =>
+  request(`/packages/${appName}/${version}/entry-script`);
+export const saveEntryScript = (appName, version, content) =>
+  request(`/packages/${appName}/${version}/entry-script`, { method: 'PUT', body: JSON.stringify({ content }) });
 export const listFiles = (appName, version) => request(`/packages/${appName}/${version}/files`);
 export const deleteFile = (appName, version, filename) =>
   request(`/packages/${appName}/${version}/files/${filename}`, { method: 'DELETE' });
@@ -109,6 +113,8 @@ export const gitLog = () => request('/git/log');
 // Config
 export const getConfig = () => request('/config');
 export const updateConfig = (data) => request('/config', { method: 'PUT', body: JSON.stringify(data) });
+export const browseFolder = (initialPath = '') =>
+  request('/config/browse-folder', { method: 'POST', body: JSON.stringify({ initialPath }) });
 
 // MSI Builder
 export const detectMsiTools = () => request('/msi/detect-tools');
@@ -134,6 +140,10 @@ export const getIntuneToolStatus = () => request('/intune/status');
 export const downloadIntuneTool = () => request('/intune/download', { method: 'POST' });
 export const buildIntuneWin = (data) =>
   request('/intune/build', { method: 'POST', body: JSON.stringify(data) });
+export const checkIntuneOutput = (folder) =>
+  request(`/intune/check-output?folder=${encodeURIComponent(folder)}`);
+export const clearIntuneOutput = (folder) =>
+  request('/intune/clear-output', { method: 'POST', body: JSON.stringify({ folder }) });
 
 // Group management — credential = { adUsername, adPassword } | null | undefined
 const creds = (c) => (c ? { adUsername: c.adUsername, adPassword: c.adPassword } : {});

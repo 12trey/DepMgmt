@@ -1,7 +1,39 @@
+.header {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 12px;
+  background: #111827;
+  color: #d1d5db;
+  font-size: 14px;
+  font-weight: 600;
+  height: 44px;
+  flex-shrink: 0;
+  border-bottom: 1px solid #1f2937;
+}
+
+.header span {
+  color: #fff;
+  margin-right: 6px;
+}
+
 .headerbutton {
-    background: none;
-    border: none;
-    color: white;
-    font-size: 14px;
-    cursor: pointer;
+  background: transparent;
+  border: none;
+  color: #9ca3af;
+  font-size: 13px;
+  font-weight: 500;
+  padding: 5px 10px;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  margin: 0 2px;
+}
+.headerbutton:hover {
+  background: #1f2937;
+  color: #fff;
+}
+.headerbutton.active {
+  background: #1e3a5f;
+  color: #93c5fd;
 }

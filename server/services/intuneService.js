@@ -121,11 +121,27 @@ async function downloadTool(onProgress) {
   return { version, path: TOOL_PATH };
 }
 
-function buildIntuneWin({ setupFolder, sourceFile, outputFolder, quiet, addCatalog, catalogFolder }) {
+function checkOutputFolder(folder) {
+  try {
+    if (!fs.existsSync(folder)) return { hasContent: false, count: 0 };
+    const entries = fs.readdirSync(folder);
+    return { hasContent: entries.length > 0, count: entries.length };
+  } catch (err) {
+    return { hasContent: false, count: 0, error: err.message };
+  }
+}
+
+function clearOutputFolder(folder) {
+  const entries = fs.readdirSync(folder);
+  for (const entry of entries) {
+    fs.rmSync(path.join(folder, entry), { recursive: true, force: true });
+  }
+}
+
+function buildIntuneWin({ setupFolder, sourceFile, outputFolder, addCatalog, catalogFolder }) {
   const execId = uuidv4();
 
-  const args = ['-c', setupFolder, '-s', sourceFile, '-o', outputFolder];
-  if (quiet) args.push('-q');
+  const args = ['-c', setupFolder, '-s', sourceFile, '-o', outputFolder, '-q'];
   if (addCatalog && catalogFolder) args.push('-a', catalogFolder);
 
   const cmdLine = [TOOL_NAME, ...args].join(' ');
@@ -159,4 +175,4 @@ function buildIntuneWin({ setupFolder, sourceFile, outputFolder, quiet, addCatal
   return execId;
 }
 
-module.exports = { checkTool, downloadTool, buildIntuneWin };
+module.exports = { checkTool, downloadTool, buildIntuneWin, checkOutputFolder, clearOutputFolder };

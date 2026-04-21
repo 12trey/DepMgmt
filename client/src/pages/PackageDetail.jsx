@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import Editor from '@monaco-editor/react';
 import {
   Upload, Trash2, FileText, Download, RefreshCw, Pencil, GitBranch,
   AlertTriangle, Image, Code2, FolderOpen, PuzzleIcon, Save, X,
@@ -11,6 +12,7 @@ import {
   readFolderFile, saveFolderFile, folderFileRawUrl,
   getPsadtStatus, trustPsGallery, installPsadtModule, populateToolkit,
   createExtensionStubs, createAssetReadme,
+  readEntryScript, saveEntryScript,
 } from '../api';
 
 // ── Constants ──────────────────────────────────────────────────────────────────
@@ -27,6 +29,20 @@ const V4_TABS = [
 ];
 
 function extOf(name) { return name.slice(name.lastIndexOf('.')).toLowerCase(); }
+
+function getLanguage(filename) {
+  const ext = extOf(filename);
+  const map = {
+    '.ps1': 'powershell', '.psm1': 'powershell', '.psd1': 'powershell',
+    '.xml': 'xml',
+    '.json': 'json',
+    '.yaml': 'yaml', '.yml': 'yaml',
+    '.ini': 'ini',
+    '.bat': 'bat', '.cmd': 'bat',
+    '.md': 'markdown',
+  };
+  return map[ext] || 'plaintext';
+}
 function fmtSize(bytes) {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1048576) return `${(bytes / 1024).toFixed(1)} KB`;
@@ -35,23 +51,30 @@ function fmtSize(bytes) {
 
 // ── Text editor modal ──────────────────────────────────────────────────────────
 
-function TextEditorModal({ appName, version, folder, filename, onClose, onSaved }) {
+function TextEditorModal({ appName, version, folder, filename, onClose, onSaved, readFn, saveFn, title }) {
   const [content, setContent] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState('');
 
   useEffect(() => {
-    readFolderFile(appName, version, folder, filename)
-      .then(d => { setContent(d.content); setLoading(false); })
+    const doRead = readFn
+      ? readFn().then(d => d.content)
+      : readFolderFile(appName, version, folder, filename).then(d => d.content);
+    doRead
+      .then(c => { setContent(c); setLoading(false); })
       .catch(e => { setErr(e.message); setLoading(false); });
-  }, [appName, version, folder, filename]);
+  }, []);
 
   const save = async () => {
     setSaving(true); setErr('');
     try {
-      await saveFolderFile(appName, version, folder, filename, content);
-      onSaved();
+      if (saveFn) {
+        await saveFn(content);
+      } else {
+        await saveFolderFile(appName, version, folder, filename, content);
+      }
+      onSaved?.();
       onClose();
     } catch (e) {
       setErr(e.message);
@@ -60,11 +83,13 @@ function TextEditorModal({ appName, version, folder, filename, onClose, onSaved 
     }
   };
 
+  const header = title ?? (folder ? `${folder}/${filename}` : filename);
+
   return (
     <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-xl shadow-2xl flex flex-col w-full max-w-4xl" style={{ height: '80vh' }}>
         <div className="flex items-center justify-between px-4 py-3 border-b">
-          <span className="font-semibold text-sm font-mono">{folder}/{filename}</span>
+          <span className="font-semibold text-sm font-mono">{header}</span>
           <div className="flex items-center gap-2">
             {err && <span className="text-red-600 text-xs">{err}</span>}
             <button onClick={save} disabled={saving || loading} className="btn-primary text-sm">
@@ -73,15 +98,24 @@ function TextEditorModal({ appName, version, folder, filename, onClose, onSaved 
             <button onClick={onClose} className="btn-secondary text-sm"><X size={14} /></button>
           </div>
         </div>
-        <div className="flex-1 min-h-0">
+        <div className="flex-1 min-h-0 bg-[#1e1e1e] rounded-b-xl overflow-hidden">
           {loading ? (
             <div className="p-4 text-gray-400 text-sm">Loading…</div>
           ) : (
-            <textarea
-              className="w-full h-full p-4 font-mono text-sm bg-gray-950 text-gray-100 resize-none outline-none rounded-b-xl"
-              spellCheck={false}
+            <Editor
+              height="100%"
+              language={getLanguage(filename)}
               value={content}
-              onChange={e => setContent(e.target.value)}
+              onChange={val => setContent(val ?? '')}
+              theme="vs-dark"
+              options={{
+                fontSize: 13,
+                minimap: { enabled: false },
+                scrollBeyondLastLine: false,
+                wordWrap: 'on',
+                automaticLayout: true,
+                tabSize: 4,
+              }}
             />
           )}
         </div>
@@ -498,6 +532,7 @@ export default function PackageDetail() {
   const [missingFiles, setMissingFiles] = useState([]);
   const [publishing, setPublishing] = useState(false);
   const [activeTab, setActiveTab] = useState('files');
+  const [editingScript, setEditingScript] = useState(false);
   const fileInputRef = useRef();
 
   const load = async () => {
@@ -574,8 +609,19 @@ export default function PackageDetail() {
   const tabs = isV4 ? V4_TABS : [V4_TABS[0]];
   const activeTabDef = tabs.find(t => t.id === activeTab) || tabs[0];
 
+  const entryScriptName = isV4 ? 'Invoke-AppDeployToolkit.ps1' : 'Deploy-Application.ps1';
+
   return (
     <div className="max-w-3xl">
+      {editingScript && (
+        <TextEditorModal
+          filename={entryScriptName}
+          title={entryScriptName}
+          readFn={() => readEntryScript(appName, version)}
+          saveFn={(content) => saveEntryScript(appName, version, content)}
+          onClose={() => setEditingScript(false)}
+        />
+      )}
       {msg && <div className="bg-green-50 text-green-700 p-3 rounded mb-4">{msg}</div>}
 
       {/* Header */}
@@ -615,7 +661,16 @@ export default function PackageDetail() {
           </dd>
           <dt className="text-gray-500">Architecture</dt><dd>{pkg.architecture || 'x64'}</dd>
           <dt className="text-gray-500">Entry Script</dt>
-          <dd className="font-mono text-xs">{isV4 ? 'Invoke-AppDeployToolkit.ps1' : 'Deploy-Application.ps1'}</dd>
+          <dd className="flex items-center gap-2">
+            <span className="font-mono text-xs">{isV4 ? 'Invoke-AppDeployToolkit.ps1' : 'Deploy-Application.ps1'}</span>
+            <button
+              onClick={() => setEditingScript(true)}
+              className="text-blue-500 hover:text-blue-700 flex items-center gap-1 text-xs"
+              title="Edit entry script"
+            >
+              <Pencil size={12} /> Edit
+            </button>
+          </dd>
           <dt className="text-gray-500">Install Command</dt><dd className="font-mono text-xs">{pkg.installCommand || '—'}</dd>
           <dt className="text-gray-500">Uninstall Command</dt><dd className="font-mono text-xs">{pkg.uninstallCommand || '—'}</dd>
           <dt className="text-gray-500">Detection</dt><dd>{pkg.detection?.type || '—'}</dd>

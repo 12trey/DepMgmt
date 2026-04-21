@@ -136,19 +136,9 @@ router.post('/check', async (req, res) => {
       checks.ansible = false;
     }
 
-    // Check node — try login shell PATH first, then scan NVM directory tree
+    // Check node — installed system-wide via NodeSource, just check PATH
     try {
-      const nvmNode = [
-        'export NVM_DIR="$HOME/.nvm"',
-        '[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"',
-        // If still not found, locate node binary directly inside NVM versions
-        'NODE_BIN=$(command -v node 2>/dev/null)',
-        'if [ -z "$NODE_BIN" ]; then',
-        '  NODE_BIN=$(find "$NVM_DIR/versions/node" -maxdepth 2 -name node -type f 2>/dev/null | sort -V | tail -1)',
-        'fi',
-        '[ -n "$NODE_BIN" ] && "$NODE_BIN" --version',
-      ].join('\n');
-      const r = await wslExec(instance, nvmNode);
+      const r = await wslExec(instance, 'node --version 2>/dev/null');
       checks.node = r.stdout.startsWith('v');
       checks.nodeVersion = r.stdout || null;
     } catch {
@@ -251,10 +241,6 @@ export DEBIAN_FRONTEND=noninteractive
 # Use only the standard Linux PATH so WSL does not pick up Windows binaries
 export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
-# Source NVM early so any existing node install is visible
-export NVM_DIR="$HOME/.nvm"
-[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
-
 SYSTEM_DEPS="krb5-user python3 python3-pip python3-venv python3.12-venv gcc python3-dev libkrb5-dev rsync curl wget sudo jq"
 echo "==> Updating package lists..."
 sudo apt-get update -q
@@ -281,16 +267,12 @@ chmod 755 /usr/share/ansible/collections
 "$VENV_BIN/ansible-galaxy" collection install ansible.windows --ignore-certs --force -p /usr/share/ansible/collections || echo "==> Failed to install ansible.windows collection, but continuing anyway…"
 "$VENV_BIN/ansible-galaxy" collection install ansible.posix --ignore-certs --force -p /usr/share/ansible/collections || echo "==> Failed to install ansible.posix collection, but continuing anyway…"
 
-echo "==> Checking for NVM/Node..."
+echo "==> Checking for Node.js..."
 if ! command -v node > /dev/null 2>&1; then
-  echo "==> Installing NVM..."
-  curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.4/install.sh | bash
-  export NVM_DIR="$HOME/.nvm"
-  [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
-  echo "==> Installing Node.js..."
-  nvm install node
-  nvm alias default node
-  nvm use default
+  echo "==> Setting up NodeSource LTS repository..."
+  curl -fsSL https://deb.nodesource.com/setup_lts.x | bash -
+  apt-get install -y nodejs
+  echo "==> Node.js installed: $(node --version)"
 else
   echo "==> Node already available: $(node --version)"
 fi
@@ -325,6 +307,16 @@ if [ -f package.json ]; then
   echo "==> Installing npm dependencies..."
   npm install
   npm run build
+fi
+
+
+# Fix ownership so the default WSL user can write to the app directory after root install
+DEFAULT_USER=$(getent passwd 1000 | cut -d: -f1 2>/dev/null || id -un 1000 2>/dev/null || echo "")
+if [ -n "$DEFAULT_USER" ]; then
+  echo "==> Transferring ownership of ${APP_PATH} to $DEFAULT_USER..."
+  chown -R "$DEFAULT_USER:$DEFAULT_USER" "${APP_PATH}"
+else
+  echo "==> [WARN] Could not determine UID 1000 user — skipping chown."
 fi
 
 echo "==> Setup complete!"
@@ -369,12 +361,6 @@ router.post('/launch', async (req, res) => {
     await wslExec(instance, `
 cat > /tmp/dmt-launch.sh << 'EOLAUNCH'
 #!/bin/bash -l
-export NVM_DIR="$HOME/.nvm"
-[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
-if ! command -v node > /dev/null 2>&1; then
-  NODE_BIN=$(find "$NVM_DIR/versions/node" -maxdepth 2 -name node -type f 2>/dev/null | sort -V | tail -1)
-  [ -n "$NODE_BIN" ] && export PATH="$(dirname "$NODE_BIN"):$PATH"
-fi
 # Activate the Python venv so ansible-playbook is on PATH for child processes
 [ -f "/opt/.ansiblevenv/bin/activate" ] && . "/opt/.ansiblevenv/bin/activate"
 cd ${APP_PATH}
@@ -416,15 +402,7 @@ rsync -av --delete \
 `);
 
     // 2. Rebuild the embedded React app
-    await wslExec(instance, `
-export NVM_DIR="$HOME/.nvm"
-[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
-if ! command -v node > /dev/null 2>&1; then
-  NODE_BIN=$(find "$NVM_DIR/versions/node" -maxdepth 2 -name node -type f 2>/dev/null | sort -V | tail -1)
-  [ -n "$NODE_BIN" ] && export PATH="$(dirname "$NODE_BIN"):$PATH"
-fi
-cd "${APP_PATH}/my-react-app" && npm run build
-`);
+    await wslExec(instance, `cd "${APP_PATH}/my-react-app" && npm run build`);
 
     // 3. Kill the existing app.js process (ignore error if it wasn't running)
     await wslExec(instance, `pkill -f "node ${APP_ENTRY}" || true`).catch(() => {});
@@ -433,12 +411,6 @@ cd "${APP_PATH}/my-react-app" && npm run build
     await wslExec(instance, `
 cat > /tmp/dmt-launch.sh << 'EOLAUNCH'
 #!/bin/bash -l
-export NVM_DIR="$HOME/.nvm"
-[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
-if ! command -v node > /dev/null 2>&1; then
-  NODE_BIN=$(find "$NVM_DIR/versions/node" -maxdepth 2 -name node -type f 2>/dev/null | sort -V | tail -1)
-  [ -n "$NODE_BIN" ] && export PATH="$(dirname "$NODE_BIN"):$PATH"
-fi
 [ -f "/opt/.ansiblevenv/bin/activate" ] && . "/opt/.ansiblevenv/bin/activate"
 cd ${APP_PATH}
 exec node ${APP_ENTRY} >> /tmp/dmt-app.log 2>&1

@@ -30,6 +30,9 @@ function Welcome() {
         <div className="welcome">
             <h1>Welcome to DMT Tools UI</h1>
             <p style={{ color: '#c6c6c6', fontSize: '.7em' }}>Click the Ansible button in the header to get started with ansible.</p>
+            <p style={{ color: '#c6c6c6', fontSize: '.7em' }}>For more information on Ansible, please visit the <a href="https://docs.ansible.com/" target="_blank" rel="noopener noreferrer" style={{ color: '#446EB1' }}>docs</a>.</p>
+            <p style={{ color: '#c6c6c6', fontSize: '.7em' }}>The Ansible module index can be found here: <a href="https://docs.ansible.com/projects/ansible/latest/collections/index_module.html" target="_blank" rel="noopener noreferrer" style={{ color: '#446EB1' }}>Index of all Modules</a>.</p>
+
             {/* <p style={{ margin: '20px', marginTop: '60px', color: '#c6c6c6', fontSize: '.7em' }}>Get winendpoints.ps1</p>
             <div style={{ fontSize: '.7em', border: '1px solid #ccc', borderRadius: '6px', padding: '6px', margin: '6px',  marginTop: '10px', display: 'inline-block', verticalAlign: 'middle', color: 'white' }}>irm ./winendpoints.ps1 | iex
                 <a href="#" onClick={() => copyToClipboard(`irm ${baseUrl}/winendpoints.ps1 | iex`)} title="Copy">
