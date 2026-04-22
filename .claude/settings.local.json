@@ -32,7 +32,8 @@
       "Bash(cp C:/Users/trey/source/AICMTrace/public/style.css C:/Users/trey/source/aipsadt/server/logviewer/public/style.css)",
       "Bash(cp C:/Users/trey/source/AICMTrace/public/intuneTab.js C:/Users/trey/source/aipsadt/server/logviewer/public/intuneTab.js)",
       "Bash(cp C:/Users/trey/source/AICMTrace/public/dsregTab.js C:/Users/trey/source/aipsadt/server/logviewer/public/dsregTab.js)",
-      "Bash(cp C:/Users/trey/source/AICMTrace/public/errorCodes.js C:/Users/trey/source/aipsadt/server/logviewer/public/errorCodes.js)"
+      "Bash(cp C:/Users/trey/source/AICMTrace/public/errorCodes.js C:/Users/trey/source/aipsadt/server/logviewer/public/errorCodes.js)",
+      "Bash(ls src/components/FindBar*)"
     ]
   }
 }
