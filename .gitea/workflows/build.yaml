@@ -35,7 +35,7 @@ jobs:
           # token: ${{ secrets.GITEA_TOKEN }}
           # server_url: ${{ gitea.server_url }}
           # repository: ${{ gitea.repository }}
-          tag_name: v1.0.2
-          name: Release v1.0.2
+          tag_name: v1.0.3
+          name: Release v1.0.3
           files: |
-            dist-electron/Deployment Manager Setup 1.0.2.exe
+            dist-electron/Deployment Manager Setup 1.0.3.exe
