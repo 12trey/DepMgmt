@@ -1,18 +1,29 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { gitClone, gitPull, gitPush, gitLog } from '../api';
-import { GitBranch, ArrowUp, ArrowDown, RefreshCw, Upload, Download } from 'lucide-react';
+import { GitBranch, ArrowUp, ArrowDown, RefreshCw, Upload, Download, KeyRound } from 'lucide-react';
 import { useConfigContext } from '../context/ConfigContext';
+import { useTabGuard } from '../context/TabGuardContext';
 
 export default function GitPanel() {
   const [repoLog, setRepoLog] = useState(null);
   const [url, setUrl] = useState('');
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [showCreds, setShowCreds] = useState(false);
   const [msg, setMsg] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState('');
 
+  // Register a tab-close guard so App.jsx can warn before discarding credentials
+  const dirtyRef = useRef(false);
+  useEffect(() => { dirtyRef.current = !!(username || password); }, [username, password]);
+  useTabGuard('/git', () => dirtyRef.current);
+
   const { configVersion } = useConfigContext();
   const loadLog = () => gitLog().then(setRepoLog).catch(() => {});
   useEffect(() => { loadLog(); }, [configVersion]);
+
+  const credentials = { username: username || undefined, password: password || undefined };
 
   const action = async (name, fn) => {
     setLoading(name); setMsg(''); setError('');
@@ -69,11 +80,42 @@ export default function GitPanel() {
 
       {/* Actions */}
       <div className="bg-white rounded-lg shadow p-5 mb-4 space-y-4">
+
+        {/* Optional credentials */}
+        <div>
+          <button
+            onClick={() => setShowCreds(v => !v)}
+            className="flex items-center gap-2 text-sm text-gray-500 hover:text-gray-700"
+          >
+            <KeyRound size={14} />
+            {showCreds ? 'Hide credentials' : 'Credentials (optional)'}
+          </button>
+          {showCreds && (
+            <div className="mt-2 flex gap-2">
+              <input
+                className="input flex-1"
+                placeholder="Username"
+                autoComplete="off"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+              />
+              <input
+                className="input flex-1"
+                type="password"
+                placeholder="Password or token"
+                autoComplete="new-password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+              />
+            </div>
+          )}
+        </div>
+
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">Clone a repository</label>
           <div className="flex gap-2">
             <input className="input flex-1" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://github.com/org/repo.git" />
-            <button onClick={() => action('clone', () => gitClone(url))} disabled={!!loading || !url} className="btn-primary">
+            <button onClick={() => action('clone', () => gitClone(url, credentials))} disabled={!!loading || !url} className="btn-primary">
               {loading === 'clone' ? 'Cloning…' : 'Clone'}
             </button>
           </div>
@@ -84,7 +126,7 @@ export default function GitPanel() {
             <button onClick={() => action('pull', gitPull)} disabled={!!loading} className="btn-secondary">
               <Download size={15} /> {loading === 'pull' ? 'Pulling…' : 'Pull'}
             </button>
-            <button onClick={() => action('push', gitPush)} disabled={!!loading} className="btn-primary">
+            <button onClick={() => action('push', () => gitPush(credentials))} disabled={!!loading} className="btn-primary">
               <Upload size={15} /> {loading === 'push' ? 'Pushing…' : `Push${repoLog?.ahead > 0 ? ` (${repoLog.ahead})` : ''}`}
             </button>
           </div>
