@@ -14,6 +14,7 @@ const intuneRoutes = require('./routes/intune');
 const groupRoutes = require('./routes/groups');
 const wslRoutes = require('./routes/wsl');
 const psadtRoutes = require('./routes/psadt');
+const setupLogViewer = require('./logviewer');
 const { attachWss } = require('./services/logStream');
 const { attachTerminalWss } = wslRoutes;
 
@@ -35,7 +36,8 @@ server.on('upgrade', (req, socket, head) => {
     wss.handleUpgrade(req, socket, head, (ws) => wss.emit('connection', ws, req));
   } else if (pathname === '/ws/terminal') {
     terminalWss.handleUpgrade(req, socket, head, (ws) => terminalWss.emit('connection', ws, req));
-  } else {
+  } else if (!pathname.startsWith('/socket.io')) {
+    // Socket.IO handles its own /socket.io/* upgrades via its own listener
     socket.destroy();
   }
 });
@@ -53,6 +55,9 @@ app.use('/api/intune', intuneRoutes);
 app.use('/api/groups', groupRoutes);
 app.use('/api/wsl', wslRoutes);
 app.use('/api/psadt', psadtRoutes);
+
+// Log Viewer (AICMTrace integration) — must be before the React catch-all
+setupLogViewer(app, server);
 
 // Serve React build in production
 if (fs.existsSync(paths.clientDist)) {

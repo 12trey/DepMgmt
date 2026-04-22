@@ -69,6 +69,8 @@ app.post('/runplay', async (req, res) => {
         ANSIBLE_COMMAND_WARNINGS: 'False',
         ANSIBLE_ACTION_WARNINGS: 'False',
         ANSIBLE_SYSTEM_WARNINGS: 'False',
+        ANSIBLE_CALLBACK_PLUGINS: '../callback_plugins',
+        ANSIBLE_CALLBAKS_ENABLED: 'cmtrace'
       },
     }
   );
@@ -109,6 +111,29 @@ app.post('/runplay', async (req, res) => {
 
 app.get('/isrunning', (req, res) => {
   res.json({ isRunning });
+});
+
+// ── CMTrace log export ─────────────────────────────────────────────────────────
+// Serves /tmp/ansible_cmtrace.log content (or a byte-range slice via ?offset=N)
+// so the Log Viewer in aipsadt can poll for new lines without file-system access.
+app.get('/logs/cmtrace', (req, res) => {
+  const logPath = '/tmp/ansible_cmtrace.log';
+  const offset = Math.max(0, parseInt(req.query.offset, 10) || 0);
+
+  if (!fs.existsSync(logPath)) {
+    return res.type('text/plain').send('');
+  }
+
+  try {
+    const stat = fs.statSync(logPath);
+    if (offset >= stat.size) {
+      return res.type('text/plain').send('');
+    }
+    res.type('text/plain');
+    fs.createReadStream(logPath, { start: offset, encoding: 'utf8' }).pipe(res);
+  } catch (err) {
+    res.status(500).type('text/plain').send('');
+  }
 });
 
 // ── File browser ───────────────────────────────────────────────────────────────

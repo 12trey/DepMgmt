@@ -1,6 +1,6 @@
-import { Routes, Route, NavLink } from 'react-router-dom';
+import { Routes, Route, NavLink, useLocation } from 'react-router-dom';
 import FindBar from './components/FindBar';
-import { LayoutDashboard, PackagePlus, FolderOpen, Play, GitBranch, Settings, Monitor, Package, Archive, UsersRound, HelpCircle } from 'lucide-react';
+import { LayoutDashboard, PackagePlus, FolderOpen, Play, GitBranch, Settings, Monitor, Package, Archive, UsersRound, HelpCircle, ScrollText } from 'lucide-react';
 import Dashboard from './pages/Dashboard';
 import CreatePackage from './pages/CreatePackage';
 import ManagePackages from './pages/ManagePackages';
@@ -14,6 +14,7 @@ import MsiBuilder from './pages/MsiBuilder';
 import IntuneWin from './pages/IntuneWin';
 import ManageGroups from './pages/ManageGroups';
 import Help from './pages/Help';
+import LogViewer from './pages/LogViewer';
 
 const navItems = [
   { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
@@ -27,11 +28,14 @@ const navItems = [
   { to: '/config', icon: Settings, label: 'Settings' },
   { divider: true },
   { to: '/dmt-tools', icon: Monitor, label: 'DMT Tools' },
+  { to: '/log-viewer', icon: ScrollText, label: 'Log Viewer' },
   { divider: true },
   { to: '/help', icon: HelpCircle, label: 'Help' },
 ];
 
 export default function App() {
+  const location = useLocation();
+  const isLogViewer = location.pathname === '/log-viewer';
   return (
     // <div style={{ overflow: 'hidden', height: '100vh' }}>
     //   <div style={{ WebkitAppRegion: 'drag', height: '31px', backgroundColor: '#2f3241', color: '#ffffff' }}>
@@ -85,7 +89,7 @@ export default function App() {
       </nav>
 
       {/* Main Content */}
-      <main className="flex-1 overflow-auto bg-gray-50 p-6">
+      <main className={`flex-1 bg-gray-50 ${isLogViewer ? 'overflow-hidden p-0' : 'overflow-auto p-6'}`}>
         <Routes>
           <Route path="/" element={<Dashboard />} />
           <Route path="/create" element={<CreatePackage />} />
@@ -99,6 +103,7 @@ export default function App() {
           <Route path="/msi-builder" element={<MsiBuilder />} />
           <Route path="/intune-win" element={<IntuneWin />} />
           <Route path="/manage-groups" element={<ManageGroups />} />
+          <Route path="/log-viewer" element={<LogViewer />} />
           <Route path="/help" element={<Help />} />
         </Routes>
       </main>
