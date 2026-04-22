@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { Routes, Route, useLocation, useNavigate } from 'react-router-dom';
 import FindBar from './components/FindBar';
 import {
@@ -82,6 +82,13 @@ export default function App() {
     initial.add(activeTo);
     return [...initial];
   });
+
+  // Auto-add a tab whenever the URL changes via any means (Link, navigate, browser back/forward)
+  useEffect(() => {
+    if (!isSubRoute) {
+      setOpenTabs(prev => prev.includes(activeTo) ? prev : [...prev, activeTo]);
+    }
+  }, [activeTo, isSubRoute]);
 
   const openTab = useCallback((to) => {
     setOpenTabs(prev => prev.includes(to) ? prev : [...prev, to]);
