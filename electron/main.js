@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, clipboard, Menu } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, clipboard, Menu, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { fork } = require('child_process');
@@ -41,7 +41,6 @@ function createWindow() {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
-      webviewTag: true
     },
   });
 
@@ -61,6 +60,14 @@ function createWindow() {
   });
   
   mainWindow.removeMenu();
+
+  // Open external links in the system default browser instead of a new Electron window
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    if (!url.startsWith('http://localhost') && !url.startsWith('file://')) {
+      shell.openExternal(url);
+    }
+    return { action: 'deny' };
+  });
 
   // Right-click context menu
   mainWindow.webContents.on('context-menu', (event, params) => {

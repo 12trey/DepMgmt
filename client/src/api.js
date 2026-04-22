@@ -103,9 +103,9 @@ export async function uploadFolderFiles(appName, version, folder, files) {
 }
 
 // Git
-export const gitClone = (url) => request('/git/clone', { method: 'POST', body: JSON.stringify({ url }) });
+export const gitClone = (url, credentials = {}) => request('/git/clone', { method: 'POST', body: JSON.stringify({ url, ...credentials }) });
 export const gitPull = () => request('/git/pull', { method: 'POST' });
-export const gitPush = () => request('/git/push', { method: 'POST' });
+export const gitPush = (credentials = {}) => request('/git/push', { method: 'POST', body: JSON.stringify(credentials) });
 export const gitStatus = () => request('/git/status');
 export const gitPublish = (appName, version) => request('/git/publish', { method: 'POST', body: JSON.stringify({ appName, version }) });
 export const gitLog = () => request('/git/log');

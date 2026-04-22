@@ -84,12 +84,25 @@ function getGit() {
   return simpleGit(paths.repoDir);
 }
 
-exports.clone = async (url) => {
+function injectCredentials(repoUrl, username, password) {
+  if (!username && !password) return repoUrl;
+  try {
+    const u = new URL(repoUrl);
+    if (username) u.username = username;
+    if (password) u.password = password;
+    return u.toString();
+  } catch {
+    return repoUrl;
+  }
+}
+
+exports.clone = async (url, credentials = {}) => {
   const config = getConfig();
   const repoUrl = url || config.repository.url;
   if (!repoUrl) throw new Error('No repository URL configured');
+  const cloneUrl = injectCredentials(repoUrl, credentials.username, credentials.password);
   fs.mkdirSync(paths.repoDir, { recursive: true });
-  await simpleGit().clone(repoUrl, paths.repoDir);
+  await simpleGit().clone(cloneUrl, paths.repoDir);
   return { message: 'Repository cloned', path: paths.repoDir };
 };
 
@@ -99,13 +112,22 @@ exports.pull = async () => {
   return { message: 'Pull complete', summary: result };
 };
 
-exports.push = async () => {
+exports.push = async (credentials = {}) => {
   if (!fs.existsSync(path.join(paths.repoDir, '.git'))) throw new Error('No git repository found');
   const git = getGit();
   const status = await git.status();
   const branch = status.current;
-  // --set-upstream ensures it works whether or not the tracking branch is already configured
-  await git.push(['origin', branch, '--set-upstream']);
+  if (credentials.username || credentials.password) {
+    // Build an authenticated URL so credentials are never written to .git/config
+    const remotes = await git.getRemotes(true);
+    const origin = remotes.find(r => r.name === 'origin');
+    if (!origin) throw new Error('No origin remote configured');
+    const authUrl = injectCredentials(origin.refs.push, credentials.username, credentials.password);
+    await git.push([authUrl, branch]);
+  } else {
+    // --set-upstream ensures it works whether or not the tracking branch is already configured
+    await git.push(['origin', branch, '--set-upstream']);
+  }
   return { message: `Pushed ${branch} to origin` };
 };
 

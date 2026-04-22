@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { Routes, Route, useLocation, useNavigate } from 'react-router-dom';
 import FindBar from './components/FindBar';
 import {
@@ -19,6 +19,7 @@ import IntuneWin from './pages/IntuneWin';
 import ManageGroups from './pages/ManageGroups';
 import Help from './pages/Help';
 import LogViewer from './pages/LogViewer';
+import { TabGuardContext } from './context/TabGuardContext';
 
 // ── Nav definition ────────────────────────────────────────────────────────────
 const NAV_ITEMS = [
@@ -90,13 +91,28 @@ export default function App() {
     }
   }, [activeTo, isSubRoute]);
 
-  const openTab = useCallback((to) => {
-    setOpenTabs(prev => prev.includes(to) ? prev : [...prev, to]);
-    navigate(to);
-  }, [navigate]);
+  // Tab guard — pages register a fn that returns true when they have unsaved state
+  const guardsRef = useRef(new Map());
+  const registerGuard = useCallback((path, isDirtyFn) => {
+    guardsRef.current.set(path, isDirtyFn);
+    return () => guardsRef.current.delete(path);
+  }, []);
+  const canClose = useCallback((path) => {
+    const fn = guardsRef.current.get(path);
+    return !fn || !fn();
+  }, []);
 
-  const closeTab = useCallback((to, e) => {
-    e.stopPropagation();
+  // Scroll active tab into view whenever it changes
+  const tabBarRef = useRef(null);
+  const tabEls = useRef({});
+  useEffect(() => {
+    tabEls.current[activeTo]?.scrollIntoView({ behavior: 'smooth', inline: 'nearest', block: 'nearest' });
+  }, [activeTo]);
+
+  // Pending close confirmation (replaces window.confirm to avoid breaking keyboard input)
+  const [pendingClose, setPendingClose] = useState(null);
+
+  const doClose = useCallback((to) => {
     setOpenTabs(prev => {
       const next = prev.filter(t => t !== to);
       if (next.length === 0) return ['/'];
@@ -108,7 +124,22 @@ export default function App() {
     });
   }, [activeTo, navigate]);
 
+  const openTab = useCallback((to) => {
+    setOpenTabs(prev => prev.includes(to) ? prev : [...prev, to]);
+    navigate(to);
+  }, [navigate]);
+
+  const closeTab = useCallback((to, e) => {
+    e.stopPropagation();
+    if (!canClose(to)) {
+      setPendingClose(to);
+    } else {
+      doClose(to);
+    }
+  }, [canClose, doClose]);
+
   return (
+    <TabGuardContext.Provider value={registerGuard}>
     <div className="flex h-screen overflow-hidden">
       <FindBar />
 
@@ -149,7 +180,7 @@ export default function App() {
       <div className="flex-1 flex flex-col overflow-hidden">
 
         {/* Tab bar */}
-        <div className="flex bg-gray-800 border-b border-gray-600 overflow-x-auto shrink-0">
+        <div ref={tabBarRef} className="flex bg-gray-800 border-b border-gray-600 overflow-x-auto shrink-0">
           {openTabs.map(to => {
             const item = getNavItem(to);
             if (!item) return null;
@@ -158,6 +189,7 @@ export default function App() {
             return (
               <div
                 key={to}
+                ref={el => { tabEls.current[to] = el; }}
                 onClick={() => navigate(to)}
                 className={`flex items-center gap-2 px-3 py-2 text-sm cursor-pointer border-r border-gray-600 shrink-0 select-none ${
                   isActive
@@ -217,5 +249,33 @@ export default function App() {
         </div>
       </div>
     </div>
+
+    {/* Tab close confirmation modal */}
+    {pendingClose && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+        <div className="bg-white rounded-lg shadow-xl p-6 w-80 flex flex-col gap-4">
+          <p className="text-sm text-gray-800 font-medium">Close this tab?</p>
+          <p className="text-xs text-gray-500">
+            Credentials entered in this tab will be lost.
+          </p>
+          <div className="flex justify-end gap-2">
+            <button
+              autoFocus
+              onClick={() => setPendingClose(null)}
+              className="px-3 py-1.5 text-sm rounded border border-gray-300 hover:bg-gray-50"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={() => { doClose(pendingClose); setPendingClose(null); }}
+              className="px-3 py-1.5 text-sm rounded bg-red-600 text-white hover:bg-red-700"
+            >
+              Close anyway
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+    </TabGuardContext.Provider>
   );
 }

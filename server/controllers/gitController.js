@@ -3,8 +3,8 @@ const packageService = require('../services/packageService');
 
 exports.clone = async (req, res) => {
   try {
-    const { url } = req.body;
-    const result = await gitService.clone(url);
+    const { url, username, password } = req.body;
+    const result = await gitService.clone(url, { username, password });
     res.json(result);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -20,9 +20,10 @@ exports.pull = async (_req, res) => {
   }
 };
 
-exports.push = async (_req, res) => {
+exports.push = async (req, res) => {
   try {
-    const result = await gitService.push();
+    const { username, password } = req.body || {};
+    const result = await gitService.push({ username, password });
     res.json(result);
   } catch (err) {
     res.status(500).json({ error: err.message });
