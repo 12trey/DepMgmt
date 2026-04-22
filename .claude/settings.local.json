@@ -22,7 +22,18 @@
       "Bash(taskkill:*)",
       "Bash(cmd:*)",
       "Bash(grep -v \"^$\")",
-      "Bash(git log:*)"
+      "Bash(git log:*)",
+      "Bash(wc:*)",
+      "Bash(mkdir -p C:/Users/trey/source/aipsadt/server/logviewer)",
+      "Bash(cp C:/Users/trey/source/AICMTrace/lib/fileBrowser.js C:/Users/trey/source/aipsadt/server/logviewer/fileBrowser.js)",
+      "Bash(cp C:/Users/trey/source/AICMTrace/lib/logParser.js C:/Users/trey/source/aipsadt/server/logviewer/logParser.js)",
+      "Bash(cp C:/Users/trey/source/AICMTrace/lib/evtxParser.js C:/Users/trey/source/aipsadt/server/logviewer/evtxParser.js)",
+      "Bash(cp C:/Users/trey/source/AICMTrace/lib/tailWatcher.js C:/Users/trey/source/aipsadt/server/logviewer/tailWatcher.js)",
+      "Bash(cp C:/Users/trey/source/AICMTrace/public/style.css C:/Users/trey/source/aipsadt/server/logviewer/public/style.css)",
+      "Bash(cp C:/Users/trey/source/AICMTrace/public/intuneTab.js C:/Users/trey/source/aipsadt/server/logviewer/public/intuneTab.js)",
+      "Bash(cp C:/Users/trey/source/AICMTrace/public/dsregTab.js C:/Users/trey/source/aipsadt/server/logviewer/public/dsregTab.js)",
+      "Bash(cp C:/Users/trey/source/AICMTrace/public/errorCodes.js C:/Users/trey/source/aipsadt/server/logviewer/public/errorCodes.js)",
+      "Bash(ls src/components/FindBar*)"
     ]
   }
 }
