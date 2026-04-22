@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import {
   Package, Activity, CheckCircle, XCircle,
-  PackagePlus, FolderOpen, Play, GitBranch, Archive, UsersRound, Monitor, Wrench,
+  PackagePlus, FolderOpen, Play, GitBranch, Archive, UsersRound, Monitor, Wrench, ScrollText,
 } from 'lucide-react';
 import { listPackages, listLogs } from '../api';
 
@@ -56,19 +56,28 @@ const FEATURES = [
     to: '/dmt-tools',
     desc: 'Run Ansible playbooks against Windows endpoints directly from the browser via WSL. Includes an integrated terminal and one-click sync of app changes.',
   },
+  {
+    icon: ScrollText,
+    label: 'Log Viewer',
+    color: 'rose',
+    to: '/log-viewer',
+    desc: 'View and tail CMTrace, SCCM, and plain-text log files in real time. Includes EVTX event log browsing, Intune diagnostics, DSRegCmd analysis, and a live Ansible playbook log feed.',
+  },
 ];
 
 const FEATURE_COLORS = {
-  blue:   { card: 'bg-blue-50',   icon: 'bg-blue-100 text-blue-600',   link: 'text-blue-600' },
-  green:  { card: 'bg-green-50',  icon: 'bg-green-100 text-green-600', link: 'text-green-600' },
+  blue:   { card: 'bg-blue-50',   icon: 'bg-blue-100 text-blue-600',     link: 'text-blue-600' },
+  green:  { card: 'bg-green-50',  icon: 'bg-green-100 text-green-600',   link: 'text-green-600' },
   orange: { card: 'bg-orange-50', icon: 'bg-orange-100 text-orange-600', link: 'text-orange-600' },
   purple: { card: 'bg-purple-50', icon: 'bg-purple-100 text-purple-600', link: 'text-purple-600' },
-  gray:   { card: 'bg-gray-50',   icon: 'bg-gray-100 text-gray-600',   link: 'text-gray-600' },
-  teal:   { card: 'bg-teal-50',   icon: 'bg-teal-100 text-teal-600',   link: 'text-teal-600' },
+  gray:   { card: 'bg-gray-50',   icon: 'bg-gray-100 text-gray-600',     link: 'text-gray-600' },
+  teal:   { card: 'bg-teal-50',   icon: 'bg-teal-100 text-teal-600',     link: 'text-teal-600' },
   indigo: { card: 'bg-indigo-50', icon: 'bg-indigo-100 text-indigo-600', link: 'text-indigo-600' },
+  rose:   { card: 'bg-rose-50',   icon: 'bg-rose-100 text-rose-600',     link: 'text-rose-600' },
 };
 
 export default function Dashboard() {
+  const navigate = useNavigate();
   const [packages, setPackages] = useState([]);
   const [logs, setLogs] = useState([]);
 
@@ -143,10 +152,10 @@ export default function Dashboard() {
           {FEATURES.map(({ icon: Icon, label, color, to, desc }) => {
             const c = FEATURE_COLORS[color];
             return (
-              <Link
+              <button
                 key={to}
-                to={to}
-                className={`${c.card} rounded-lg p-4 border border-transparent hover:border-gray-200 hover:shadow-sm transition-all group block`}
+                onClick={() => navigate(to)}
+                className={`${c.card} rounded-lg p-4 border border-transparent hover:border-gray-200 hover:shadow-sm transition-all group text-left w-full`}
               >
                 <div className="flex items-center gap-3 mb-2">
                   <div className={`p-2 rounded-lg ${c.icon}`}>
@@ -155,7 +164,7 @@ export default function Dashboard() {
                   <span className={`font-semibold text-sm ${c.link} group-hover:underline`}>{label}</span>
                 </div>
                 <p className="text-xs text-gray-600 leading-relaxed">{desc}</p>
-              </Link>
+              </button>
             );
           })}
         </div>
