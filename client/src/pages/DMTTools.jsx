@@ -459,7 +459,7 @@ export default function DMTTools() {
 
   if (stage === 'ready') {
     return (
-      <div className="-m-6 flex flex-col" style={{ height: 'calc(100vh - 0px)' }}>
+      <div className="-m-6 flex flex-col" style={{ height: 'calc(100% + 3rem)' }}>
         {/* Header bar */}
         <div className="flex items-center justify-between px-3 py-1 bg-gray-50 border-b border-gray-200 shrink-0 gap-4">
           <span className="text-xs text-gray-500">
