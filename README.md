@@ -99,6 +99,16 @@ form all remain exactly where you left them.
 
 ![Intune Win32 Packager](screenshots/intunewin32packager.png)
 
+### Code Signing
+
+- Authenticode-sign any supported file (`.exe`, `.dll`, `.msi`, `.cab`, `.ps1`, `.psm1`, `.sys`, `.appx`, `.msix`, and more) using PowerShell's built-in `Set-AuthenticodeSignature` — no Windows SDK or `signtool.exe` required
+- **Drag-and-drop or browse** for the file to sign
+- **Certificate store** — paste a thumbprint from `certmgr.msc`; the app searches both `LocalMachine\My` and `CurrentUser\My`
+- **PFX file** — browse for a `.pfx` or `.p12` file and enter its password; the file is used only for the signing operation and never persisted to disk
+- Configurable **timestamp server** (defaults to DigiCert) so signatures remain valid after the certificate expires
+- The signed file is downloaded with its original filename
+- MSI Builder also has an integrated optional signing step that fires immediately after the WiX compile
+
 ### Manage Groups
 
 - Manage Windows **local groups** and **Active Directory domain groups** from one UI
@@ -198,7 +208,7 @@ aipsadt/
 │   │   ├── groupService.js
 │   │   ├── intuneService.js
 │   │   ├── logStream.js
-│   │   ├── msiService.js
+│   │   ├── msiService.js         # Also exports signMsi used by Code Signing
 │   │   └── packageService.js
 │   ├── index.js                  # Express app, WebSocket server, Socket.IO
 │   └── paths.js                  # Path resolution (dev vs packaged)
@@ -319,6 +329,7 @@ All endpoints are under `/api`.
 | GET | `/intune/status` | Check IntuneWinAppUtil cache |
 | POST | `/intune/download` | Download IntuneWinAppUtil |
 | POST | `/intune/build` | Create .intunewin package |
+| POST | `/sign/file` | Authenticode-sign an uploaded file and return it |
 | POST | `/groups/verify-group` | Verify a group exists |
 | POST | `/groups/members` | List group members |
 | POST | `/groups/verify-user` | Verify a user exists |

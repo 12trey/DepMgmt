@@ -6,6 +6,8 @@ repo/
 logs/
 *.log
 .env
+.claude/
+CLAUDE.md
 /tools
 # Ansible app — tracked separately; ignore generated/installed artifacts
 ansible-app/node_modules/
