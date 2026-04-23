@@ -288,6 +288,7 @@ document.getElementById('intune-open-btn').onclick = function() {
   input.type = 'file';
   input.accept = '.log,.txt,.lo_';
   input.onchange = function() {
+    clearIntuneData();
     var file = input.files[0];
     if (!file) return;
     var label = document.getElementById('intune-file-label');
@@ -311,13 +312,17 @@ document.getElementById('intune-open-btn').onclick = function() {
   input.click();
 };
 
-document.getElementById('intune-clear-btn').onclick = function() {
+function clearIntuneData() {
   intuneEntries = []; intuneEvents = [];
   document.getElementById('intune-summary-box').style.display = 'none';
   document.getElementById('intune-dl-box').style.display = 'none';
   document.getElementById('intune-timeline').innerHTML =
     '<div class="intune-empty" id="intune-empty">Load an IME log to see the diagnostic timeline.</div>';
   document.getElementById('intune-file-label').textContent = 'No file loaded';
+}
+
+document.getElementById('intune-clear-btn').onclick = function() {
+  clearIntuneData();
 };
 
 // Drag-and-drop on the intune tab
