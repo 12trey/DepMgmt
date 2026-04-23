@@ -2,7 +2,7 @@ import { useState } from 'react';
 import {
   PackagePlus, FolderOpen, Play, GitBranch, Settings, Monitor,
   Package, Archive, UsersRound, PuzzleIcon, FileText, Image,
-  Code2, FolderOpen as FolderIcon, Wrench, ChevronRight, ScrollText, ShieldCheck,
+  Code2, FolderOpen as FolderIcon, Wrench, ChevronRight, ScrollText, ShieldCheck, Terminal
 } from 'lucide-react';
 
 const SECTIONS = [
@@ -18,6 +18,7 @@ const SECTIONS = [
   { id: 'dmt',       label: 'DMT Tools' },
   { id: 'logviewer', label: 'Log Viewer' },
   { id: 'signing',   label: 'Code Signing' },
+  { id: 'scriptrunner',   label: 'Script Runner' },
 ];
 
 function Section({ id, title, icon: Icon, children }) {
@@ -571,6 +572,15 @@ export default function Help() {
             signs the compiled MSI immediately after the WiX build — useful if you always sign your
             MSIs and want to do it in one step.
           </Callout>
+        </Section>
+
+        {/* ── Script Runner ── */}
+        <Section id="scriptrunner" title="Script Runner" icon={Terminal}>
+          <p>
+            Script Runner generates a user interface for your Powershell scripts and attempts to generate object property based output.
+            You can run MgGraph enabled scripts by preinstalling the module or have the UI do it for you. The script path where this app looks
+            for scripts can be set in Settings.
+          </p>
         </Section>
       </div>
     </div>

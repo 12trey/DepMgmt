@@ -3,7 +3,7 @@ import { Routes, Route, useLocation, useNavigate } from 'react-router-dom';
 import FindBar from './components/FindBar';
 import {
   LayoutDashboard, PackagePlus, FolderOpen, Play, GitBranch, Settings,
-  Monitor, Package, Archive, UsersRound, HelpCircle, ScrollText, X, ShieldCheck,
+  Monitor, Package, Archive, UsersRound, HelpCircle, ScrollText, X, ShieldCheck, Terminal,
 } from 'lucide-react';
 import Dashboard from './pages/Dashboard';
 import CreatePackage from './pages/CreatePackage';
@@ -20,6 +20,7 @@ import IntuneWin from './pages/IntuneWin';
 import ManageGroups from './pages/ManageGroups';
 import Help from './pages/Help';
 import LogViewer from './pages/LogViewer';
+import ScriptRunner from './pages/ScriptRunner';
 import { TabGuardContext } from './context/TabGuardContext';
 
 // ── Nav definition ────────────────────────────────────────────────────────────
@@ -32,6 +33,7 @@ const NAV_ITEMS = [
   { to: '/code-signing',  icon: ShieldCheck,     label: 'Code Signing' },
   { to: '/intune-win',    icon: Archive,         label: 'Intune Packager' },
   { to: '/manage-groups', icon: UsersRound,      label: 'Manage Groups' },
+  { to: '/script-runner', icon: Terminal,         label: 'Script Runner' },
   { to: '/git',           icon: GitBranch,       label: 'Git' },
   { to: '/config',        icon: Settings,        label: 'Settings' },
   { divider: true },
@@ -50,6 +52,7 @@ const PAGE_COMPONENTS = {
   '/code-signing':  CodeSigning,
   '/intune-win':    IntuneWin,
   '/manage-groups': ManageGroups,
+  '/script-runner': ScriptRunner,
   '/git':           GitPanel,
   '/config':        Config,
   '/dmt-tools':     DMTTools,

@@ -17,6 +17,9 @@
       "Bypass"
     ]
   },
+  "scripts": {
+    "folderPath": ".\\powershell_scripts"
+  },
   "groups": {
     "adDomain": "",
     "managedGroups": [

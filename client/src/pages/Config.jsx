@@ -151,6 +151,20 @@ export default function Config() {
         />
       </Section>
 
+      {/* Script Runner settings */}
+      <Section title="Script Runner">
+        <Field
+          label="Scripts Folder"
+          hint="Folder containing PowerShell scripts to run from the Script Runner page"
+          value={config.scripts?.folderPath || ''}
+          onChange={(v) => setNested('scripts', 'folderPath', v)}
+          onBrowse={async () => {
+            const result = await browseFolder(config.scripts?.folderPath || '');
+            if (result.path) setNested('scripts', 'folderPath', result.path);
+          }}
+        />
+      </Section>
+
       {/* Group management settings */}
       <Section title="Group Management">
         <Field
