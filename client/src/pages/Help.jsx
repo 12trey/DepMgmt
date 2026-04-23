@@ -2,7 +2,7 @@ import { useState } from 'react';
 import {
   PackagePlus, FolderOpen, Play, GitBranch, Settings, Monitor,
   Package, Archive, UsersRound, PuzzleIcon, FileText, Image,
-  Code2, FolderOpen as FolderIcon, Wrench, ChevronRight, ScrollText,
+  Code2, FolderOpen as FolderIcon, Wrench, ChevronRight, ScrollText, ShieldCheck,
 } from 'lucide-react';
 
 const SECTIONS = [
@@ -17,6 +17,7 @@ const SECTIONS = [
   { id: 'groups', label: 'Group Management' },
   { id: 'dmt',       label: 'DMT Tools' },
   { id: 'logviewer', label: 'Log Viewer' },
+  { id: 'signing',   label: 'Code Signing' },
 ];
 
 function Section({ id, title, icon: Icon, children }) {
@@ -111,8 +112,9 @@ export default function Help() {
               { icon: Archive, label: 'Intune Packager', desc: 'Wrap installers into .intunewin files.' },
               { icon: GitBranch, label: 'Git Integration', desc: 'Version-control your package repository.' },
               { icon: UsersRound, label: 'Group Management', desc: 'Query and manage on-premises Active Directory groups.' },
-              { icon: Monitor,     label: 'DMT Tools',  desc: 'Ansible playbook execution via WSL.' },
-              { icon: ScrollText, label: 'Log Viewer', desc: 'Real-time CMTrace, EVTX, and Ansible log viewing.' },
+              { icon: Monitor,      label: 'DMT Tools',    desc: 'Ansible playbook execution via WSL.' },
+              { icon: ScrollText,  label: 'Log Viewer',  desc: 'Real-time CMTrace, EVTX, and Ansible log viewing.' },
+              { icon: ShieldCheck, label: 'Code Signing', desc: 'Authenticode-sign executables, MSIs, scripts, and more.' },
             ].map(({ icon: Icon, label, desc }) => (
               <div key={label} className="flex gap-2 p-2 bg-gray-50 rounded border border-gray-100">
                 <Icon size={16} className="text-blue-500 shrink-0 mt-0.5" />
@@ -497,6 +499,77 @@ export default function Help() {
           <Callout type="info">
             Column widths in the log table are resizable — drag the column dividers in the header
             row. Width preferences are saved to <Code>localStorage</Code> per browser.
+          </Callout>
+        </Section>
+
+        {/* ── Code Signing ── */}
+        <Section id="signing" title="Code Signing" icon={ShieldCheck}>
+          <p>
+            The <strong>Code Signing</strong> page applies an Authenticode digital signature to any
+            supported file using PowerShell's built-in <Code>Set-AuthenticodeSignature</Code> cmdlet.
+            No Windows SDK or <Code>signtool.exe</Code> is required.
+          </p>
+
+          <h3 className="font-semibold mt-4 mb-1">Supported file types</h3>
+          <p className="text-xs text-gray-500 mb-2">Any file accepted by Authenticode, including:</p>
+          <div className="flex flex-wrap gap-1.5 text-xs">
+            {['.exe', '.dll', '.msi', '.cab', '.sys', '.ocx', '.cat', '.ps1', '.psm1', '.psd1', '.appx', '.msix'].map(ext => (
+              <Code key={ext}>{ext}</Code>
+            ))}
+          </div>
+
+          <h3 className="font-semibold mt-4 mb-1">Signing with a certificate store thumbprint</h3>
+          <div className="space-y-1.5">
+            <Step n={1}>Open <strong>certmgr.msc</strong> (or <Code>certlm.msc</Code> for the machine store), find your code-signing certificate, and copy the thumbprint from the Details tab.</Step>
+            <Step n={2}>Go to <strong>Code Signing</strong>, drop or browse for the file to sign, and select <strong>Certificate Store</strong>.</Step>
+            <Step n={3}>Paste the thumbprint — spaces and colons are ignored automatically. The app searches both <Code>LocalMachine\My</Code> and <Code>CurrentUser\My</Code>.</Step>
+            <Step n={4}>Optionally set a timestamp server URL, then click <strong>Sign &amp; Download</strong>.</Step>
+          </div>
+
+          <h3 className="font-semibold mt-4 mb-1">Signing with a PFX file</h3>
+          <div className="space-y-1.5">
+            <Step n={1}>Select <strong>PFX File</strong> and click <strong>Browse…</strong> to pick your <Code>.pfx</Code> or <Code>.p12</Code> file.</Step>
+            <Step n={2}>Enter the PFX password (leave blank if the file has no password).</Step>
+            <Step n={3}>Drop or browse for the file to sign, then click <strong>Sign &amp; Download</strong>.</Step>
+          </div>
+          <Callout type="info">
+            The PFX file is uploaded to the server only for the duration of the signing operation and
+            is deleted immediately afterward — it is never written to disk permanently.
+          </Callout>
+
+          <h3 className="font-semibold mt-4 mb-1">Timestamp servers</h3>
+          <p>
+            A timestamp server embeds a trusted time token in the signature so the signature
+            remains valid after the signing certificate expires. The default is DigiCert's TSA.
+            Other common choices:
+          </p>
+          <div className="overflow-x-auto mt-2">
+            <table className="text-xs w-full border border-gray-200 rounded">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="text-left p-2 border-b">Provider</th>
+                  <th className="text-left p-2 border-b">URL</th>
+                </tr>
+              </thead>
+              <tbody>
+                {[
+                  ['DigiCert', 'http://timestamp.digicert.com'],
+                  ['Sectigo', 'http://timestamp.sectigo.com'],
+                  ['GlobalSign', 'http://timestamp.globalsign.com/tsa/r6advanced1'],
+                  ['Comodo', 'http://timestamp.comodoca.com'],
+                ].map(([provider, url]) => (
+                  <tr key={provider} className="border-b last:border-0">
+                    <td className="p-2 font-medium text-gray-700">{provider}</td>
+                    <td className="p-2 font-mono">{url}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <Callout type="tip">
+            The MSI Builder page also has an optional <strong>Code Signing</strong> section that
+            signs the compiled MSI immediately after the WiX build — useful if you always sign your
+            MSIs and want to do it in one step.
           </Callout>
         </Section>
       </div>

@@ -14,6 +14,7 @@ const intuneRoutes = require('./routes/intune');
 const groupRoutes = require('./routes/groups');
 const wslRoutes = require('./routes/wsl');
 const psadtRoutes = require('./routes/psadt');
+const signRoutes = require('./routes/sign');
 const setupLogViewer = require('./logviewer');
 const { attachWss } = require('./services/logStream');
 const { attachTerminalWss } = wslRoutes;
@@ -55,6 +56,7 @@ app.use('/api/intune', intuneRoutes);
 app.use('/api/groups', groupRoutes);
 app.use('/api/wsl', wslRoutes);
 app.use('/api/psadt', psadtRoutes);
+app.use('/api/sign', signRoutes);
 
 // Log Viewer (AICMTrace integration) — must be before the React catch-all
 setupLogViewer(app, server);

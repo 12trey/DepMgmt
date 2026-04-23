@@ -506,4 +506,55 @@ async function buildMsi(meta, fileBuffers) {
   }
 }
 
-module.exports = { detectWix, probeMsi, buildMsi };
+// ─── Code signing ─────────────────────────────────────────────────────────────
+
+// signing: { method: 'thumbprint'|'pfx', thumbprint?, pfxPath?, pfxPassword?, timestamp? }
+function signMsi(msiPath, signing) {
+  const tmpScript = path.join(os.tmpdir(), `sign_${uuidv4()}.ps1`);
+  const msiEsc = msiPath.replace(/'/g, "''");
+  const tsArg = signing.timestamp
+    ? `-TimestampServer '${signing.timestamp.replace(/'/g, "''")}'`
+    : '';
+
+  let certLines;
+  if (signing.method === 'thumbprint') {
+    // Strip any spaces/colons that users might paste from certmgr
+    const tp = (signing.thumbprint || '').replace(/[^A-Fa-f0-9]/g, '');
+    certLines = [
+      `$cert = Get-Item "Cert:\\LocalMachine\\My\\${tp}" -ErrorAction SilentlyContinue`,
+      `if (-not $cert) { $cert = Get-Item "Cert:\\CurrentUser\\My\\${tp}" -ErrorAction SilentlyContinue }`,
+      `if (-not $cert) { throw "Certificate thumbprint ${tp} not found in LocalMachine\\My or CurrentUser\\My" }`,
+    ];
+  } else {
+    const pfxEsc = (signing.pfxPath || '').replace(/'/g, "''");
+    const passEsc = (signing.pfxPassword || '').replace(/'/g, "''");
+    certLines = [
+      `$pass = ConvertTo-SecureString '${passEsc}' -AsPlainText -Force`,
+      `$cert = Get-PfxCertificate -FilePath '${pfxEsc}' -Password $pass`,
+    ];
+  }
+
+  const script = [
+    "$ErrorActionPreference = 'Stop'",
+    ...certLines,
+    `$result = Set-AuthenticodeSignature -FilePath '${msiEsc}' -Certificate $cert ${tsArg}`,
+    `if ($result.Status -eq 'NotSigned') { throw "Signing did not complete: $($result.StatusMessage)" }`,
+  ].join('\n');
+
+  fs.writeFileSync(tmpScript, script, 'utf-8');
+
+  return new Promise((resolve, reject) => {
+    execFile(
+      'powershell.exe',
+      ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', tmpScript],
+      { shell: false, windowsHide: true, maxBuffer: 1 * 1024 * 1024 },
+      (err, stdout, stderr) => {
+        try { fs.unlinkSync(tmpScript); } catch {}
+        if (err) return reject(new Error((stderr || stdout || '').trim() || err.message));
+        resolve();
+      }
+    );
+  });
+}
+
+module.exports = { detectWix, probeMsi, buildMsi, signMsi };

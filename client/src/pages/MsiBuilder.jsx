@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   AlertCircle, CheckCircle, ChevronDown, ChevronRight,
-  FileText, Folder, FolderPlus, Plus, Trash2, Package, HardDrive, Server, Settings,
+  FileText, Folder, FolderPlus, Plus, Trash2, Package, HardDrive, Server, Settings, ShieldCheck,
 } from 'lucide-react';
 import { detectMsiTools, probeMsi, buildMsi } from '../api';
 
@@ -566,6 +566,15 @@ export default function MsiBuilder() {
   // Service config modal
   const [serviceEditFile, setServiceEditFile] = useState(null);
 
+  // Code signing (optional)
+  const [signingEnabled, setSigningEnabled] = useState(false);
+  const [signingMethod, setSigningMethod] = useState('thumbprint'); // 'thumbprint' | 'pfx'
+  const [signingThumbprint, setSigningThumbprint] = useState('');
+  const [signingPfxFile, setSigningPfxFile] = useState(null);
+  const [signingPfxPassword, setSigningPfxPassword] = useState('');
+  const [signingTimestamp, setSigningTimestamp] = useState('http://timestamp.digicert.com');
+  const pfxInputRef = useRef();
+
   useEffect(() => {
     detectMsiTools()
       .then(r => setWixTool(r))
@@ -718,6 +727,20 @@ export default function MsiBuilder() {
       formData.append('meta', JSON.stringify(meta));
       formData.append('fileRefs', JSON.stringify(uploadFiles.map(f => f.id)));
       for (const { file } of uploadFiles) formData.append('files', file);
+
+      if (signingEnabled) {
+        const signingPayload = {
+          method: signingMethod,
+          timestamp: signingTimestamp.trim() || undefined,
+          ...(signingMethod === 'thumbprint'
+            ? { thumbprint: signingThumbprint.trim() }
+            : { pfxPassword: signingPfxPassword }),
+        };
+        formData.append('signing', JSON.stringify(signingPayload));
+        if (signingMethod === 'pfx' && signingPfxFile) {
+          formData.append('pfxFile', signingPfxFile);
+        }
+      }
 
       const res = await buildMsi(formData);
       if (!res.ok) {
@@ -1104,6 +1127,100 @@ export default function MsiBuilder() {
         </div>
       </div>
 
+      {/* Code Signing (optional) */}
+      <div className="bg-white rounded-lg shadow p-5 mb-5">
+        <button
+          className="flex items-center gap-2 w-full text-left"
+          onClick={() => setSigningEnabled(v => !v)}
+        >
+          <ShieldCheck size={16} className={signingEnabled ? 'text-blue-600' : 'text-gray-400'} />
+          <span className="font-semibold text-gray-800">Code Signing</span>
+          <span className="ml-1 text-xs text-gray-400 font-normal">(optional)</span>
+          <span className="ml-auto text-xs text-gray-400">{signingEnabled ? '▲ hide' : '▼ expand'}</span>
+        </button>
+
+        {signingEnabled && (
+          <div className="mt-4 space-y-4">
+            {/* Method */}
+            <div className="flex gap-6">
+              {[['thumbprint', 'Certificate Store (thumbprint)'], ['pfx', 'PFX File']].map(([val, label]) => (
+                <label key={val} className="inline-flex items-center gap-1.5 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="signingMethod"
+                    checked={signingMethod === val}
+                    onChange={() => setSigningMethod(val)}
+                  />
+                  <span className="text-sm">{label}</span>
+                </label>
+              ))}
+            </div>
+
+            {/* Thumbprint */}
+            {signingMethod === 'thumbprint' && (
+              <label className="block">
+                <span className="text-sm font-medium text-gray-700">Certificate Thumbprint <span className="text-red-500">*</span></span>
+                <input
+                  className="input mt-1 w-full font-mono text-xs"
+                  placeholder="e.g. a9 09 50 2d d8 2a e4 14 33 e6 f8 38 86 b0 0d 42 77 a3 2a 7b"
+                  value={signingThumbprint}
+                  onChange={e => setSigningThumbprint(e.target.value)}
+                />
+                <p className="text-xs text-gray-400 mt-0.5">Paste the thumbprint from certmgr.msc — spaces and colons are ignored.</p>
+              </label>
+            )}
+
+            {/* PFX */}
+            {signingMethod === 'pfx' && (
+              <div className="space-y-3">
+                <div>
+                  <span className="text-sm font-medium text-gray-700 block mb-1">PFX File <span className="text-red-500">*</span></span>
+                  <div className="flex items-center gap-2">
+                    <input
+                      ref={pfxInputRef}
+                      type="file"
+                      accept=".pfx,.p12"
+                      className="hidden"
+                      onChange={e => setSigningPfxFile(e.target.files?.[0] || null)}
+                    />
+                    <button className="btn-secondary text-sm" onClick={() => pfxInputRef.current?.click()}>
+                      Browse…
+                    </button>
+                    {signingPfxFile
+                      ? <span className="text-sm text-gray-700">{signingPfxFile.name}</span>
+                      : <span className="text-sm text-gray-400">No file selected</span>
+                    }
+                  </div>
+                </div>
+                <label className="block">
+                  <span className="text-sm font-medium text-gray-700">PFX Password</span>
+                  <input
+                    type="password"
+                    className="input mt-1 w-64"
+                    autoComplete="new-password"
+                    value={signingPfxPassword}
+                    onChange={e => setSigningPfxPassword(e.target.value)}
+                    placeholder="Leave blank if no password"
+                  />
+                </label>
+              </div>
+            )}
+
+            {/* Timestamp */}
+            <label className="block">
+              <span className="text-sm font-medium text-gray-700">Timestamp Server</span>
+              <input
+                className="input mt-1 w-full"
+                value={signingTimestamp}
+                onChange={e => setSigningTimestamp(e.target.value)}
+                placeholder="http://timestamp.digicert.com"
+              />
+              <p className="text-xs text-gray-400 mt-0.5">Recommended — prevents the signature from expiring with the certificate. Leave blank to skip.</p>
+            </label>
+          </div>
+        )}
+      </div>
+
       {/* Build section */}
       <div className="bg-white rounded-lg shadow p-5">
         <div className="flex items-center justify-between">
@@ -1115,16 +1232,23 @@ export default function MsiBuilder() {
           </div>
           <button
             onClick={handleBuild}
-            disabled={building || !details.productName || !details.version || !details.upgradeCode}
+            disabled={
+              building ||
+              !details.productName || !details.version || !details.upgradeCode ||
+              (signingEnabled && signingMethod === 'thumbprint' && !signingThumbprint.trim()) ||
+              (signingEnabled && signingMethod === 'pfx' && !signingPfxFile)
+            }
             className="btn-primary"
           >
-            {building ? 'Building…' : 'Compile & Download MSI'}
+            {building
+              ? (signingEnabled ? 'Building & Signing…' : 'Building…')
+              : (signingEnabled ? 'Compile, Sign & Download MSI' : 'Compile & Download MSI')}
           </button>
         </div>
 
         {buildSuccess && !buildError && (
           <div className="flex items-center gap-2 mt-4 text-green-700 bg-green-50 border border-green-200 rounded p-3 text-sm">
-            <CheckCircle size={15} /> MSI compiled and downloaded successfully.
+            <CheckCircle size={15} /> MSI compiled{signingEnabled ? ', signed,' : ''} and downloaded successfully.
           </div>
         )}
         {buildError && (

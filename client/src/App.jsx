@@ -3,7 +3,7 @@ import { Routes, Route, useLocation, useNavigate } from 'react-router-dom';
 import FindBar from './components/FindBar';
 import {
   LayoutDashboard, PackagePlus, FolderOpen, Play, GitBranch, Settings,
-  Monitor, Package, Archive, UsersRound, HelpCircle, ScrollText, X,
+  Monitor, Package, Archive, UsersRound, HelpCircle, ScrollText, X, ShieldCheck,
 } from 'lucide-react';
 import Dashboard from './pages/Dashboard';
 import CreatePackage from './pages/CreatePackage';
@@ -15,6 +15,7 @@ import GitPanel from './pages/GitPanel';
 import Config from './pages/Config';
 import DMTTools from './pages/DMTTools';
 import MsiBuilder from './pages/MsiBuilder';
+import CodeSigning from './pages/CodeSigning';
 import IntuneWin from './pages/IntuneWin';
 import ManageGroups from './pages/ManageGroups';
 import Help from './pages/Help';
@@ -28,6 +29,7 @@ const NAV_ITEMS = [
   { to: '/packages',      icon: FolderOpen,      label: 'Manage Packages' },
   { to: '/execution',     icon: Play,            label: 'Execution / Logs' },
   { to: '/msi-builder',   icon: Package,         label: 'MSI Builder' },
+  { to: '/code-signing',  icon: ShieldCheck,     label: 'Code Signing' },
   { to: '/intune-win',    icon: Archive,         label: 'Intune Packager' },
   { to: '/manage-groups', icon: UsersRound,      label: 'Manage Groups' },
   { to: '/git',           icon: GitBranch,       label: 'Git' },
@@ -45,6 +47,7 @@ const PAGE_COMPONENTS = {
   '/packages':      ManagePackages,
   '/execution':     Execution,
   '/msi-builder':   MsiBuilder,
+  '/code-signing':  CodeSigning,
   '/intune-win':    IntuneWin,
   '/manage-groups': ManageGroups,
   '/git':           GitPanel,
@@ -145,8 +148,9 @@ export default function App() {
 
       {/* ── Sidebar ── */}
       <nav className="w-56 bg-gray-900 text-gray-300 flex flex-col shrink-0">
-        <div className="px-4 py-5 text-white font-bold text-lg border-b border-gray-700">
-          Deployment Manager
+        <div className="px-4 py-5 border-b border-gray-700">
+          <div className="text-white font-bold text-lg leading-tight">Deployment Manager</div>
+          <div className="text-gray-500 text-xs mt-0.5">v{__APP_VERSION__}</div>
         </div>
         <div className="flex-1 py-3 overflow-y-auto">
           {NAV_ITEMS.map((item, index) => {

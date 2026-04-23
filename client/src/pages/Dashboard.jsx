@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   Package, Activity, CheckCircle, XCircle,
-  PackagePlus, FolderOpen, Play, GitBranch, Archive, UsersRound, Monitor, Wrench, ScrollText,
+  PackagePlus, FolderOpen, Play, GitBranch, Archive, UsersRound, Monitor, Wrench, ScrollText, ShieldCheck,
 } from 'lucide-react';
 import { listPackages, listLogs } from '../api';
 
@@ -34,6 +34,13 @@ const FEATURES = [
     color: 'purple',
     to: '/intune-win',
     desc: 'Wrap any installer into a .intunewin file for upload to Microsoft Intune. The app manages the Win32 Content Prep Tool automatically.',
+  },
+  {
+    icon: ShieldCheck,
+    label: 'Code Signing',
+    color: 'amber',
+    to: '/code-signing',
+    desc: 'Authenticode-sign any executable, MSI, DLL, script, or cabinet file using a certificate from the Windows store or a PFX file — no SDK required.',
   },
   {
     icon: GitBranch,
@@ -74,6 +81,7 @@ const FEATURE_COLORS = {
   teal:   { card: 'bg-teal-50',   icon: 'bg-teal-100 text-teal-600',     link: 'text-teal-600' },
   indigo: { card: 'bg-indigo-50', icon: 'bg-indigo-100 text-indigo-600', link: 'text-indigo-600' },
   rose:   { card: 'bg-rose-50',   icon: 'bg-rose-100 text-rose-600',     link: 'text-rose-600' },
+  amber:  { card: 'bg-amber-50',  icon: 'bg-amber-100 text-amber-600',   link: 'text-amber-600' },
 };
 
 export default function Dashboard() {

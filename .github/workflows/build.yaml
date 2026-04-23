@@ -16,6 +16,9 @@ jobs:
               with:
                   node-version: 24
                   cache: "npm"
+            - name: Get version from package.json
+              id: pkg
+              run: echo "version=$(node -p "require('./package.json').version")" >> $env:GITHUB_OUTPUT
             - name: Install client dependencies
               run: cd client && npm install && cd ..
             - name: Install dependencies
@@ -28,8 +31,8 @@ jobs:
               id: create_release
               uses: softprops/action-gh-release@v2
               with:
-                tag_name: v1.0.3
-                name: Release v1.0.3
-                files: "dist-electron/Deployment Manager Setup 1.0.3.exe"
+                tag_name: v${{ steps.pkg.outputs.version }}
+                name: Release v${{ steps.pkg.outputs.version }}
+                files: "dist-electron/Deployment Manager Setup ${{ steps.pkg.outputs.version }}.exe"
               env:
                 GH_TOKEN: ${{ github.token }}
