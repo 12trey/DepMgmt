@@ -597,11 +597,11 @@ body {
 .intune-event { cursor: pointer; }
 
 .ev-ts { color: var(--text2); }
-.ev-type { color: var(--accent); }
-.ev-status-ok   { color: var(--accent3); }
-.ev-status-fail { color: var(--row-err-fg); }
-.ev-status-prog { color: var(--row-warn-fg); }
-.ev-status-unk  { color: var(--text3); }
+.ev-type { color: var(--accent); overflow: hidden; text-overflow: ellipsis; }
+.ev-status-ok   { color: var(--accent3); overflow: hidden; text-overflow: ellipsis; }
+.ev-status-fail { color: var(--row-err-fg); overflow: hidden; text-overflow: ellipsis; }
+.ev-status-prog { color: var(--row-warn-fg); overflow: hidden; text-overflow: ellipsis; }
+.ev-status-unk  { color: var(--text3); overflow: hidden; text-overflow: ellipsis; }
 .ev-detail { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .intune-empty {
