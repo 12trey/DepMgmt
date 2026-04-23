@@ -17,12 +17,16 @@
             "name": "Attach",
             "port": 9229,
             "request": "attach",
+            "cwd": "${workspaceFolder}",
+            // "sourceMaps": true,
+            // "outFiles": [
+            //     "${workspaceFolder}/dist/**/*.js",
+            //     "${workspaceFolder}/client/dist/**/*.js"
+            // ],
             "skipFiles": [
                 "<node_internals>/**"
             ],
             "type": "node"
         }
-        
-    
     ]
 }

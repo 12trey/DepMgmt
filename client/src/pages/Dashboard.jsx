@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
-  Package, Activity, CheckCircle, XCircle,
+  Package, Activity, CheckCircle, XCircle, Terminal,
   PackagePlus, FolderOpen, Play, GitBranch, Archive, UsersRound, Monitor, Wrench, ScrollText, ShieldCheck,
 } from 'lucide-react';
 import { listPackages, listLogs } from '../api';
@@ -69,6 +69,13 @@ const FEATURES = [
     color: 'rose',
     to: '/log-viewer',
     desc: 'View and tail CMTrace, SCCM, and plain-text log files in real time. Includes EVTX event log browsing, Intune diagnostics, DSRegCmd analysis, and a live Ansible playbook log feed.',
+  },
+  {
+    icon: Terminal,
+    label: 'Script Runner',
+    color: 'blue',
+    to: '/script-runner',
+    desc: 'Run your Powershell scripts using a dynamically generated UI. MgGraph cmdlets are supported!',
   },
 ];
 

@@ -145,7 +145,48 @@ export const checkIntuneOutput = (folder) =>
 export const clearIntuneOutput = (folder) =>
   request('/intune/clear-output', { method: 'POST', body: JSON.stringify({ folder }) });
 
-// Group management — credential = { adUsername, adPassword } | null | undefined
+// Scripts / Script Runner
+export const browseScripts = (relPath = '') =>
+  request(`/scripts/browse?path=${encodeURIComponent(relPath)}`);
+export const parseScript = (relPath) =>
+  request(`/scripts/parse?path=${encodeURIComponent(relPath)}`);
+export const getMgGraphStatus = () => request('/scripts/mggraph/status');
+export const mgGraphDisconnect = () =>
+  request('/scripts/mggraph/disconnect', { method: 'POST' });
+
+async function streamSSE(url, options, onEvent, signal) {
+  const res = await fetch(url, { ...options, signal });
+  if (!res.ok) throw new Error('Request failed');
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buf = '';
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += decoder.decode(value, { stream: true });
+    const parts = buf.split('\n\n');
+    buf = parts.pop();
+    for (const part of parts) {
+      const line = part.replace(/^data: /, '').trim();
+      if (line) { try { onEvent(JSON.parse(line)); } catch {} }
+    }
+  }
+}
+
+export const runScript = (relPath, params, useMgGraph, onEvent, signal) =>
+  streamSSE('/api/scripts/run', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ path: relPath, params, useMgGraph }),
+  }, onEvent, signal);
+
+export const installMgGraph = (onEvent, signal) =>
+  streamSSE('/api/scripts/mggraph/install', { method: 'POST' }, onEvent, signal);
+
+export const connectMgGraph = (onEvent, signal) =>
+  streamSSE('/api/scripts/mggraph/connect', { method: 'POST' }, onEvent, signal);
+
+// Group management
 const creds = (c) => (c ? { adUsername: c.adUsername, adPassword: c.adPassword } : {});
 export const verifyGroup = (name, type, credential) =>
   request('/groups/verify-group', { method: 'POST', body: JSON.stringify({ name, type, ...creds(credential) }) });
