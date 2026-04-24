@@ -61,6 +61,8 @@ Handlebars.registerHelper('psArray', function (value) {
 
 function readTemplate(psadtVersion, name) {
   const ver = psadtVersion === 'v4' ? 'v4' : 'v3';
+  const custom = path.join(paths.userDataDir, 'templates', ver, name);
+  if (fs.existsSync(custom)) return fs.readFileSync(custom, 'utf-8');
   return fs.readFileSync(path.join(paths.templatesDir, ver, name), 'utf-8');
 }
 
@@ -69,7 +71,7 @@ const V4_SUBDIRS = ['Assets', 'Config', 'Files', 'PSAppDeployToolkit', 'PSAppDep
 const V3_SUBDIRS = ['Files'];
 
 // Allowed subfolders for generic file management (prevent path traversal)
-const ALLOWED_FOLDERS = new Set(['Files', 'SupportFiles', 'Assets', 'PSAppDeployToolkit', 'PSAppDeployToolkit.Extensions']);
+const ALLOWED_FOLDERS = new Set(['Files', 'SupportFiles', 'Assets', 'Strings', 'PSAppDeployToolkit', 'PSAppDeployToolkit.Extensions']);
 exports.ALLOWED_FOLDERS = ALLOWED_FOLDERS;
 
 // File extensions that can be read/edited as text
@@ -407,6 +409,57 @@ exports.createAssetReadme = async (appName, version) => {
   if (fs.existsSync(readmePath)) return { created: [] };
   fs.writeFileSync(readmePath, ASSET_README, 'utf-8');
   return { created: ['!README.txt'] };
+};
+
+// Source subfolder name(s) to check for each destination folder
+const DEFAULT_FILES_FOLDER_MAP = {
+  Assets: ['Assets'],
+  SupportFiles: ['SupportFiles'],
+  Strings: ['Strings'],
+  'PSAppDeployToolkit.Extensions': ['PSAppDeployToolkit.Extensions', 'Extensions'],
+};
+
+// Copy files from the configured defaultFiles.sourcePath into the package's folders.
+// folders = null → copy all folders in DEFAULT_FILES_FOLDER_MAP
+// folders = ['Assets'] → copy only Assets
+exports.copyDefaultFiles = async (appName, version, folders) => {
+  const config = JSON.parse(fs.readFileSync(paths.configPath, 'utf-8'));
+  const sourcePath = config.defaultFiles?.sourcePath;
+  if (!sourcePath) throw new Error('Default files source path not configured');
+  if (!fs.existsSync(sourcePath)) throw new Error(`Default files path not found: ${sourcePath}`);
+
+  const targetFolders = folders || Object.keys(DEFAULT_FILES_FOLDER_MAP);
+  const copied = {};
+
+  for (const destFolder of targetFolders) {
+    const sourceNames = DEFAULT_FILES_FOLDER_MAP[destFolder];
+    if (!sourceNames) continue;
+
+    let sourceDir = null;
+    for (const name of sourceNames) {
+      const candidate = path.join(sourcePath, name);
+      if (fs.existsSync(candidate) && fs.statSync(candidate).isDirectory()) {
+        sourceDir = candidate;
+        break;
+      }
+    }
+    if (!sourceDir) continue;
+
+    const destDir = path.join(paths.packagesDir, appName, version, destFolder);
+    fs.mkdirSync(destDir, { recursive: true });
+
+    const files = fs.readdirSync(sourceDir).filter(f =>
+      fs.statSync(path.join(sourceDir, f)).isFile()
+    );
+
+    copied[destFolder] = [];
+    for (const file of files) {
+      fs.copyFileSync(path.join(sourceDir, file), path.join(destDir, file));
+      copied[destFolder].push(file);
+    }
+  }
+
+  return { copied };
 };
 
 exports.importFromPath = async (sourcePath) => {

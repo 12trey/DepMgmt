@@ -7,6 +7,7 @@ import {
 import {
   browseScripts, parseScript, getMgGraphStatus, installMgGraph,
   connectMgGraph, mgGraphDisconnect, runScript,
+  getAzStatus, installAz, connectAz, azDisconnect,
 } from '../api';
 
 const START_MARKER = '<<<STRUCTURED_RESULT_START>>>';
@@ -21,6 +22,19 @@ export default function ScriptRunner() {
   const [mgLog, setMgLog] = useState('');
   const [mgLogOpen, setMgLogOpen] = useState(false);
   const [useMgGraph, setUseMgGraph] = useState(false);
+
+  // ── Az state ───────────────────────────────────────────────────────────────
+  const [azStatus, setAzStatus] = useState(null);
+  const [azConnected, setAzConnected] = useState(false);
+  const [azAccount, setAzAccount] = useState('');
+  const [azSubscription, setAzSubscription] = useState('');
+  const [azOp, setAzOp] = useState('');
+  const [azLog, setAzLog] = useState('');
+  const [azLogOpen, setAzLogOpen] = useState(false);
+  const [useAz, setUseAz] = useState(false);
+  const [azAccountId, setAzAccountId] = useState('');
+  const [azSubId, setAzSubId] = useState('');
+  const [azSubName, setAzSubName] = useState('');
 
   // ── File browser state ────────────────────────────────────────────────────
   const [items, setItems] = useState([]);
@@ -47,9 +61,10 @@ export default function ScriptRunner() {
   const abortRef = useRef(null);
   const consoleEndRef = useRef(null);
 
-  // ── Load MgGraph status on mount ──────────────────────────────────────────
+  // ── Load module status on mount ───────────────────────────────────────────
   useEffect(() => {
     getMgGraphStatus().then(setMgStatus).catch(() => {});
+    getAzStatus().then(setAzStatus).catch(() => {});
   }, []);
 
   // ── Auto-scroll console ───────────────────────────────────────────────────
@@ -152,7 +167,7 @@ export default function ScriptRunner() {
     abortRef.current = ctrl;
 
     try {
-      await runScript(scriptRel, paramValues, useMgGraph, (evt) => {
+      await runScript(scriptRel, paramValues, useMgGraph, useAz, (evt) => {
         if (evt.type === 'stdout') {
           fullStdoutRef.current += evt.data;
           setConsoleText(prev => prev + evt.data);
@@ -192,7 +207,7 @@ export default function ScriptRunner() {
       }
       setRunning(false);
     }
-  }, [scriptRel, scriptMeta, paramValues, useMgGraph]);
+  }, [scriptRel, scriptMeta, paramValues, useMgGraph, useAz]);
 
   const handleStop = () => {
     abortRef.current?.abort();
@@ -249,6 +264,58 @@ export default function ScriptRunner() {
     } catch {}
   };
 
+  // ── Az operations ─────────────────────────────────────────────────────────
+  const handleInstallAz = async () => {
+    setAzOp('installing');
+    setAzLog('');
+    setAzLogOpen(true);
+    try {
+      await installAz((evt) => {
+        if (evt.type === 'stdout' || evt.type === 'stderr') {
+          setAzLog(prev => prev + evt.data);
+        } else if (evt.type === 'exit') {
+          if (evt.data === 0) getAzStatus().then(setAzStatus).catch(() => {});
+        }
+      });
+    } catch {}
+    setAzOp('');
+  };
+
+  const handleConnectAz = async () => {
+    setAzOp('connecting');
+    setAzLog('');
+    setAzLogOpen(true);
+    setAzConnected(false);
+    setAzAccount('');
+    setAzSubscription('');
+    try {
+      await connectAz(azAccountId, azSubId, azSubName, (evt) => {
+        if (evt.type === 'stdout' || evt.type === 'stderr') {
+          setAzLog(prev => prev + evt.data);
+          const match = evt.data.match(/Connected as:\s*(.+?)\s*\/\s*Subscription:\s*(.+)/i);
+          if (match) {
+            setAzConnected(true);
+            setAzAccount(match[1].trim());
+            setAzSubscription(match[2].trim());
+          }
+        } else if (evt.type === 'exit') {
+          if (evt.data === 0) setAzConnected(true);
+        }
+      });
+    } catch {}
+    setAzOp('');
+  };
+
+  const handleDisconnectAz = async () => {
+    try {
+      await azDisconnect();
+      setAzConnected(false);
+      setAzAccount('');
+      setAzSubscription('');
+      setUseAz(false);
+    } catch {}
+  };
+
   // ── Render ────────────────────────────────────────────────────────────────
   return (
     <div className="space-y-4">
@@ -271,6 +338,29 @@ export default function ScriptRunner() {
         onInstall={handleInstallMg}
         onConnect={handleConnectMg}
         onDisconnect={handleDisconnectMg}
+      />
+
+      {/* Az panel */}
+      <AzPanel
+        status={azStatus}
+        connected={azConnected}
+        account={azAccount}
+        subscription={azSubscription}
+        op={azOp}
+        log={azLog}
+        logOpen={azLogOpen}
+        setLogOpen={setAzLogOpen}
+        useAz={useAz}
+        setUseAz={setUseAz}
+        accountId={azAccountId}
+        subId={azSubId}
+        subName={azSubName}
+        onAccountIdChange={setAzAccountId}
+        onSubIdChange={setAzSubId}
+        onSubNameChange={setAzSubName}
+        onInstall={handleInstallAz}
+        onConnect={handleConnectAz}
+        onDisconnect={handleDisconnectAz}
       />
 
       {/* Two-column layout */}
@@ -386,6 +476,7 @@ export default function ScriptRunner() {
                         param={param}
                         value={paramValues[param.name]}
                         onChange={v => setParamValues(prev => ({ ...prev, [param.name]: v }))}
+                        onLinkSelect={linked => setParamValues(prev => ({ ...prev, ...linked }))}
                       />
                     ))}
                   </div>
@@ -418,6 +509,11 @@ export default function ScriptRunner() {
                   {useMgGraph && (
                     <span className="text-xs text-blue-600 flex items-center gap-1">
                       <Cloud size={13} /> Using Microsoft Graph
+                    </span>
+                  )}
+                  {useAz && (
+                    <span className="text-xs text-blue-400 flex items-center gap-1">
+                      <Cloud size={13} /> Using Az
                     </span>
                   )}
                   {exitCode !== null && !running && (
@@ -567,10 +663,165 @@ function MgGraphPanel({ status, connected, account, op, log, logOpen, setLogOpen
   );
 }
 
+// ── Az Panel ──────────────────────────────────────────────────────────────────
+
+function AzPanel({ status, connected, account, subscription, op, log, logOpen, setLogOpen, useAz, setUseAz, accountId, subId, subName, onAccountIdChange, onSubIdChange, onSubNameChange, onInstall, onConnect, onDisconnect }) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <div className="bg-white rounded-lg shadow overflow-hidden">
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="w-full flex items-center justify-between px-5 py-3 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+      >
+        <span className="flex items-center gap-2">
+          <Cloud size={16} className="text-blue-400" />
+          Azure PowerShell (Az)
+          {connected && (
+            <span className="text-xs font-normal text-green-600 flex items-center gap-1">
+              <CheckCircle size={11} /> Connected{account ? ` · ${account}` : ''}{subscription ? ` / ${subscription}` : ''}
+            </span>
+          )}
+        </span>
+        {open ? <ChevronUp size={16} className="text-gray-400" /> : <ChevronDown size={16} className="text-gray-400" />}
+      </button>
+
+      {open && (
+        <div className="border-t border-gray-100 px-5 py-4 space-y-4">
+          {/* Module status */}
+          <div className="flex items-center gap-6 text-sm">
+            <div className="flex items-center gap-2">
+              {status === null ? (
+                <Loader size={14} className="animate-spin text-gray-400" />
+              ) : status.installed ? (
+                <CheckCircle size={14} className="text-green-500" />
+              ) : (
+                <CloudOff size={14} className="text-gray-400" />
+              )}
+              <span className="text-gray-600">
+                {status === null ? 'Checking...' : status.installed
+                  ? `Az.Accounts installed (v${status.version})`
+                  : 'Az module not installed'}
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              {connected
+                ? <CheckCircle size={14} className="text-green-500" />
+                : <AlertCircle size={14} className="text-gray-400" />}
+              <span className="text-gray-600">
+                {connected
+                  ? `Connected${account ? ` as ${account}` : ''}${subscription ? ` / ${subscription}` : ''}`
+                  : 'Not connected'}
+              </span>
+            </div>
+          </div>
+
+          {/* Login fields — shown when installed but not yet connected */}
+          {status?.installed && !connected && (
+            <div className="space-y-2">
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Account ID <span className="font-normal text-gray-400">(your Microsoft account email — recommended)</span></label>
+                <input
+                  className="input w-full text-sm"
+                  placeholder="user@domain.com"
+                  value={accountId}
+                  onChange={e => onAccountIdChange(e.target.value)}
+                />
+              </div>
+              <div className="flex gap-3">
+                <div className="flex-1">
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Subscription ID <span className="font-normal text-gray-400">(optional)</span></label>
+                  <input
+                    className="input w-full text-sm"
+                    placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+                    value={subId}
+                    onChange={e => onSubIdChange(e.target.value)}
+                  />
+                </div>
+                <div className="flex-1">
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Subscription Name <span className="font-normal text-gray-400">(optional)</span></label>
+                  <input
+                    className="input w-full text-sm"
+                    placeholder="My Azure Subscription"
+                    value={subName}
+                    onChange={e => onSubNameChange(e.target.value)}
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Action buttons */}
+          <div className="flex items-center gap-2 flex-wrap">
+            {status && !status.installed && (
+              <button
+                onClick={onInstall}
+                disabled={op !== ''}
+                className="btn-secondary text-sm flex items-center gap-1.5"
+              >
+                {op === 'installing'
+                  ? <><Loader size={13} className="animate-spin" /> Installing...</>
+                  : <><Download size={13} /> Install Az Module</>}
+              </button>
+            )}
+            {status?.installed && !connected && (
+              <button
+                onClick={onConnect}
+                disabled={op !== ''}
+                className="btn-primary text-sm flex items-center gap-1.5"
+              >
+                {op === 'connecting'
+                  ? <><Loader size={13} className="animate-spin" /> Connecting...</>
+                  : <><LogIn size={13} /> Connect with Connect-AzAccount</>}
+              </button>
+            )}
+            {connected && (
+              <button onClick={onDisconnect} className="btn-secondary text-sm flex items-center gap-1.5">
+                <LogOut size={13} /> Disconnect
+              </button>
+            )}
+
+            {/* Use Az toggle */}
+            {status?.installed && (
+              <label className="ml-auto flex items-center gap-2 cursor-pointer select-none">
+                <span className="text-sm text-gray-600">Use Az in scripts</span>
+                <div
+                  onClick={() => setUseAz(v => !v)}
+                  className={`relative w-9 h-5 rounded-full transition-colors ${useAz ? 'bg-blue-500' : 'bg-gray-300'}`}
+                >
+                  <span className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${useAz ? 'translate-x-4' : ''}`} />
+                </div>
+              </label>
+            )}
+          </div>
+
+          {/* Streaming log */}
+          {log && (
+            <div>
+              <button
+                onClick={() => setLogOpen(o => !o)}
+                className="text-xs text-gray-400 hover:text-gray-600 flex items-center gap-1"
+              >
+                {logOpen ? <ChevronUp size={11} /> : <ChevronDown size={11} />}
+                {logOpen ? 'Hide log' : 'Show log'}
+              </button>
+              {logOpen && (
+                <pre className="mt-2 text-xs font-mono bg-gray-900 text-gray-200 rounded p-3 max-h-40 overflow-y-auto whitespace-pre-wrap break-words">
+                  {log}
+                </pre>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Parameter Input ───────────────────────────────────────────────────────────
 
-function ParamInput({ param, value, onChange }) {
-  const { name, type, mandatory, default: def, help, options } = param;
+function ParamInput({ param, value, onChange, onLinkSelect }) {
+  const { name, type, mandatory, default: def, help, options, comboOptions } = param;
 
   if (type === 'switch' || type === 'bool') {
     return (
@@ -607,6 +858,22 @@ function ParamInput({ param, value, onChange }) {
     );
   }
 
+  if (comboOptions?.length > 0) {
+    return (
+      <div>
+        <Label name={name} type={type} mandatory={mandatory} />
+        <ComboBox
+          value={value ?? ''}
+          onChange={onChange}
+          onLinkSelect={onLinkSelect}
+          options={comboOptions}
+          placeholder={def !== undefined ? `Default: ${def}` : ''}
+        />
+        {help && <p className="text-xs text-gray-400 mt-1">{help}</p>}
+      </div>
+    );
+  }
+
   const inputType =
     type === 'password' ? 'password' :
     type === 'int' || type === 'float' ? 'number' :
@@ -636,6 +903,67 @@ function Label({ name, type, mandatory }) {
       {mandatory && <span className="text-red-500 ml-0.5">*</span>}
       <span className="ml-1.5 text-xs text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">{type}</span>
     </span>
+  );
+}
+
+function ComboBox({ value, onChange, onLinkSelect, options, placeholder }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  const filtered = value
+    ? options.filter(o => o.value.toLowerCase().includes(value.toLowerCase()))
+    : options;
+
+  return (
+    <div ref={ref} className="relative mt-1">
+      <div className="flex">
+        <input
+          type="text"
+          value={value}
+          onChange={e => { onChange(e.target.value); setOpen(true); }}
+          onFocus={() => setOpen(true)}
+          placeholder={placeholder}
+          className="input flex-1 text-sm"
+          style={{ borderTopRightRadius: 0, borderBottomRightRadius: 0, borderRight: 'none' }}
+        />
+        <button
+          type="button"
+          onMouseDown={e => { e.preventDefault(); setOpen(o => !o); }}
+          className="px-2 border border-gray-300 rounded-r bg-gray-50 hover:bg-gray-100 text-gray-500 shrink-0"
+        >
+          <ChevronDown size={14} />
+        </button>
+      </div>
+      {open && filtered.length > 0 && (
+        <div className="absolute z-20 left-0 right-0 bg-white border border-gray-200 rounded shadow-lg mt-0.5 max-h-48 overflow-y-auto">
+          {filtered.map(o => {
+            const hasLinks = Object.keys(o.links).length > 0;
+            return (
+              <button
+                key={o.value}
+                type="button"
+                title={hasLinks ? `Also sets: ${Object.entries(o.links).map(([k, v]) => `${k} = "${v}"`).join(', ')}` : undefined}
+                onMouseDown={e => {
+                  e.preventDefault();
+                  onChange(o.value);
+                  if (hasLinks && onLinkSelect) onLinkSelect(o.links);
+                  setOpen(false);
+                }}
+                className="w-full text-left px-3 py-1.5 text-sm hover:bg-blue-50 text-gray-700"
+              >
+                {o.value}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -735,15 +1063,44 @@ function ObjectTable({ rows }) {
   const MAX_COLS = 20;
   const keys = [...new Set(rows.slice(0, MAX_ROWS).flatMap(r => (r && typeof r === 'object') ? Object.keys(r) : []))].slice(0, MAX_COLS);
 
+  const [colWidths, setColWidths] = useState(() => keys.map(() => 140));
+  const resizingRef = useRef(null);
+
+  const startResize = (e, colIdx) => {
+    e.preventDefault();
+    resizingRef.current = { colIdx, startX: e.clientX, startW: colWidths[colIdx] };
+    const onMove = (ev) => {
+      const { colIdx, startX, startW } = resizingRef.current;
+      const newW = Math.max(50, startW + ev.clientX - startX);
+      setColWidths(prev => { const n = [...prev]; n[colIdx] = newW; return n; });
+    };
+    const onUp = () => {
+      resizingRef.current = null;
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  };
+
+  const totalWidth = colWidths.reduce((a, b) => a + b, 0);
+
   return (
     <div>
       <div className="overflow-x-auto max-h-[480px] overflow-y-auto rounded border border-gray-200">
-        <table className="w-full text-xs border-collapse min-w-max">
+        <table className="text-xs border-collapse" style={{ tableLayout: 'fixed', width: totalWidth }}>
+          <colgroup>
+            {keys.map((k, i) => <col key={k} style={{ width: colWidths[i] }} />)}
+          </colgroup>
           <thead className="sticky top-0 z-10">
             <tr className="bg-gray-100">
-              {keys.map(k => (
-                <th key={k} className="px-3 py-2 text-left font-semibold text-gray-600 border-b border-gray-200 whitespace-nowrap">
-                  {k}
+              {keys.map((k, i) => (
+                <th key={k} className="relative px-3 py-2 text-left font-semibold text-gray-600 border-b border-gray-200 overflow-hidden">
+                  <span className="block truncate">{k}</span>
+                  <div
+                    onMouseDown={e => startResize(e, i)}
+                    className="absolute right-0 top-0 h-full w-2 cursor-col-resize hover:bg-blue-300 select-none"
+                  />
                 </th>
               ))}
             </tr>
@@ -752,7 +1109,7 @@ function ObjectTable({ rows }) {
             {rows.slice(0, MAX_ROWS).map((row, i) => (
               <tr key={i} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
                 {keys.map(k => (
-                  <td key={k} className="px-3 py-1.5 border-b border-gray-100 max-w-[220px] truncate" title={String(row?.[k] ?? '')}>
+                  <td key={k} className="px-3 py-1.5 border-b border-gray-100 truncate overflow-hidden" title={String(row?.[k] ?? '')}>
                     {renderCellValue(row?.[k])}
                   </td>
                 ))}

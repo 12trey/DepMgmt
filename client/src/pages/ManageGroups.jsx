@@ -611,7 +611,14 @@ function MemberRow({
       <div className="px-5 py-3 flex items-center gap-3">
         <Users size={14} className="text-gray-400 flex-shrink-0" />
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-medium truncate">{displayName}</p>
+          <div className="flex items-center gap-2 flex-wrap">
+            <p className="text-sm font-medium truncate">{displayName}</p>
+            {member.enabled === false && (
+              <span className="text-xs font-medium bg-red-100 text-red-600 px-1.5 py-0.5 rounded flex-shrink-0">
+                Disabled
+              </span>
+            )}
+          </div>
           {typeLabel && <p className="text-xs text-gray-400">{typeLabel}</p>}
         </div>
         <button

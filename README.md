@@ -76,6 +76,59 @@ form all remain exactly where you left them.
 
 ![Execution and Logs](screenshots/executionandlogs.png)
 
+### Script Runner
+
+Auto-generates a point-and-click form UI from any PowerShell script's `param()` block, streams live output, and displays pipeline return values as a resizable table. The scripts folder is configured in Settings.
+
+- **Auto-detected parameter types** — `[string]`, `[switch]`/`[bool]`, `[int]`, `[double]`, `[datetime]`, `[ValidateSet(...)]` (dropdown), and password-style fields (masked)
+- **Parameter options file** — place a `.json` file with the same base name as the script in the same folder to get combobox inputs with preset values (see format below)
+- **Linked parameters** — selecting a preset can auto-fill other parameters in the same form
+- **Structured output tab** — pipeline objects are captured and rendered as a table with resizable columns
+- **Microsoft Graph integration** — install and connect `Microsoft.Graph` from the UI; optionally inject the connection before every script run
+- **Azure (Az) integration** — install and connect `Az` from the UI; optionally inject the Az context before every script run
+
+#### Parameter options file format
+
+Create `ScriptName.json` in the same folder as `ScriptName.ps1`.
+
+**Simple list of preset values:**
+
+```json
+{
+  "ResourceGroupName": [
+    "prod-rg-eastus-01",
+    "staging-rg-eastus-01"
+  ],
+  "HostPoolName": [
+    "prod-hostpool-01",
+    "staging-hostpool-01"
+  ]
+}
+```
+
+**Presets that auto-fill other parameters** — use an object with a `"value"` key plus any other parameter names as keys. Selecting that option fills the linked fields automatically; a tooltip shows what will be set.
+
+```json
+{
+  "ResourceGroupName": [
+    "staging-rg-eastus-01",
+    {
+      "value": "prod-rg-eastus-01",
+      "HostPoolName": "prod-hostpool-01"
+    }
+  ],
+  "HostPoolName": [
+    "staging-hostpool-01",
+    {
+      "value": "prod-hostpool-01",
+      "ResourceGroupName": "prod-rg-eastus-01"
+    }
+  ]
+}
+```
+
+> Trailing commas are allowed — the parser strips them automatically.
+
 ### MSI Builder
 
 - Build custom Windows Installer (`.msi`) packages from scratch using WiX v3
@@ -342,6 +395,17 @@ All endpoints are under `/api`.
 | POST | `/api/parse` | Log Viewer: parse posted log content |
 | GET | `/api/evtx` | Log Viewer: parse EVTX file or channel |
 | GET | `/logs/cmtrace` | ansible-app: stream CMTrace log (port 7000) |
+| GET | `/scripts/browse` | Script Runner: list scripts/folders |
+| GET | `/scripts/parse` | Script Runner: parse a script's param() block + load options file |
+| POST | `/scripts/run` | Script Runner: run a script (SSE stream) |
+| GET | `/scripts/mggraph/status` | Script Runner: check Microsoft.Graph installation |
+| POST | `/scripts/mggraph/install` | Script Runner: install Microsoft.Graph (SSE stream) |
+| POST | `/scripts/mggraph/connect` | Script Runner: Connect-MgGraph (SSE stream) |
+| POST | `/scripts/mggraph/disconnect` | Script Runner: Disconnect-MgGraph |
+| GET | `/scripts/az/status` | Script Runner: check Az.Accounts installation |
+| POST | `/scripts/az/install` | Script Runner: install Az module (SSE stream) |
+| POST | `/scripts/az/connect` | Script Runner: Connect-AzAccount (SSE stream) |
+| POST | `/scripts/az/disconnect` | Script Runner: Disconnect-AzAccount |
 
 **WebSocket endpoints** (port 4000):
 

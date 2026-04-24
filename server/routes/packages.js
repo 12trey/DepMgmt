@@ -46,6 +46,7 @@ router.post('/:appName/:version/regenerate', controller.regenerate);
 router.post('/:appName/:version/populate-toolkit', controller.populateToolkit);
 router.post('/:appName/:version/create-extension-stubs', controller.createExtensionStubs);
 router.post('/:appName/:version/create-asset-readme', controller.createAssetReadme);
+router.post('/:appName/:version/copy-default-files', controller.copyDefaultFiles);
 router.get('/:appName/:version/check-files', controller.checkFiles);
 router.get('/:appName/:version/download', controller.download);
 

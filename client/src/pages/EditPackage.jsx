@@ -199,10 +199,10 @@ function StepsList({ label, steps, onChange }) {
   return (
     <Section title={label}>
       {steps.map((s, i) => (
-        <div key={i} className="flex gap-2 mb-2">
-          <input className="input w-48" placeholder="Description" value={s.description} onChange={(e) => { const arr = [...steps]; arr[i] = { ...s, description: e.target.value }; onChange(arr); }} />
-          <input className="input flex-1 font-mono text-sm" placeholder="PowerShell command" value={s.command} onChange={(e) => { const arr = [...steps]; arr[i] = { ...s, command: e.target.value }; onChange(arr); }} />
-          <button type="button" onClick={() => onChange(steps.filter((_, j) => j !== i))} className="text-red-500 hover:text-red-700"><Trash2 size={18} /></button>
+        <div key={i} className="flex gap-2 mb-2 items-start">
+          <input className="input w-48 shrink-0" placeholder="Description" value={s.description} onChange={(e) => { const arr = [...steps]; arr[i] = { ...s, description: e.target.value }; onChange(arr); }} />
+          <textarea className="input flex-1 h-20 font-mono text-sm resize-y" placeholder="PowerShell command" value={s.command} onChange={(e) => { const arr = [...steps]; arr[i] = { ...s, command: e.target.value }; onChange(arr); }} />
+          <button type="button" onClick={() => onChange(steps.filter((_, j) => j !== i))} className="text-red-500 hover:text-red-700 mt-1.5 shrink-0"><Trash2 size={18} /></button>
         </div>
       ))}
       <button type="button" onClick={() => onChange([...steps, emptyStep()])} className="btn-secondary text-sm mt-1">

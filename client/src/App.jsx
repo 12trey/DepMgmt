@@ -3,7 +3,7 @@ import { Routes, Route, useLocation, useNavigate } from 'react-router-dom';
 import FindBar from './components/FindBar';
 import {
   LayoutDashboard, PackagePlus, FolderOpen, Play, GitBranch, Settings,
-  Monitor, Package, Archive, UsersRound, HelpCircle, ScrollText, X, ShieldCheck, Terminal,
+  Monitor, Package, Archive, UsersRound, HelpCircle, ScrollText, X, ShieldCheck, Terminal, FileCode,
 } from 'lucide-react';
 import Dashboard from './pages/Dashboard';
 import CreatePackage from './pages/CreatePackage';
@@ -21,6 +21,7 @@ import ManageGroups from './pages/ManageGroups';
 import Help from './pages/Help';
 import LogViewer from './pages/LogViewer';
 import ScriptRunner from './pages/ScriptRunner';
+import TemplateEditor from './pages/TemplateEditor';
 import { TabGuardContext } from './context/TabGuardContext';
 
 // ── Nav definition ────────────────────────────────────────────────────────────
@@ -36,6 +37,7 @@ const NAV_ITEMS = [
   { to: '/script-runner', icon: Terminal,         label: 'Script Runner' },
   { to: '/git',           icon: GitBranch,       label: 'Git' },
   { to: '/config',        icon: Settings,        label: 'Settings' },
+  { to: '/templates',     icon: FileCode,        label: 'Template Editor' },
   { divider: true },
   { to: '/dmt-tools',    icon: Monitor,          label: 'DMT Tools' },
   { to: '/log-viewer',   icon: ScrollText,       label: 'Log Viewer' },
@@ -53,6 +55,7 @@ const PAGE_COMPONENTS = {
   '/intune-win':    IntuneWin,
   '/manage-groups': ManageGroups,
   '/script-runner': ScriptRunner,
+  '/templates':     TemplateEditor,
   '/git':           GitPanel,
   '/config':        Config,
   '/dmt-tools':     DMTTools,

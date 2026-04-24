@@ -16,6 +16,7 @@ const wslRoutes = require('./routes/wsl');
 const psadtRoutes = require('./routes/psadt');
 const signRoutes = require('./routes/sign');
 const scriptRoutes = require('./routes/scripts');
+const templateRoutes = require('./routes/templates');
 const setupLogViewer = require('./logviewer');
 const { attachWss } = require('./services/logStream');
 const { attachTerminalWss } = wslRoutes;
@@ -59,6 +60,7 @@ app.use('/api/wsl', wslRoutes);
 app.use('/api/psadt', psadtRoutes);
 app.use('/api/sign', signRoutes);
 app.use('/api/scripts', scriptRoutes);
+app.use('/api/templates', templateRoutes);
 
 // Log Viewer (AICMTrace integration) — must be before the React catch-all
 setupLogViewer(app, server);

@@ -11,4 +11,9 @@ router.post('/mggraph/install', ctrl.mgGraphInstall);
 router.post('/mggraph/connect', ctrl.mgGraphConnect);
 router.post('/mggraph/disconnect', ctrl.mgGraphDisconnect);
 
+router.get('/az/status', ctrl.azStatus);
+router.post('/az/install', ctrl.azInstall);
+router.post('/az/connect', ctrl.azConnect);
+router.post('/az/disconnect', ctrl.azDisconnect);
+
 module.exports = router;

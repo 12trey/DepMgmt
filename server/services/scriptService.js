@@ -1,6 +1,7 @@
 const { spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
 const paths = require('../paths');
 
 function getConfig() {
@@ -51,10 +52,27 @@ exports.listScripts = function listScripts(dirPath) {
 exports.parseScript = function parseScript(scriptPath) {
   if (!fs.existsSync(scriptPath)) throw new Error('Script not found');
   const content = fs.readFileSync(scriptPath, 'utf8');
+  const params = parseParams(content);
+  const jsonPath = scriptPath.replace(/\.ps1$/i, '.json');
+  if (fs.existsSync(jsonPath)) {
+    try {
+      const raw = fs.readFileSync(jsonPath, 'utf8').replace(/,\s*([}\]])/g, '$1');
+      const opts = JSON.parse(raw);
+      params.forEach(p => {
+        if (Array.isArray(opts[p.name]) && opts[p.name].length > 0) {
+          p.comboOptions = opts[p.name].map(item => {
+            if (typeof item !== 'object' || item === null) return { value: String(item), links: {} };
+            const { value, ...links } = item;
+            return { value: String(value ?? ''), links };
+          });
+        }
+      });
+    } catch {}
+  }
   return {
     name: path.basename(scriptPath),
     description: parseDescription(content),
-    params: parseParams(content),
+    params,
   };
 };
 
@@ -137,7 +155,7 @@ function extractValidateSet(attrs) {
 }
 
 // Check if Microsoft.Graph module is installed
-exports.checkMgGraphInstalled = function() {
+exports.checkMgGraphInstalled = function () {
   return new Promise((resolve) => {
     const config = getConfig();
     const ps = config.execution?.powershellPath || 'powershell.exe';
@@ -158,7 +176,7 @@ exports.checkMgGraphInstalled = function() {
 };
 
 // Stream Microsoft.Graph module installation via SSE
-exports.installMgGraph = function(res) {
+exports.installMgGraph = function (res) {
   const config = getConfig();
   const ps = config.execution?.powershellPath || 'powershell.exe';
   sseHeaders(res);
@@ -185,7 +203,7 @@ exports.installMgGraph = function(res) {
 };
 
 // Stream Connect-MgGraph (opens browser for interactive auth) via SSE
-exports.connectMgGraph = function(res) {
+exports.connectMgGraph = function (res) {
   const config = getConfig();
   const ps = config.execution?.powershellPath || 'powershell.exe';
   sseHeaders(res);
@@ -209,13 +227,141 @@ exports.connectMgGraph = function(res) {
 };
 
 // Disconnect MgGraph (clear the current session token)
-exports.disconnectMgGraph = function() {
+exports.disconnectMgGraph = function () {
+  return new Promise((resolve) => {
+    const config = getConfig();
+    const ps = config.execution?.powershellPath || 'powershell.exe';
+    const proc = spawn(ps, [
+      '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command',
+      'try { Import-Module Microsoft.Graph.Authentication -ErrorAction Stop; Disconnect-MgGraph } catch {}',
+    ], { env: spawnEnv(), windowsHide: true });
+    proc.on('close', () => resolve());
+    proc.on('error', () => resolve());
+  });
+};
+
+// Check if Az.Accounts module is installed
+exports.checkAzInstalled = function () {
   return new Promise((resolve) => {
     const config = getConfig();
     const ps = config.execution?.powershellPath || 'powershell.exe';
     const proc = spawn(ps, [
       '-NoProfile', '-NonInteractive', '-Command',
-      'try { Import-Module Microsoft.Graph.Authentication -ErrorAction Stop; Disconnect-MgGraph } catch {}',
+      '$m = Get-Module -ListAvailable -Name Az.Accounts | Sort-Object Version -Descending | Select-Object -First 1; if ($m) { "installed:" + $m.Version } else { "not-installed" }',
+    ], { env: spawnEnv(), windowsHide: true });
+    let out = '';
+    proc.stdout.on('data', d => { out += d.toString(); });
+    proc.on('close', () => {
+      const t = out.trim();
+      resolve(t.startsWith('installed:')
+        ? { installed: true, version: t.slice('installed:'.length) }
+        : { installed: false, version: null });
+    });
+    proc.on('error', () => resolve({ installed: false, version: null }));
+  });
+};
+
+// Stream Az module installation via SSE
+exports.installAz = function (res) {
+  const config = getConfig();
+  const ps = config.execution?.powershellPath || 'powershell.exe';
+  sseHeaders(res);
+  const send = makeSend(res);
+  const script = [
+    '$ProgressPreference = "SilentlyContinue"',
+    'Write-Host "Checking PSGallery trust..."',
+    'if ((Get-PSRepository -Name PSGallery -ErrorAction SilentlyContinue).InstallationPolicy -ne "Trusted") {',
+    '  Set-PSRepository -Name PSGallery -InstallationPolicy Trusted',
+    '  Write-Host "PSGallery set to Trusted."',
+    '}',
+    'Write-Host "Installing Az module (Scope: CurrentUser) — this may take several minutes..."',
+    'Install-Module -Name Az -Scope CurrentUser -Force -AllowClobber 4>&1 | ForEach-Object { Write-Host $_ }',
+    'Write-Host "Done."',
+  ].join('; ');
+  const proc = spawn(ps, ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', script], {
+    env: spawnEnv(), windowsHide: true,
+  });
+  proc.stdout.on('data', c => send('stdout', c.toString()));
+  proc.stderr.on('data', c => send('stderr', c.toString()));
+  proc.on('close', code => { send('exit', code); res.end(); });
+  proc.on('error', err => { send('error', err.message); res.end(); });
+  return proc;
+};
+
+// Connect to Azure via direct PS spawn with -AccountId triggering WAM/browser dialog
+exports.connectAz = async function (accountId, subscriptionId, subscriptionName, res) {
+  const config = getConfig();
+  const ps = config.execution?.powershellPath || 'powershell.exe';
+  sseHeaders(res);
+  const send = makeSend(res);
+  const psEsc = s => String(s).replace(/'/g, "''");
+
+  const lines = [
+    '$WarningPreference = "Continue"',
+    'Import-Module Az.Accounts -ErrorAction Stop',
+  ];
+
+  const connectParts = ['Connect-AzAccount', '-ErrorAction Stop'];
+  
+    //connectParts.push(`-TenantId '637dae3a-8825-4b77-9fc0-f9e9fdf966b7'`);
+  if (accountId && accountId.trim())
+    connectParts.push(`-AccountId '${psEsc(accountId.trim())}'`);
+
+  if (subscriptionId && subscriptionId.trim())
+    connectParts.push(`-SubscriptionId '${psEsc(subscriptionId.trim())}'`);
+  else if (subscriptionName && subscriptionName.trim())
+    connectParts.push(`-Subscription '${psEsc(subscriptionName.trim())}'`);
+
+  // 3>&1 captures warning stream (where Az emits prompts) into the output pipeline
+  lines.push(`${connectParts.join(' ')} 4>&1 | ForEach-Object { Write-Output "$_" }`);
+
+  // if (subscriptionId && subscriptionId.trim())
+  //   lines.push(`Set-AzContext -SubscriptionId '${psEsc(subscriptionId.trim())}' -ErrorAction Stop`);
+  // else if (subscriptionName && subscriptionName.trim())
+  //   lines.push(`Set-AzContext -Subscription '${psEsc(subscriptionName.trim())}' -ErrorAction Stop`);
+
+  lines.push(
+    'while (-not (Get-AzContext)) { Start-Sleep -Seconds 1 }',
+    '$_ctx = Get-AzContext',
+    'if ($_ctx) { Write-Host "Connected as: $($_ctx.Account.Id) | Subscription: $($_ctx.Subscription.Name)" } else { Write-Host "Connected. Run Get-AzContext to verify." }',
+    ''
+  );
+
+  const script = lines.join('; ');
+  send('stdout', 'Connecting to Azure...\n');
+
+  //var ENV = spawnEnv();
+  //const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+  // Direct spawn — same pattern as Connect-MgGraph which works correctly
+  const proc = spawn(ps, ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', script], {
+    env: spawnEnv(),
+    windowsHide: false,
+    detached: false
+    // No windowsHide — required for WAM/browser dialogs to appear
+  });
+
+  //await(6000);
+  proc.stdout.on('data', c => send('stdout', c.toString()));
+  proc.stderr.on('data', c => send('stderr', c.toString()));
+  proc.on('close', code => {
+    send('exit', code); res.end(); 
+  });
+  proc.on('error', err => {
+    send('error', err.message);
+    res.end();
+  });
+  return proc;
+};
+
+// Disconnect Az (clear current context)
+exports.disconnectAz = function () {
+  return new Promise((resolve) => {
+    const config = getConfig();
+    const ps = config.execution?.powershellPath || 'powershell.exe';
+    const proc = spawn(ps, [
+      '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command',
+      'try { Import-Module Az.Accounts -ErrorAction Stop; Disconnect-AzAccount -Confirm:$false } catch {}',
     ], { env: spawnEnv(), windowsHide: true });
     proc.on('close', () => resolve());
     proc.on('error', () => resolve());
@@ -224,7 +370,7 @@ exports.disconnectMgGraph = function() {
 
 // Run a user script with params, streaming output via SSE
 // Returns the child process so the caller can kill it on client disconnect.
-exports.runScript = function(scriptPath, params, useMgGraph, res) {
+exports.runScript = function (scriptPath, params, useMgGraph, useAz, res) {
   const config = getConfig();
   const ps = config.execution?.powershellPath || 'powershell.exe';
   sseHeaders(res);
@@ -253,6 +399,15 @@ exports.runScript = function(scriptPath, params, useMgGraph, res) {
     lines.push(
       'Import-Module Microsoft.Graph.Authentication -ErrorAction Stop',
       'Connect-MgGraph -NoWelcome -ErrorAction Stop',
+    );
+  }
+
+  if (useAz) {
+    lines.push(
+      '$WarningPreference = "Continue"',
+      'Import-Module Az.Accounts -ErrorAction Stop',
+      '$__azCtx = Get-AzContext -ErrorAction SilentlyContinue',
+      'if (-not $__azCtx) { Connect-AzAccount -UseDeviceAuthentication -ErrorAction Stop 3>&1 | ForEach-Object { Write-Output "$_" } }',
     );
   }
 

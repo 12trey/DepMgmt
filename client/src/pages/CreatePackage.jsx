@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Plus, Trash2, Upload, FileText } from 'lucide-react';
-import { createPackage, uploadFiles } from '../api';
+import { createPackage, uploadFiles, getConfig, copyDefaultFiles } from '../api';
 
 const emptyStep = () => ({ description: '', command: '' });
 
@@ -60,6 +60,17 @@ export default function CreatePackage() {
   const [cmdDragOver, setCmdDragOver] = useState(false);
   const cmdDragCount = useRef(0);
 
+  const [defaultFilesCfg, setDefaultFilesCfg] = useState(null);
+  const [copyDefaults, setCopyDefaults] = useState(false);
+
+  useEffect(() => {
+    getConfig().then(cfg => {
+      const df = cfg.defaultFiles || {};
+      setDefaultFilesCfg(df);
+      setCopyDefaults(df.copyOnCreate ?? false);
+    }).catch(() => {});
+  }, []);
+
   const set = (key, value) => setForm((f) => ({ ...f, [key]: value }));
 
   // Regenerate commands whenever the PSADT version changes while a file is still attached
@@ -96,6 +107,9 @@ export default function CreatePackage() {
       await createPackage(form);
       if (droppedFile) {
         await uploadFiles(form.appName, form.version, [droppedFile]);
+      }
+      if (copyDefaults && defaultFilesCfg?.sourcePath) {
+        await copyDefaultFiles(form.appName, form.version).catch(() => {});
       }
       navigate('/packages');
     } catch (err) {
@@ -184,7 +198,7 @@ export default function CreatePackage() {
             </div>
           )}
 
-          <Input
+          <Textarea
             label="Install Command"
             value={form.installCommand}
             onChange={(v) => set('installCommand', v)}
@@ -192,10 +206,21 @@ export default function CreatePackage() {
               ? "e.g. Start-AdtProcess -FilePath \"$dirFiles\\setup.exe\" -ArgumentList '/S'"
               : "e.g. Execute-Process -Path \"$dirFiles\\setup.exe\" -Parameters '/S'"}
           />
-          <Input label="Uninstall Command" value={form.uninstallCommand} onChange={(v) => set('uninstallCommand', v)} className="mt-3" />
-          <Input label="Repair Command" value={form.repairCommand} onChange={(v) => set('repairCommand', v)} className="mt-3" />
+          <Textarea label="Uninstall Command" value={form.uninstallCommand} onChange={(v) => set('uninstallCommand', v)} className="mt-3" />
+          <Textarea label="Repair Command" value={form.repairCommand} onChange={(v) => set('repairCommand', v)} className="mt-3" />
           <Input label="Close Applications" value={form.closeApps} onChange={(v) => set('closeApps', v)} className="mt-3" placeholder="Comma-separated process names, e.g. iexplore,firefox,chrome" />
           <Select label="Default Deploy Mode" value={form.defaultMode} onChange={(v) => set('defaultMode', v)} options={['Silent', 'Interactive', 'NonInteractive']} className="mt-3" />
+          {defaultFilesCfg?.sourcePath && (
+            <label className="flex items-center gap-2 mt-4 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={copyDefaults}
+                onChange={(e) => setCopyDefaults(e.target.checked)}
+                className="rounded"
+              />
+              <span className="text-sm text-gray-700">Copy default files (Assets, SupportFiles, Strings, Extensions)</span>
+            </label>
+          )}
         </div>
 
         {/* Detection */}
@@ -290,10 +315,10 @@ function StepsList({ label, steps, onChange }) {
   return (
     <Section title={label}>
       {steps.map((s, i) => (
-        <div key={i} className="flex gap-2 mb-2">
-          <input className="input w-48" placeholder="Description" value={s.description} onChange={(e) => { const arr = [...steps]; arr[i] = { ...s, description: e.target.value }; onChange(arr); }} />
-          <input className="input flex-1" placeholder="PowerShell command" value={s.command} onChange={(e) => { const arr = [...steps]; arr[i] = { ...s, command: e.target.value }; onChange(arr); }} />
-          <button type="button" onClick={() => onChange(steps.filter((_, j) => j !== i))} className="text-red-500 hover:text-red-700"><Trash2 size={18} /></button>
+        <div key={i} className="flex gap-2 mb-3 items-start">
+          <input className="input w-48 flex-shrink-0" placeholder="Description" value={s.description} onChange={(e) => { const arr = [...steps]; arr[i] = { ...s, description: e.target.value }; onChange(arr); }} />
+          <textarea className="input flex-1 h-20 font-mono text-sm resize-y" placeholder="PowerShell command(s)" value={s.command} onChange={(e) => { const arr = [...steps]; arr[i] = { ...s, command: e.target.value }; onChange(arr); }} />
+          <button type="button" onClick={() => onChange(steps.filter((_, j) => j !== i))} className="text-red-500 hover:text-red-700 mt-1 flex-shrink-0"><Trash2 size={18} /></button>
         </div>
       ))}
       <button type="button" onClick={() => onChange([...steps, emptyStep()])} className="btn-secondary text-sm mt-1">
