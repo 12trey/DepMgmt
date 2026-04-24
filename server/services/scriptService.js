@@ -52,10 +52,27 @@ exports.listScripts = function listScripts(dirPath) {
 exports.parseScript = function parseScript(scriptPath) {
   if (!fs.existsSync(scriptPath)) throw new Error('Script not found');
   const content = fs.readFileSync(scriptPath, 'utf8');
+  const params = parseParams(content);
+  const jsonPath = scriptPath.replace(/\.ps1$/i, '.json');
+  if (fs.existsSync(jsonPath)) {
+    try {
+      const raw = fs.readFileSync(jsonPath, 'utf8').replace(/,\s*([}\]])/g, '$1');
+      const opts = JSON.parse(raw);
+      params.forEach(p => {
+        if (Array.isArray(opts[p.name]) && opts[p.name].length > 0) {
+          p.comboOptions = opts[p.name].map(item => {
+            if (typeof item !== 'object' || item === null) return { value: String(item), links: {} };
+            const { value, ...links } = item;
+            return { value: String(value ?? ''), links };
+          });
+        }
+      });
+    } catch {}
+  }
   return {
     name: path.basename(scriptPath),
     description: parseDescription(content),
-    params: parseParams(content),
+    params,
   };
 };
 

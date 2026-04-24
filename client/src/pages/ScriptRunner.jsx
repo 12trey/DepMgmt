@@ -476,6 +476,7 @@ export default function ScriptRunner() {
                         param={param}
                         value={paramValues[param.name]}
                         onChange={v => setParamValues(prev => ({ ...prev, [param.name]: v }))}
+                        onLinkSelect={linked => setParamValues(prev => ({ ...prev, ...linked }))}
                       />
                     ))}
                   </div>
@@ -819,8 +820,8 @@ function AzPanel({ status, connected, account, subscription, op, log, logOpen, s
 
 // ── Parameter Input ───────────────────────────────────────────────────────────
 
-function ParamInput({ param, value, onChange }) {
-  const { name, type, mandatory, default: def, help, options } = param;
+function ParamInput({ param, value, onChange, onLinkSelect }) {
+  const { name, type, mandatory, default: def, help, options, comboOptions } = param;
 
   if (type === 'switch' || type === 'bool') {
     return (
@@ -857,6 +858,22 @@ function ParamInput({ param, value, onChange }) {
     );
   }
 
+  if (comboOptions?.length > 0) {
+    return (
+      <div>
+        <Label name={name} type={type} mandatory={mandatory} />
+        <ComboBox
+          value={value ?? ''}
+          onChange={onChange}
+          onLinkSelect={onLinkSelect}
+          options={comboOptions}
+          placeholder={def !== undefined ? `Default: ${def}` : ''}
+        />
+        {help && <p className="text-xs text-gray-400 mt-1">{help}</p>}
+      </div>
+    );
+  }
+
   const inputType =
     type === 'password' ? 'password' :
     type === 'int' || type === 'float' ? 'number' :
@@ -886,6 +903,67 @@ function Label({ name, type, mandatory }) {
       {mandatory && <span className="text-red-500 ml-0.5">*</span>}
       <span className="ml-1.5 text-xs text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">{type}</span>
     </span>
+  );
+}
+
+function ComboBox({ value, onChange, onLinkSelect, options, placeholder }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  const filtered = value
+    ? options.filter(o => o.value.toLowerCase().includes(value.toLowerCase()))
+    : options;
+
+  return (
+    <div ref={ref} className="relative mt-1">
+      <div className="flex">
+        <input
+          type="text"
+          value={value}
+          onChange={e => { onChange(e.target.value); setOpen(true); }}
+          onFocus={() => setOpen(true)}
+          placeholder={placeholder}
+          className="input flex-1 text-sm"
+          style={{ borderTopRightRadius: 0, borderBottomRightRadius: 0, borderRight: 'none' }}
+        />
+        <button
+          type="button"
+          onMouseDown={e => { e.preventDefault(); setOpen(o => !o); }}
+          className="px-2 border border-gray-300 rounded-r bg-gray-50 hover:bg-gray-100 text-gray-500 shrink-0"
+        >
+          <ChevronDown size={14} />
+        </button>
+      </div>
+      {open && filtered.length > 0 && (
+        <div className="absolute z-20 left-0 right-0 bg-white border border-gray-200 rounded shadow-lg mt-0.5 max-h-48 overflow-y-auto">
+          {filtered.map(o => {
+            const hasLinks = Object.keys(o.links).length > 0;
+            return (
+              <button
+                key={o.value}
+                type="button"
+                title={hasLinks ? `Also sets: ${Object.entries(o.links).map(([k, v]) => `${k} = "${v}"`).join(', ')}` : undefined}
+                onMouseDown={e => {
+                  e.preventDefault();
+                  onChange(o.value);
+                  if (hasLinks && onLinkSelect) onLinkSelect(o.links);
+                  setOpen(false);
+                }}
+                className="w-full text-left px-3 py-1.5 text-sm hover:bg-blue-50 text-gray-700"
+              >
+                {o.value}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -985,15 +1063,44 @@ function ObjectTable({ rows }) {
   const MAX_COLS = 20;
   const keys = [...new Set(rows.slice(0, MAX_ROWS).flatMap(r => (r && typeof r === 'object') ? Object.keys(r) : []))].slice(0, MAX_COLS);
 
+  const [colWidths, setColWidths] = useState(() => keys.map(() => 140));
+  const resizingRef = useRef(null);
+
+  const startResize = (e, colIdx) => {
+    e.preventDefault();
+    resizingRef.current = { colIdx, startX: e.clientX, startW: colWidths[colIdx] };
+    const onMove = (ev) => {
+      const { colIdx, startX, startW } = resizingRef.current;
+      const newW = Math.max(50, startW + ev.clientX - startX);
+      setColWidths(prev => { const n = [...prev]; n[colIdx] = newW; return n; });
+    };
+    const onUp = () => {
+      resizingRef.current = null;
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  };
+
+  const totalWidth = colWidths.reduce((a, b) => a + b, 0);
+
   return (
     <div>
       <div className="overflow-x-auto max-h-[480px] overflow-y-auto rounded border border-gray-200">
-        <table className="w-full text-xs border-collapse min-w-max">
+        <table className="text-xs border-collapse" style={{ tableLayout: 'fixed', width: totalWidth }}>
+          <colgroup>
+            {keys.map((k, i) => <col key={k} style={{ width: colWidths[i] }} />)}
+          </colgroup>
           <thead className="sticky top-0 z-10">
             <tr className="bg-gray-100">
-              {keys.map(k => (
-                <th key={k} className="px-3 py-2 text-left font-semibold text-gray-600 border-b border-gray-200 whitespace-nowrap">
-                  {k}
+              {keys.map((k, i) => (
+                <th key={k} className="relative px-3 py-2 text-left font-semibold text-gray-600 border-b border-gray-200 overflow-hidden">
+                  <span className="block truncate">{k}</span>
+                  <div
+                    onMouseDown={e => startResize(e, i)}
+                    className="absolute right-0 top-0 h-full w-2 cursor-col-resize hover:bg-blue-300 select-none"
+                  />
                 </th>
               ))}
             </tr>
@@ -1002,7 +1109,7 @@ function ObjectTable({ rows }) {
             {rows.slice(0, MAX_ROWS).map((row, i) => (
               <tr key={i} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
                 {keys.map(k => (
-                  <td key={k} className="px-3 py-1.5 border-b border-gray-100 max-w-[220px] truncate" title={String(row?.[k] ?? '')}>
+                  <td key={k} className="px-3 py-1.5 border-b border-gray-100 truncate overflow-hidden" title={String(row?.[k] ?? '')}>
                     {renderCellValue(row?.[k])}
                   </td>
                 ))}

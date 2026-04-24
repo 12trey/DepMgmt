@@ -577,10 +577,125 @@ export default function Help() {
         {/* ── Script Runner ── */}
         <Section id="scriptrunner" title="Script Runner" icon={Terminal}>
           <p>
-            Script Runner generates a user interface for your Powershell scripts and attempts to generate object property based output.
-            You can run MgGraph enabled scripts by preinstalling the module or have the UI do it for you. The script path where this app looks
-            for scripts can be set in Settings.
+            Script Runner turns any PowerShell script into a point-and-click UI. It reads the
+            script's <Code>param()</Code> block, renders the appropriate input controls, streams
+            live output, and displays pipeline return values as a structured, sortable table.
+            The scripts folder is configured in <strong>Settings</strong>.
           </p>
+
+          <h3 className="font-semibold mt-4 mb-1">Running a script</h3>
+          <div className="space-y-1.5">
+            <Step n={1}>Browse the left panel to find a <Code>.ps1</Code> file and click it.</Step>
+            <Step n={2}>Fill in any auto-detected parameters, then click <strong>Run Script</strong>.</Step>
+            <Step n={3}>Output streams live in the <strong>Console</strong> tab. When the script finishes, pipeline objects appear in the <strong>Output</strong> tab.</Step>
+            <Step n={4}>Click <strong>Stop</strong> at any time to kill the process.</Step>
+          </div>
+
+          <h3 className="font-semibold mt-4 mb-1">Auto-detected parameter types</h3>
+          <div className="overflow-x-auto">
+            <table className="text-xs w-full border border-gray-200 rounded">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="text-left p-2 border-b">PS type / attribute</th>
+                  <th className="text-left p-2 border-b">Rendered as</th>
+                </tr>
+              </thead>
+              <tbody>
+                {[
+                  ['[string]', 'Text input'],
+                  ['[switch] / [bool]', 'Checkbox'],
+                  ['[int] / [int32] / [int64]', 'Number input (step 1)'],
+                  ['[double] / [float]', 'Number input (step 0.01)'],
+                  ['[datetime]', 'Date/time picker'],
+                  ['[ValidateSet(...)]', 'Dropdown (select only)'],
+                  ['Name contains password/secret/key/token', 'Password input (masked)'],
+                  ['Sibling .json file defines options', 'Combobox (free text + preset list)'],
+                ].map(([ps, ui]) => (
+                  <tr key={ps} className="border-b last:border-0">
+                    <td className="p-2 font-mono text-gray-700">{ps}</td>
+                    <td className="p-2">{ui}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="mt-2">
+            Parameters decorated with <Code>Mandatory=$true</Code> are marked with a red asterisk and must be filled before the script will run.
+            The <Code>HelpMessage</Code> attribute value is shown as a hint below the field.
+          </p>
+
+          <h3 className="font-semibold mt-4 mb-1">Parameter options file (.json)</h3>
+          <p>
+            Place a <Code>.json</Code> file with the <strong>same base name</strong> as your script in the same folder.
+            Any parameter name that appears as a key in that file gets a <strong>combobox</strong> — a
+            free-text input with a dropdown of preset values.
+          </p>
+          <p className="mt-2 font-medium">Simple list of options:</p>
+          <pre className="bg-gray-950 text-gray-100 rounded p-3 text-xs font-mono overflow-x-auto mt-1">{`{
+  "ResourceGroupName": [
+    "prod-rg-eastus-01",
+    "staging-rg-eastus-01"
+  ],
+  "HostPoolName": [
+    "prod-hostpool-01",
+    "staging-hostpool-01"
+  ]
+}`}</pre>
+
+          <p className="mt-3 font-medium">Options that auto-fill other parameters:</p>
+          <p className="mt-1">
+            Replace a plain string with an object that has a <Code>"value"</Code> key plus any number of other
+            parameter names as keys. When the user picks that option, the linked parameters are filled automatically.
+            Hovering over the option in the dropdown shows a tooltip listing what will be set.
+          </p>
+          <pre className="bg-gray-950 text-gray-100 rounded p-3 text-xs font-mono overflow-x-auto mt-1">{`{
+  "ResourceGroupName": [
+    "staging-rg-eastus-01",
+    {
+      "value": "prod-rg-eastus-01",
+      "HostPoolName": "prod-hostpool-01"
+    }
+  ],
+  "HostPoolName": [
+    "staging-hostpool-01",
+    {
+      "value": "prod-hostpool-01",
+      "ResourceGroupName": "prod-rg-eastus-01"
+    }
+  ]
+}`}</pre>
+          <Callout type="tip">
+            Trailing commas in the JSON are allowed — the parser strips them automatically, so
+            you can format the file the same way you would a JavaScript object.
+          </Callout>
+
+          <h3 className="font-semibold mt-4 mb-1">Structured output table</h3>
+          <p>
+            When a script returns objects through the pipeline (e.g. <Code>Get-AzWvdSessionHost | Select-Object ...</Code>),
+            they are captured and displayed as a table in the <strong>Output</strong> tab after the run completes.
+            Column widths are resizable — drag the right edge of any column header.
+          </p>
+
+          <h3 className="font-semibold mt-4 mb-1">Microsoft Graph integration</h3>
+          <p>
+            Expand the <strong>Microsoft Graph</strong> panel to install the{' '}
+            <Code>Microsoft.Graph</Code> PowerShell module (CurrentUser scope) and authenticate
+            interactively via browser. Once connected, enable <strong>Use Graph in scripts</strong>
+            to automatically import and connect the module before each script run.
+          </p>
+
+          <h3 className="font-semibold mt-4 mb-1">Azure (Az) integration</h3>
+          <p>
+            Expand the <strong>Azure PowerShell (Az)</strong> panel to install the{' '}
+            <Code>Az</Code> module and connect via <Code>Connect-AzAccount</Code>.
+            Optionally pre-fill your account email, subscription ID, or subscription name
+            to skip prompts. Enable <strong>Use Az in scripts</strong> to verify (or establish)
+            an Az context before each run.
+          </p>
+          <Callout type="info">
+            The Azure login dialog requires a visible window — the process is spawned without
+            the <Code>windowsHide</Code> flag so the WAM/browser prompt can appear.
+          </Callout>
         </Section>
       </div>
     </div>
