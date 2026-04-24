@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import Editor from '@monaco-editor/react';
 import {
   Upload, Trash2, FileText, Download, RefreshCw, Pencil, GitBranch,
-  AlertTriangle, Image, Code2, FolderOpen, PuzzleIcon, Save, X,
+  AlertTriangle, Image, Code2, FolderOpen, PuzzleIcon, Save, X, Copy, Type,
 } from 'lucide-react';
 import {
   getPackage, listFiles, uploadFiles, deleteFile, regeneratePackage,
@@ -13,6 +13,7 @@ import {
   getPsadtStatus, trustPsGallery, installPsadtModule, populateToolkit,
   createExtensionStubs, createAssetReadme,
   readEntryScript, saveEntryScript,
+  getConfig, copyDefaultFiles,
 } from '../api';
 
 // ── Constants ──────────────────────────────────────────────────────────────────
@@ -21,11 +22,12 @@ const IMAGE_EXTS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.svg', '.ico', '.b
 const TEXT_EXTS  = new Set(['.ps1', '.psm1', '.psd1', '.xml', '.json', '.ini', '.txt', '.bat', '.cmd', '.reg', '.yaml', '.yml', '.csv', '.md']);
 
 const V4_TABS = [
-  { id: 'files',       label: 'Installer Files',   icon: FileText,   folder: null },
-  { id: 'SupportFiles',label: 'Support Files',      icon: FolderOpen, folder: 'SupportFiles' },
-  { id: 'Assets',      label: 'Assets',             icon: Image,      folder: 'Assets' },
-  { id: 'Extensions',  label: 'Extensions',         icon: PuzzleIcon, folder: 'PSAppDeployToolkit.Extensions' },
-  { id: 'Toolkit',     label: 'PSAppDeployToolkit', icon: Code2,      folder: 'PSAppDeployToolkit' },
+  { id: 'files',        label: 'Installer Files',   icon: FileText,   folder: null },
+  { id: 'SupportFiles', label: 'Support Files',      icon: FolderOpen, folder: 'SupportFiles' },
+  { id: 'Assets',       label: 'Assets',             icon: Image,      folder: 'Assets' },
+  { id: 'Strings',      label: 'Strings',            icon: Type,       folder: 'Strings' },
+  { id: 'Extensions',   label: 'Extensions',         icon: PuzzleIcon, folder: 'PSAppDeployToolkit.Extensions' },
+  { id: 'Toolkit',      label: 'PSAppDeployToolkit', icon: Code2,      folder: 'PSAppDeployToolkit' },
 ];
 
 function extOf(name) { return name.slice(name.lastIndexOf('.')).toLowerCase(); }
@@ -126,10 +128,12 @@ function TextEditorModal({ appName, version, folder, filename, onClose, onSaved,
 
 // ── Folder section ─────────────────────────────────────────────────────────────
 
-function FolderSection({ appName, version, folder, hint }) {
+function FolderSection({ appName, version, folder, hint, onCopyDefaults, defaultFilesConfigured = true }) {
   const [files, setFiles] = useState([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
+  const [copying, setCopying] = useState(false);
+  const [copyMsg, setCopyMsg] = useState('');
   const [err, setErr] = useState('');
   const [editTarget, setEditTarget] = useState(null); // { folder, filename }
   const inputRef = useRef();
@@ -185,9 +189,32 @@ function FolderSection({ appName, version, folder, hint }) {
           <h2 className="font-semibold">{folder}</h2>
           {hint && <p className="text-xs text-gray-500 mt-0.5">{hint}</p>}
         </div>
-        <button onClick={() => inputRef.current.click()} disabled={uploading} className="btn-secondary text-sm">
-          <Upload size={14} /> {uploading ? 'Uploading…' : 'Upload'}
-        </button>
+        <div className="flex items-center gap-2">
+          <>
+            <button
+              onClick={async () => {
+                if (!defaultFilesConfigured || !onCopyDefaults) return;
+                setCopying(true); setCopyMsg('');
+                try {
+                  const r = await onCopyDefaults();
+                  const n = Object.values(r.copied || {}).flat().length;
+                  setCopyMsg(`Copied ${n} file${n !== 1 ? 's' : ''}`);
+                  load();
+                } catch (e) { setCopyMsg(`Error: ${e.message}`); }
+                finally { setCopying(false); }
+              }}
+              disabled={copying || !defaultFilesConfigured}
+              className="btn-secondary text-sm"
+              title={defaultFilesConfigured ? 'Copy files from default files source' : 'Configure a Default Files source path in Settings first'}
+            >
+              <Copy size={14} /> {copying ? 'Copying…' : 'Copy Defaults'}
+            </button>
+            {copyMsg && <span className="text-xs text-gray-500">{copyMsg}</span>}
+          </>
+          <button onClick={() => inputRef.current.click()} disabled={uploading} className="btn-secondary text-sm">
+            <Upload size={14} /> {uploading ? 'Uploading…' : 'Upload'}
+          </button>
+        </div>
         <input ref={inputRef} type="file" multiple className="hidden" onChange={handleUpload} />
       </div>
 
@@ -233,7 +260,7 @@ function FolderSection({ appName, version, folder, hint }) {
 
 // ── Assets section ─────────────────────────────────────────────────────────────
 
-function AssetsSection({ appName, version }) {
+function AssetsSection({ appName, version, onCopyDefaults, defaultFilesConfigured }) {
   const [refreshKey, setRefreshKey] = useState(0);
   const [files, setFiles] = useState(null); // null = not yet loaded
   const [creating, setCreating] = useState(false);
@@ -280,6 +307,8 @@ function AssetsSection({ appName, version }) {
         appName={appName} version={version}
         folder="Assets"
         hint="PNG/ICO branding overrides — AppDeployToolkitLogo.png, AppDeployToolkitBanner.png, AppDeployToolkitIcon.ico"
+        onCopyDefaults={onCopyDefaults}
+        defaultFilesConfigured={defaultFilesConfigured}
       />
     </div>
   );
@@ -287,7 +316,7 @@ function AssetsSection({ appName, version }) {
 
 // ── Extensions section ─────────────────────────────────────────────────────────
 
-function ExtensionsSection({ appName, version }) {
+function ExtensionsSection({ appName, version, onCopyDefaults, defaultFilesConfigured }) {
   const [refreshKey, setRefreshKey] = useState(0);
   const [files, setFiles] = useState(null);
   const [creating, setCreating] = useState(false);
@@ -337,6 +366,8 @@ function ExtensionsSection({ appName, version }) {
         appName={appName} version={version}
         folder="PSAppDeployToolkit.Extensions"
         hint="Module manifest (.psd1) and script module (.psm1) for custom toolkit functions"
+        onCopyDefaults={onCopyDefaults}
+        defaultFilesConfigured={defaultFilesConfigured}
       />
     </div>
   );
@@ -533,6 +564,7 @@ export default function PackageDetail() {
   const [publishing, setPublishing] = useState(false);
   const [activeTab, setActiveTab] = useState('files');
   const [editingScript, setEditingScript] = useState(false);
+  const [hasDefaultFiles, setHasDefaultFiles] = useState(false);
   const fileInputRef = useRef();
 
   const load = async () => {
@@ -551,6 +583,10 @@ export default function PackageDetail() {
   };
 
   useEffect(() => { load(); }, [appName, version]);
+
+  useEffect(() => {
+    getConfig().then(cfg => setHasDefaultFiles(!!cfg.defaultFiles?.sourcePath)).catch(() => {});
+  }, []);
 
   const handleUpload = async (e) => {
     const selected = Array.from(e.target.files);
@@ -758,15 +794,35 @@ export default function PackageDetail() {
           appName={appName} version={version}
           folder="SupportFiles"
           hint="Registry files, config files, helper scripts, license files — accessed via $dirSupportFiles"
+          onCopyDefaults={() => copyDefaultFiles(appName, version, 'SupportFiles')}
+          defaultFilesConfigured={hasDefaultFiles}
         />
       )}
 
       {activeTab === 'Assets' && (
-        <AssetsSection appName={appName} version={version} />
+        <AssetsSection
+          appName={appName} version={version}
+          onCopyDefaults={() => copyDefaultFiles(appName, version, 'Assets')}
+          defaultFilesConfigured={hasDefaultFiles}
+        />
+      )}
+
+      {activeTab === 'Strings' && (
+        <FolderSection
+          appName={appName} version={version}
+          folder="Strings"
+          hint="Localization string files for the PSADT UI — accessed via $dirStrings"
+          onCopyDefaults={() => copyDefaultFiles(appName, version, 'Strings')}
+          defaultFilesConfigured={hasDefaultFiles}
+        />
       )}
 
       {activeTab === 'Extensions' && (
-        <ExtensionsSection appName={appName} version={version} />
+        <ExtensionsSection
+          appName={appName} version={version}
+          onCopyDefaults={() => copyDefaultFiles(appName, version, 'PSAppDeployToolkit.Extensions')}
+          defaultFilesConfigured={hasDefaultFiles}
+        />
       )}
 
       {activeTab === 'Toolkit' && (

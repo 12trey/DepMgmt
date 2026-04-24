@@ -151,6 +151,29 @@ export default function Config() {
         />
       </Section>
 
+      {/* Default Files settings */}
+      <Section title="Default Files">
+        <Field
+          label="Default Files Source Path"
+          hint="Folder containing Assets, SupportFiles, Strings, and Extensions subfolders to copy into new packages"
+          value={config.defaultFiles?.sourcePath || ''}
+          onChange={(v) => setNested('defaultFiles', 'sourcePath', v)}
+          onBrowse={async () => {
+            const result = await browseFolder(config.defaultFiles?.sourcePath || '');
+            if (result.path) setNested('defaultFiles', 'sourcePath', result.path);
+          }}
+        />
+        <label className="flex items-center gap-2 mt-3 cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={config.defaultFiles?.copyOnCreate ?? false}
+            onChange={(e) => setNested('defaultFiles', 'copyOnCreate', e.target.checked)}
+            className="rounded"
+          />
+          <span className="text-sm font-medium text-gray-700">Copy default files when creating new packages</span>
+        </label>
+      </Section>
+
       {/* Script Runner settings */}
       <Section title="Script Runner">
         <Field

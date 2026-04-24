@@ -45,13 +45,13 @@ exports.parseScript = (req, res) => {
 
 exports.runScript = (req, res) => {
   const scriptsRoot = getScriptsRoot();
-  const { path: rel, params, useMgGraph } = req.body;
+  const { path: rel, params, useMgGraph, useAz } = req.body;
   if (!rel) return res.status(400).json({ error: 'path required' });
   const absPath = svc.safePath(scriptsRoot, rel);
   if (!absPath || !absPath.endsWith('.ps1')) return res.status(400).json({ error: 'Invalid script path' });
   if (!fs.existsSync(absPath)) return res.status(404).json({ error: 'Script not found' });
 
-  const proc = svc.runScript(absPath, params || {}, useMgGraph || false, res);
+  const proc = svc.runScript(absPath, params || {}, useMgGraph || false, useAz || false, res);
   res.on('close', () => { try { proc.kill(); } catch {} });
 };
 
@@ -76,6 +76,34 @@ exports.mgGraphConnect = (req, res) => {
 exports.mgGraphDisconnect = async (_req, res) => {
   try {
     await svc.disconnectMgGraph();
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
+exports.azStatus = async (_req, res) => {
+  try {
+    res.json(await svc.checkAzInstalled());
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
+exports.azInstall = (req, res) => {
+  const proc = svc.installAz(res);
+  req.on('close', () => { try { proc.kill(); } catch {} });
+};
+
+exports.azConnect = (req, res) => {
+  const { accountId, subscriptionId, subscriptionName } = req.body || {};
+  const proc = svc.connectAz(accountId, subscriptionId, subscriptionName, res);
+  req.on('close', () => { try { proc.kill(); } catch {} });
+};
+
+exports.azDisconnect = async (_req, res) => {
+  try {
+    await svc.disconnectAz();
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: err.message });

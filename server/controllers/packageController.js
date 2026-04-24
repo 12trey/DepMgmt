@@ -140,6 +140,17 @@ exports.createAssetReadme = async (req, res) => {
   }
 };
 
+exports.copyDefaultFiles = async (req, res) => {
+  try {
+    const { appName, version } = req.params;
+    const { folder } = req.body || {};
+    const result = await packageService.copyDefaultFiles(appName, version, folder ? [folder] : null);
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
 // ── Toolkit population ─────────────────────────────────────────────────────────
 
 exports.populateToolkit = async (req, res) => {

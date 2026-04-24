@@ -7,6 +7,7 @@ import {
 import {
   browseScripts, parseScript, getMgGraphStatus, installMgGraph,
   connectMgGraph, mgGraphDisconnect, runScript,
+  getAzStatus, installAz, connectAz, azDisconnect,
 } from '../api';
 
 const START_MARKER = '<<<STRUCTURED_RESULT_START>>>';
@@ -21,6 +22,19 @@ export default function ScriptRunner() {
   const [mgLog, setMgLog] = useState('');
   const [mgLogOpen, setMgLogOpen] = useState(false);
   const [useMgGraph, setUseMgGraph] = useState(false);
+
+  // ── Az state ───────────────────────────────────────────────────────────────
+  const [azStatus, setAzStatus] = useState(null);
+  const [azConnected, setAzConnected] = useState(false);
+  const [azAccount, setAzAccount] = useState('');
+  const [azSubscription, setAzSubscription] = useState('');
+  const [azOp, setAzOp] = useState('');
+  const [azLog, setAzLog] = useState('');
+  const [azLogOpen, setAzLogOpen] = useState(false);
+  const [useAz, setUseAz] = useState(false);
+  const [azAccountId, setAzAccountId] = useState('');
+  const [azSubId, setAzSubId] = useState('');
+  const [azSubName, setAzSubName] = useState('');
 
   // ── File browser state ────────────────────────────────────────────────────
   const [items, setItems] = useState([]);
@@ -47,9 +61,10 @@ export default function ScriptRunner() {
   const abortRef = useRef(null);
   const consoleEndRef = useRef(null);
 
-  // ── Load MgGraph status on mount ──────────────────────────────────────────
+  // ── Load module status on mount ───────────────────────────────────────────
   useEffect(() => {
     getMgGraphStatus().then(setMgStatus).catch(() => {});
+    getAzStatus().then(setAzStatus).catch(() => {});
   }, []);
 
   // ── Auto-scroll console ───────────────────────────────────────────────────
@@ -152,7 +167,7 @@ export default function ScriptRunner() {
     abortRef.current = ctrl;
 
     try {
-      await runScript(scriptRel, paramValues, useMgGraph, (evt) => {
+      await runScript(scriptRel, paramValues, useMgGraph, useAz, (evt) => {
         if (evt.type === 'stdout') {
           fullStdoutRef.current += evt.data;
           setConsoleText(prev => prev + evt.data);
@@ -192,7 +207,7 @@ export default function ScriptRunner() {
       }
       setRunning(false);
     }
-  }, [scriptRel, scriptMeta, paramValues, useMgGraph]);
+  }, [scriptRel, scriptMeta, paramValues, useMgGraph, useAz]);
 
   const handleStop = () => {
     abortRef.current?.abort();
@@ -249,6 +264,58 @@ export default function ScriptRunner() {
     } catch {}
   };
 
+  // ── Az operations ─────────────────────────────────────────────────────────
+  const handleInstallAz = async () => {
+    setAzOp('installing');
+    setAzLog('');
+    setAzLogOpen(true);
+    try {
+      await installAz((evt) => {
+        if (evt.type === 'stdout' || evt.type === 'stderr') {
+          setAzLog(prev => prev + evt.data);
+        } else if (evt.type === 'exit') {
+          if (evt.data === 0) getAzStatus().then(setAzStatus).catch(() => {});
+        }
+      });
+    } catch {}
+    setAzOp('');
+  };
+
+  const handleConnectAz = async () => {
+    setAzOp('connecting');
+    setAzLog('');
+    setAzLogOpen(true);
+    setAzConnected(false);
+    setAzAccount('');
+    setAzSubscription('');
+    try {
+      await connectAz(azAccountId, azSubId, azSubName, (evt) => {
+        if (evt.type === 'stdout' || evt.type === 'stderr') {
+          setAzLog(prev => prev + evt.data);
+          const match = evt.data.match(/Connected as:\s*(.+?)\s*\/\s*Subscription:\s*(.+)/i);
+          if (match) {
+            setAzConnected(true);
+            setAzAccount(match[1].trim());
+            setAzSubscription(match[2].trim());
+          }
+        } else if (evt.type === 'exit') {
+          if (evt.data === 0) setAzConnected(true);
+        }
+      });
+    } catch {}
+    setAzOp('');
+  };
+
+  const handleDisconnectAz = async () => {
+    try {
+      await azDisconnect();
+      setAzConnected(false);
+      setAzAccount('');
+      setAzSubscription('');
+      setUseAz(false);
+    } catch {}
+  };
+
   // ── Render ────────────────────────────────────────────────────────────────
   return (
     <div className="space-y-4">
@@ -271,6 +338,29 @@ export default function ScriptRunner() {
         onInstall={handleInstallMg}
         onConnect={handleConnectMg}
         onDisconnect={handleDisconnectMg}
+      />
+
+      {/* Az panel */}
+      <AzPanel
+        status={azStatus}
+        connected={azConnected}
+        account={azAccount}
+        subscription={azSubscription}
+        op={azOp}
+        log={azLog}
+        logOpen={azLogOpen}
+        setLogOpen={setAzLogOpen}
+        useAz={useAz}
+        setUseAz={setUseAz}
+        accountId={azAccountId}
+        subId={azSubId}
+        subName={azSubName}
+        onAccountIdChange={setAzAccountId}
+        onSubIdChange={setAzSubId}
+        onSubNameChange={setAzSubName}
+        onInstall={handleInstallAz}
+        onConnect={handleConnectAz}
+        onDisconnect={handleDisconnectAz}
       />
 
       {/* Two-column layout */}
@@ -420,6 +510,11 @@ export default function ScriptRunner() {
                       <Cloud size={13} /> Using Microsoft Graph
                     </span>
                   )}
+                  {useAz && (
+                    <span className="text-xs text-blue-400 flex items-center gap-1">
+                      <Cloud size={13} /> Using Az
+                    </span>
+                  )}
                   {exitCode !== null && !running && (
                     <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
                       exitCode === 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
@@ -539,6 +634,161 @@ function MgGraphPanel({ status, connected, account, op, log, logOpen, setLogOpen
                   className={`relative w-9 h-5 rounded-full transition-colors ${useMgGraph ? 'bg-blue-500' : 'bg-gray-300'}`}
                 >
                   <span className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${useMgGraph ? 'translate-x-4' : ''}`} />
+                </div>
+              </label>
+            )}
+          </div>
+
+          {/* Streaming log */}
+          {log && (
+            <div>
+              <button
+                onClick={() => setLogOpen(o => !o)}
+                className="text-xs text-gray-400 hover:text-gray-600 flex items-center gap-1"
+              >
+                {logOpen ? <ChevronUp size={11} /> : <ChevronDown size={11} />}
+                {logOpen ? 'Hide log' : 'Show log'}
+              </button>
+              {logOpen && (
+                <pre className="mt-2 text-xs font-mono bg-gray-900 text-gray-200 rounded p-3 max-h-40 overflow-y-auto whitespace-pre-wrap break-words">
+                  {log}
+                </pre>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Az Panel ──────────────────────────────────────────────────────────────────
+
+function AzPanel({ status, connected, account, subscription, op, log, logOpen, setLogOpen, useAz, setUseAz, accountId, subId, subName, onAccountIdChange, onSubIdChange, onSubNameChange, onInstall, onConnect, onDisconnect }) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <div className="bg-white rounded-lg shadow overflow-hidden">
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="w-full flex items-center justify-between px-5 py-3 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+      >
+        <span className="flex items-center gap-2">
+          <Cloud size={16} className="text-blue-400" />
+          Azure PowerShell (Az)
+          {connected && (
+            <span className="text-xs font-normal text-green-600 flex items-center gap-1">
+              <CheckCircle size={11} /> Connected{account ? ` · ${account}` : ''}{subscription ? ` / ${subscription}` : ''}
+            </span>
+          )}
+        </span>
+        {open ? <ChevronUp size={16} className="text-gray-400" /> : <ChevronDown size={16} className="text-gray-400" />}
+      </button>
+
+      {open && (
+        <div className="border-t border-gray-100 px-5 py-4 space-y-4">
+          {/* Module status */}
+          <div className="flex items-center gap-6 text-sm">
+            <div className="flex items-center gap-2">
+              {status === null ? (
+                <Loader size={14} className="animate-spin text-gray-400" />
+              ) : status.installed ? (
+                <CheckCircle size={14} className="text-green-500" />
+              ) : (
+                <CloudOff size={14} className="text-gray-400" />
+              )}
+              <span className="text-gray-600">
+                {status === null ? 'Checking...' : status.installed
+                  ? `Az.Accounts installed (v${status.version})`
+                  : 'Az module not installed'}
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              {connected
+                ? <CheckCircle size={14} className="text-green-500" />
+                : <AlertCircle size={14} className="text-gray-400" />}
+              <span className="text-gray-600">
+                {connected
+                  ? `Connected${account ? ` as ${account}` : ''}${subscription ? ` / ${subscription}` : ''}`
+                  : 'Not connected'}
+              </span>
+            </div>
+          </div>
+
+          {/* Login fields — shown when installed but not yet connected */}
+          {status?.installed && !connected && (
+            <div className="space-y-2">
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Account ID <span className="font-normal text-gray-400">(your Microsoft account email — recommended)</span></label>
+                <input
+                  className="input w-full text-sm"
+                  placeholder="user@domain.com"
+                  value={accountId}
+                  onChange={e => onAccountIdChange(e.target.value)}
+                />
+              </div>
+              <div className="flex gap-3">
+                <div className="flex-1">
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Subscription ID <span className="font-normal text-gray-400">(optional)</span></label>
+                  <input
+                    className="input w-full text-sm"
+                    placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+                    value={subId}
+                    onChange={e => onSubIdChange(e.target.value)}
+                  />
+                </div>
+                <div className="flex-1">
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Subscription Name <span className="font-normal text-gray-400">(optional)</span></label>
+                  <input
+                    className="input w-full text-sm"
+                    placeholder="My Azure Subscription"
+                    value={subName}
+                    onChange={e => onSubNameChange(e.target.value)}
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Action buttons */}
+          <div className="flex items-center gap-2 flex-wrap">
+            {status && !status.installed && (
+              <button
+                onClick={onInstall}
+                disabled={op !== ''}
+                className="btn-secondary text-sm flex items-center gap-1.5"
+              >
+                {op === 'installing'
+                  ? <><Loader size={13} className="animate-spin" /> Installing...</>
+                  : <><Download size={13} /> Install Az Module</>}
+              </button>
+            )}
+            {status?.installed && !connected && (
+              <button
+                onClick={onConnect}
+                disabled={op !== ''}
+                className="btn-primary text-sm flex items-center gap-1.5"
+              >
+                {op === 'connecting'
+                  ? <><Loader size={13} className="animate-spin" /> Connecting...</>
+                  : <><LogIn size={13} /> Connect with Connect-AzAccount</>}
+              </button>
+            )}
+            {connected && (
+              <button onClick={onDisconnect} className="btn-secondary text-sm flex items-center gap-1.5">
+                <LogOut size={13} /> Disconnect
+              </button>
+            )}
+
+            {/* Use Az toggle */}
+            {status?.installed && (
+              <label className="ml-auto flex items-center gap-2 cursor-pointer select-none">
+                <span className="text-sm text-gray-600">Use Az in scripts</span>
+                <div
+                  onClick={() => setUseAz(v => !v)}
+                  className={`relative w-9 h-5 rounded-full transition-colors ${useAz ? 'bg-blue-500' : 'bg-gray-300'}`}
+                >
+                  <span className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${useAz ? 'translate-x-4' : ''}`} />
                 </div>
               </label>
             )}

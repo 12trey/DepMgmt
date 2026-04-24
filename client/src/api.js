@@ -145,6 +145,23 @@ export const checkIntuneOutput = (folder) =>
 export const clearIntuneOutput = (folder) =>
   request('/intune/clear-output', { method: 'POST', body: JSON.stringify({ folder }) });
 
+// Templates
+export const readTemplate = (version, file) =>
+  request(`/templates/${encodeURIComponent(version)}/${encodeURIComponent(file)}`);
+export const saveTemplate = (version, file, content) =>
+  request(`/templates/${encodeURIComponent(version)}/${encodeURIComponent(file)}`, {
+    method: 'PUT', body: JSON.stringify({ content }),
+  });
+export const resetTemplate = (version, file) =>
+  request(`/templates/${encodeURIComponent(version)}/${encodeURIComponent(file)}`, { method: 'DELETE' });
+
+// Default files
+export const copyDefaultFiles = (appName, version, folder = null) =>
+  request(`/packages/${appName}/${version}/copy-default-files`, {
+    method: 'POST',
+    body: JSON.stringify(folder ? { folder } : {}),
+  });
+
 // Scripts / Script Runner
 export const browseScripts = (relPath = '') =>
   request(`/scripts/browse?path=${encodeURIComponent(relPath)}`);
@@ -173,11 +190,11 @@ async function streamSSE(url, options, onEvent, signal) {
   }
 }
 
-export const runScript = (relPath, params, useMgGraph, onEvent, signal) =>
+export const runScript = (relPath, params, useMgGraph, useAz, onEvent, signal) =>
   streamSSE('/api/scripts/run', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ path: relPath, params, useMgGraph }),
+    body: JSON.stringify({ path: relPath, params, useMgGraph, useAz }),
   }, onEvent, signal);
 
 export const installMgGraph = (onEvent, signal) =>
@@ -185,6 +202,17 @@ export const installMgGraph = (onEvent, signal) =>
 
 export const connectMgGraph = (onEvent, signal) =>
   streamSSE('/api/scripts/mggraph/connect', { method: 'POST' }, onEvent, signal);
+
+export const getAzStatus = () => request('/scripts/az/status');
+export const azDisconnect = () => request('/scripts/az/disconnect', { method: 'POST' });
+export const installAz = (onEvent, signal) =>
+  streamSSE('/api/scripts/az/install', { method: 'POST' }, onEvent, signal);
+export const connectAz = (accountId, subscriptionId, subscriptionName, onEvent, signal) =>
+  streamSSE('/api/scripts/az/connect', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ accountId, subscriptionId, subscriptionName }),
+  }, onEvent, signal);
 
 // Group management
 const creds = (c) => (c ? { adUsername: c.adUsername, adPassword: c.adPassword } : {});

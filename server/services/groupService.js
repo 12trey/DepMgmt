@@ -89,11 +89,20 @@ async function getGroupMembers(name, type, credential) {
 $ErrorActionPreference = 'Stop'
 try {
   $members = Get-LocalGroupMember -Group '${ps(name)}' | ForEach-Object {
+    $enabled = $null
+    if ($_.ObjectClass -eq 'User') {
+      $localName = ($_.Name -split '\\\\')[-1]
+      try {
+        $u = Get-LocalUser -Name $localName -ErrorAction SilentlyContinue
+        if ($null -ne $u) { $enabled = [bool]$u.Enabled }
+      } catch {}
+    }
     [PSCustomObject]@{
       name           = $_.Name
       samAccountName = ($_.Name -split '\\\\')[-1]
       type           = $_.ObjectClass
       sid            = $_.SID.Value
+      enabled        = $enabled
     }
   }
   if ($null -eq $members) { '[]' } else { @($members) | ConvertTo-Json -Compress }
@@ -110,10 +119,18 @@ ${credentialBlock(credential)}
 ${credSplat}
 try {
   $members = Get-ADGroupMember -Identity '${ps(name)}' @credParam | ForEach-Object {
+    $enabled = $null
+    if ($_.objectClass -eq 'user') {
+      try {
+        $u = Get-ADUser -Identity $_.SamAccountName -Properties Enabled @credParam -ErrorAction SilentlyContinue
+        if ($null -ne $u) { $enabled = [bool]$u.Enabled }
+      } catch {}
+    }
     [PSCustomObject]@{
       name           = $_.Name
       samAccountName = $_.SamAccountName
       type           = $_.objectClass
+      enabled        = $enabled
     }
   }
   if ($null -eq $members) { '[]' } else { @($members) | ConvertTo-Json -Compress }
