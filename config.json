@@ -21,8 +21,8 @@
     "folderPath": "C:\\Users\\trey\\Documents\\Deployments\\powershell_scripts"
   },
   "defaultFiles": {
-    "sourcePath": "",
-    "copyOnCreate": false
+    "sourcePath": "C:\\Users\\trey\\Documents\\Deployments\\PDADT_Template",
+    "copyOnCreate": true
   },
   "groups": {
     "adDomain": "",

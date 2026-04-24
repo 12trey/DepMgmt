@@ -67,7 +67,7 @@ exports.parseScript = function parseScript(scriptPath) {
           });
         }
       });
-    } catch {}
+    } catch { }
   }
   return {
     name: path.basename(scriptPath),
@@ -288,6 +288,10 @@ exports.installAz = function (res) {
   return proc;
 };
 
+function toBase64PS(script) {
+  return Buffer.from(script, 'utf16le').toString('base64');
+}
+
 // Connect to Azure via direct PS spawn with -AccountId triggering WAM/browser dialog
 exports.connectAz = async function (accountId, subscriptionId, subscriptionName, res) {
   const config = getConfig();
@@ -302,8 +306,8 @@ exports.connectAz = async function (accountId, subscriptionId, subscriptionName,
   ];
 
   const connectParts = ['Connect-AzAccount', '-ErrorAction Stop'];
-  
-    //connectParts.push(`-TenantId '637dae3a-8825-4b77-9fc0-f9e9fdf966b7'`);
+
+  //connectParts.push(`-TenantId '637dae3a-8825-4b77-9fc0-f9e9fdf966b7'`);
   if (accountId && accountId.trim())
     connectParts.push(`-AccountId '${psEsc(accountId.trim())}'`);
 
@@ -334,18 +338,37 @@ exports.connectAz = async function (accountId, subscriptionId, subscriptionName,
   //const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
   // Direct spawn — same pattern as Connect-MgGraph which works correctly
-  const proc = spawn(ps, ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', script], {
-    env: spawnEnv(),
-    windowsHide: false,
-    detached: false
-    // No windowsHide — required for WAM/browser dialogs to appear
+  // const proc = spawn(ps, ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', script], {
+  //   env: spawnEnv(),
+  //   windowsHide: false,
+  //   detached: false
+  //   // No windowsHide — required for WAM/browser dialogs to appear
+  // });
+
+  // const proc = spawn('cmd.exe', ['/c', 'start', '', ps, '-NoProfile', '-Command', script], {
+  //   windowsHide: false
+  // });
+
+  const encoded = toBase64PS(script);
+
+  const proc = spawn('cmd.exe', [
+    '/c',
+    'start',
+    '',
+    ps,
+    '-NoProfile',
+    '-ExecutionPolicy', 'Bypass',
+    '-EncodedCommand',
+    encoded
+  ], {
+    windowsHide: false
   });
 
-  //await(6000);
+  //await (6000);
   proc.stdout.on('data', c => send('stdout', c.toString()));
   proc.stderr.on('data', c => send('stderr', c.toString()));
   proc.on('close', code => {
-    send('exit', code); res.end(); 
+    send('exit', code); res.end();
   });
   proc.on('error', err => {
     send('error', err.message);
@@ -395,19 +418,19 @@ exports.runScript = function (scriptPath, params, useMgGraph, useAz, res) {
     }
   }
 
-  if (useMgGraph) {
-    lines.push(
-      'Import-Module Microsoft.Graph.Authentication -ErrorAction Stop',
-      'Connect-MgGraph -NoWelcome -ErrorAction Stop',
-    );
-  }
-
   if (useAz) {
     lines.push(
       '$WarningPreference = "Continue"',
       'Import-Module Az.Accounts -ErrorAction Stop',
       '$__azCtx = Get-AzContext -ErrorAction SilentlyContinue',
       'if (-not $__azCtx) { Connect-AzAccount -UseDeviceAuthentication -ErrorAction Stop 3>&1 | ForEach-Object { Write-Output "$_" } }',
+    );
+  }
+
+  if (useMgGraph) {
+    lines.push(
+      'Import-Module Microsoft.Graph.Authentication -ErrorAction Stop',
+      'Connect-MgGraph -NoWelcome -ErrorAction Stop',
     );
   }
 
@@ -441,10 +464,20 @@ exports.runScript = function (scriptPath, params, useMgGraph, useAz, res) {
     windowsHide: true,
   });
 
-  proc.stdout.on('data', c => send('stdout', c.toString()));
-  proc.stderr.on('data', c => send('stderr', c.toString()));
-  proc.on('close', code => { send('exit', code); res.end(); });
-  proc.on('error', err => { send('error', err.message); res.end(); });
+  proc.stdout.on('data', c => { 
+    let output = c.toString();
+    send('stdout', output);
+  });
+  proc.stderr.on('data', c => { 
+    let output = c.toString();
+    send('stderr', output);
+   });
+  proc.on('close', code => { 
+    send('exit', code); res.end();
+   });
+  proc.on('error', err => { 
+    send('error', err.message); res.end();
+  });
 
   return proc;
 };

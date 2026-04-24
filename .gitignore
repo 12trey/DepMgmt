@@ -4,6 +4,7 @@ dist-electron/
 packages/
 repo/
 logs/
+.userdata/
 *.log
 .env
 .claude/

@@ -61,7 +61,7 @@ Handlebars.registerHelper('psArray', function (value) {
 
 function readTemplate(psadtVersion, name) {
   const ver = psadtVersion === 'v4' ? 'v4' : 'v3';
-  const custom = path.join(paths.userDataDir, 'templates', ver, name);
+  const custom = path.join(paths.customTemplatesDir, ver, name);
   if (fs.existsSync(custom)) return fs.readFileSync(custom, 'utf-8');
   return fs.readFileSync(path.join(paths.templatesDir, ver, name), 'utf-8');
 }
