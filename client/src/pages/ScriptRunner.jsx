@@ -1,8 +1,8 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, createContext, useContext } from 'react';
 import {
   Terminal, FolderOpen, FileCode, Play, Square, RefreshCw,
   ChevronRight, ArrowLeft, Download, LogIn, LogOut, CheckCircle,
-  AlertCircle, Loader, Cloud, CloudOff, ChevronDown, ChevronUp,
+  AlertCircle, Loader, Cloud, CloudOff, ChevronDown, ChevronUp, X, Maximize2, Minimize2,
 } from 'lucide-react';
 import {
   browseScripts, parseScript, getMgGraphStatus, installMgGraph,
@@ -10,8 +10,6 @@ import {
   getAzStatus, installAz, connectAz, azDisconnect,
 } from '../api';
 
-const START_MARKER = '<<<STRUCTURED_RESULT_START>>>';
-const END_MARKER = '<<<STRUCTURED_RESULT_END>>>';
 
 export default function ScriptRunner() {
   // ── MgGraph state ──────────────────────────────────────────────────────────
@@ -32,9 +30,13 @@ export default function ScriptRunner() {
   const [azLog, setAzLog] = useState('');
   const [azLogOpen, setAzLogOpen] = useState(false);
   const [useAz, setUseAz] = useState(false);
-  const [azAccountId, setAzAccountId] = useState('');
-  const [azSubId, setAzSubId] = useState('');
-  const [azSubName, setAzSubName] = useState('');
+  const [azAccountId, setAzAccountId] = useState(() => localStorage.getItem('az_accountId') || '');
+  const [azSubId, setAzSubId] = useState(() => localStorage.getItem('az_subId') || '');
+  const [azSubName, setAzSubName] = useState(() => localStorage.getItem('az_subName') || '');
+
+  useEffect(() => { localStorage.setItem('az_accountId', azAccountId); }, [azAccountId]);
+  useEffect(() => { localStorage.setItem('az_subId', azSubId); }, [azSubId]);
+  useEffect(() => { localStorage.setItem('az_subName', azSubName); }, [azSubName]);
 
   // ── File browser state ────────────────────────────────────────────────────
   const [items, setItems] = useState([]);
@@ -173,25 +175,11 @@ export default function ScriptRunner() {
           setConsoleText(prev => prev + evt.data);
         } else if (evt.type === 'stderr') {
           setConsoleText(prev => prev + evt.data);
+        } else if (evt.type === 'structured') {
+          setStructuredOutput(evt.data);
+          setOutputTab('structured');
         } else if (evt.type === 'exit') {
-          const full = fullStdoutRef.current;
-          const si = full.indexOf(START_MARKER);
-          const ei = full.indexOf(END_MARKER);
-          let display = full;
-          if (si !== -1 && ei !== -1 && ei > si) {
-            const jsonStr = full.slice(si + START_MARKER.length, ei).trim();
-            display = full.slice(0, si).trimEnd();
-            if (jsonStr && jsonStr !== 'null') {
-              try {
-                const parsed = JSON.parse(jsonStr);
-                if (parsed !== null && parsed !== undefined) {
-                  setStructuredOutput(parsed);
-                  setOutputTab('structured');
-                }
-              } catch {}
-            }
-          }
-          setConsoleText(display);
+          setConsoleText(fullStdoutRef.current.trimEnd());
           setExitCode(evt.data);
           setRunning(false);
         } else if (evt.type === 'error') {
@@ -292,7 +280,7 @@ export default function ScriptRunner() {
       await connectAz(azAccountId, azSubId, azSubName, (evt) => {
         if (evt.type === 'stdout' || evt.type === 'stderr') {
           setAzLog(prev => prev + evt.data);
-          const match = evt.data.match(/Connected as:\s*(.+?)\s*\/\s*Subscription:\s*(.+)/i);
+          const match = evt.data.match(/Connected as:\s*(.+?)\s*\|\s*Subscription:\s*(.+)/i);
           if (match) {
             setAzConnected(true);
             setAzAccount(match[1].trim());
@@ -720,7 +708,7 @@ function AzPanel({ status, connected, account, subscription, op, log, logOpen, s
           {status?.installed && !connected && (
             <div className="space-y-2">
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Account ID <span className="font-normal text-gray-400">(your Microsoft account email — recommended)</span></label>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Account ID <span className="text-red-500">*</span> <span className="font-normal text-gray-400">(your Microsoft account email)</span></label>
                 <input
                   className="input w-full text-sm"
                   placeholder="user@domain.com"
@@ -767,7 +755,8 @@ function AzPanel({ status, connected, account, subscription, op, log, logOpen, s
             {status?.installed && !connected && (
               <button
                 onClick={onConnect}
-                disabled={op !== ''}
+                disabled={op !== '' || !accountId.trim()}
+                title={!accountId.trim() ? 'Account ID is required' : undefined}
                 className="btn-primary text-sm flex items-center gap-1.5"
               >
                 {op === 'connecting'
@@ -970,37 +959,110 @@ function ComboBox({ value, onChange, onLinkSelect, options, placeholder }) {
 // ── Output Panel ──────────────────────────────────────────────────────────────
 
 function OutputPanel({ tab, onTabChange, consoleText, structuredOutput, running, consoleEndRef }) {
+  const [undocked, setUndocked] = useState(false);
+  const [pos, setPos] = useState({ x: 40, y: 80 });
+  const [size, setSize] = useState(() => ({
+    width: Math.min(1100, window.innerWidth - 80),
+    height: Math.min(700, window.innerHeight - 120),
+  }));
+  const dragRef = useRef(null);
+  const resizeRef = useRef(null);
+
+  const startDrag = (e) => {
+    if (e.target.closest('button')) return;
+    e.preventDefault();
+    dragRef.current = { ox: e.clientX - pos.x, oy: e.clientY - pos.y };
+    const move = (ev) => setPos({ x: Math.max(0, ev.clientX - dragRef.current.ox), y: Math.max(0, ev.clientY - dragRef.current.oy) });
+    const up = () => { document.removeEventListener('mousemove', move); document.removeEventListener('mouseup', up); };
+    document.addEventListener('mousemove', move);
+    document.addEventListener('mouseup', up);
+  };
+
+  const startResize = (e) => {
+    e.preventDefault(); e.stopPropagation();
+    resizeRef.current = { sx: e.clientX, sy: e.clientY, sw: size.width, sh: size.height };
+    const move = (ev) => setSize({
+      width: Math.max(480, resizeRef.current.sw + ev.clientX - resizeRef.current.sx),
+      height: Math.max(320, resizeRef.current.sh + ev.clientY - resizeRef.current.sy),
+    });
+    const up = () => { document.removeEventListener('mousemove', move); document.removeEventListener('mouseup', up); };
+    document.addEventListener('mousemove', move);
+    document.addEventListener('mouseup', up);
+  };
+
+  const popOut = () => {
+    setPos({ x: Math.max(20, Math.round(window.innerWidth / 2 - size.width / 2)), y: 80 });
+    setUndocked(true);
+  };
+
   const hasStructured = structuredOutput !== null && structuredOutput !== undefined;
+
+  const tabs = (
+    <div className="flex border-b border-gray-200 bg-gray-50 shrink-0 items-center">
+      <TabBtn active={tab === 'console'} onClick={() => onTabChange('console')}>
+        Console {running && <Loader size={11} className="animate-spin inline ml-1" />}
+      </TabBtn>
+      <TabBtn active={tab === 'structured'} onClick={() => hasStructured && onTabChange('structured')} disabled={!hasStructured}>
+        Output{hasStructured ? ` (${resultCount(structuredOutput)})` : ''}
+      </TabBtn>
+      {!undocked && (
+        <button onClick={popOut} className="ml-auto mr-2 p-1 text-gray-400 hover:text-gray-600 rounded hover:bg-gray-200" title="Pop out">
+          <Maximize2 size={13} />
+        </button>
+      )}
+    </div>
+  );
+
+  const content = (
+    <div className={undocked ? 'flex-1 min-h-0 flex flex-col p-4' : 'p-4'}>
+      {tab === 'console' && (
+        <pre className={`text-xs font-mono bg-gray-900 text-gray-100 rounded p-3 overflow-y-auto whitespace-pre-wrap break-words ${undocked ? 'flex-1 min-h-0' : 'min-h-[120px] max-h-[480px]'}`}>
+          {consoleText}
+          {!consoleText && !running && (
+            <span className="text-gray-500 italic">No console output. Pipeline return values appear in the Output tab.</span>
+          )}
+          <span ref={consoleEndRef} />
+        </pre>
+      )}
+      {tab === 'structured' && hasStructured && (
+        <OutputExpandedCtx.Provider value={undocked}>
+          <StructuredOutput data={structuredOutput} />
+        </OutputExpandedCtx.Provider>
+      )}
+    </div>
+  );
+
+  if (undocked) {
+    return (
+      <div
+        className="fixed z-40 bg-white rounded-lg shadow-2xl flex flex-col border border-gray-300"
+        style={{ left: pos.x, top: pos.y, width: size.width, height: size.height, maxWidth: '95vw', maxHeight: '95vh' }}
+      >
+        <div
+          className="flex items-center gap-2 px-3 py-2 bg-gray-100 rounded-t-lg border-b border-gray-200 cursor-move shrink-0 select-none"
+          onMouseDown={startDrag}
+        >
+          <Terminal size={13} className="text-gray-500 shrink-0" />
+          <span className="text-sm font-semibold text-gray-700 flex-1">Output</span>
+          <button onClick={() => setUndocked(false)} className="p-1 text-gray-400 hover:text-gray-700 rounded hover:bg-gray-200" title="Dock">
+            <Minimize2 size={13} />
+          </button>
+        </div>
+        {tabs}
+        {content}
+        <div
+          className="absolute bottom-0 right-0 w-5 h-5 cursor-se-resize rounded-br-lg"
+          onMouseDown={startResize}
+          style={{ background: 'radial-gradient(circle, #9ca3af 1.5px, transparent 1.5px)', backgroundSize: '4px 4px', backgroundPosition: '2px 2px' }}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="bg-white rounded-lg shadow overflow-hidden">
-      {/* Tabs */}
-      <div className="flex border-b border-gray-200 bg-gray-50">
-        <TabBtn active={tab === 'console'} onClick={() => onTabChange('console')}>
-          Console {running && <Loader size={11} className="animate-spin inline ml-1" />}
-        </TabBtn>
-        <TabBtn
-          active={tab === 'structured'}
-          onClick={() => hasStructured && onTabChange('structured')}
-          disabled={!hasStructured}
-        >
-          Output{hasStructured ? ` (${resultCount(structuredOutput)})` : ''}
-        </TabBtn>
-      </div>
-
-      <div className="p-4">
-        {tab === 'console' && (
-          <pre className="text-xs font-mono bg-gray-900 text-gray-100 rounded p-3 min-h-[120px] max-h-[480px] overflow-y-auto whitespace-pre-wrap break-words">
-            {consoleText}
-            {!consoleText && !running && (
-              <span className="text-gray-500 italic">No console output. Pipeline return values appear in the Output tab.</span>
-            )}
-            <span ref={consoleEndRef} />
-          </pre>
-        )}
-        {tab === 'structured' && hasStructured && (
-          <StructuredOutput data={structuredOutput} />
-        )}
-      </div>
+      {tabs}
+      {content}
     </div>
   );
 }
@@ -1031,13 +1093,51 @@ function resultCount(data) {
 
 // ── Structured Output ─────────────────────────────────────────────────────────
 
-function StructuredOutput({ data }) {
-  if (data === null || data === undefined) return null;
+const OutputExpandedCtx = createContext(false);
 
+function StructuredOutput({ data }) {
+  const expanded = useContext(OutputExpandedCtx);
+  const [stack, setStack] = useState([{ data, label: 'Output' }]);
+
+  useEffect(() => { setStack([{ data, label: 'Output' }]); }, [data]);
+
+  const drillInto = useCallback((value, label) => {
+    setStack(prev => [...prev, { data: value, label }]);
+  }, []);
+
+  const goBack = () => setStack(prev => prev.slice(0, -1));
+  const { data: curData } = stack[stack.length - 1];
+
+  return (
+    <div className={expanded ? 'flex flex-col min-h-0 flex-1' : 'space-y-2'}>
+      {stack.length > 1 && (
+        <div className="flex items-center gap-2 shrink-0">
+          <button onClick={goBack} className="flex items-center gap-1 text-sm text-blue-600 hover:text-blue-800">
+            <ArrowLeft size={13} /> Back
+          </button>
+          <span className="text-xs text-gray-400">
+            {stack.map((s, i) => (
+              <span key={i}>
+                {i > 0 && ' › '}
+                <span className={i === stack.length - 1 ? 'text-gray-700 font-medium' : ''}>{s.label}</span>
+              </span>
+            ))}
+          </span>
+        </div>
+      )}
+      <div className={expanded ? 'flex-1 min-h-0 flex flex-col' : ''}>
+        {renderStructured(curData, drillInto)}
+      </div>
+    </div>
+  );
+}
+
+function renderStructured(data, onDrillDown) {
+  if (data === null || data === undefined) return null;
   if (Array.isArray(data)) {
     if (data.length === 0) return <p className="text-sm text-gray-400 italic">Empty result</p>;
     if (typeof data[0] === 'object' && data[0] !== null) {
-      return <ObjectTable rows={data} />;
+      return <ObjectTable rows={data} onDrillDown={onDrillDown} />;
     }
     return (
       <div className="space-y-1 max-h-96 overflow-y-auto">
@@ -1052,24 +1152,40 @@ function StructuredOutput({ data }) {
       </div>
     );
   }
-
-  if (typeof data === 'object') return <PropertyGrid obj={data} />;
-
+  if (typeof data === 'object') return <PropertyGrid obj={data} onDrillDown={onDrillDown} />;
   return <div className="text-sm font-mono">{String(data)}</div>;
 }
 
-function ObjectTable({ rows }) {
+function compareValues(a, b, dir) {
+  const aComplex = a === null || a === undefined || typeof a === 'object';
+  const bComplex = b === null || b === undefined || typeof b === 'object';
+  if (aComplex && bComplex) return 0;
+  if (aComplex) return 1;
+  if (bComplex) return -1;
+  let result;
+  if (typeof a === 'number' && typeof b === 'number') result = a - b;
+  else if (typeof a === 'boolean' && typeof b === 'boolean') result = a === b ? 0 : a ? -1 : 1;
+  else result = String(a).localeCompare(String(b), undefined, { sensitivity: 'base', numeric: true });
+  return dir === 'desc' ? -result : result;
+}
+
+function ObjectTable({ rows, onDrillDown }) {
   const MAX_ROWS = 200;
   const MAX_COLS = 20;
   const keys = [...new Set(rows.slice(0, MAX_ROWS).flatMap(r => (r && typeof r === 'object') ? Object.keys(r) : []))].slice(0, MAX_COLS);
 
   const [colWidths, setColWidths] = useState(() => keys.map(() => 140));
+  const [detailRow, setDetailRow] = useState(null);
+  const [sortCol, setSortCol] = useState(null);
+  const [sortDir, setSortDir] = useState('asc');
   const resizingRef = useRef(null);
+  const didResizeRef = useRef(false);
 
   const startResize = (e, colIdx) => {
     e.preventDefault();
     resizingRef.current = { colIdx, startX: e.clientX, startW: colWidths[colIdx] };
     const onMove = (ev) => {
+      didResizeRef.current = true;
       const { colIdx, startX, startW } = resizingRef.current;
       const newW = Math.max(50, startW + ev.clientX - startX);
       setColWidths(prev => { const n = [...prev]; n[colIdx] = newW; return n; });
@@ -1078,16 +1194,26 @@ function ObjectTable({ rows }) {
       resizingRef.current = null;
       document.removeEventListener('mousemove', onMove);
       document.removeEventListener('mouseup', onUp);
+      setTimeout(() => { didResizeRef.current = false; }, 0);
     };
     document.addEventListener('mousemove', onMove);
     document.addEventListener('mouseup', onUp);
   };
 
+  const expanded = useContext(OutputExpandedCtx);
+
+  const handleSort = (k) => {
+    if (didResizeRef.current) return;
+    if (sortCol === k) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
+    else { setSortCol(k); setSortDir('asc'); }
+  };
+
+  const sortedRows = sortCol ? [...rows].sort((a, b) => compareValues(a?.[sortCol], b?.[sortCol], sortDir)) : rows;
   const totalWidth = colWidths.reduce((a, b) => a + b, 0);
 
   return (
-    <div>
-      <div className="overflow-x-auto max-h-[480px] overflow-y-auto rounded border border-gray-200">
+    <div className={expanded ? 'flex flex-col min-h-0 flex-1' : ''}>
+      <div className={`overflow-x-auto overflow-y-auto rounded border border-gray-200 ${expanded ? 'flex-1 min-h-0' : 'max-h-[480px]'}`}>
         <table className="text-xs border-collapse" style={{ tableLayout: 'fixed', width: totalWidth }}>
           <colgroup>
             {keys.map((k, i) => <col key={k} style={{ width: colWidths[i] }} />)}
@@ -1095,22 +1221,35 @@ function ObjectTable({ rows }) {
           <thead className="sticky top-0 z-10">
             <tr className="bg-gray-100">
               {keys.map((k, i) => (
-                <th key={k} className="relative px-3 py-2 text-left font-semibold text-gray-600 border-b border-gray-200 overflow-hidden">
-                  <span className="block truncate">{k}</span>
+                <th
+                  key={k}
+                  className="relative px-3 py-2 text-left font-semibold text-gray-600 border-b border-gray-200 overflow-hidden cursor-pointer select-none hover:bg-gray-200"
+                  onClick={() => handleSort(k)}
+                >
+                  <span className="block truncate pr-4">{k}</span>
+                  {sortCol === k && (
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-blue-500">
+                      {sortDir === 'asc' ? <ChevronUp size={11} /> : <ChevronDown size={11} />}
+                    </span>
+                  )}
                   <div
-                    onMouseDown={e => startResize(e, i)}
-                    className="absolute right-0 top-0 h-full w-2 cursor-col-resize hover:bg-blue-300 select-none"
+                    onMouseDown={e => { e.stopPropagation(); startResize(e, i); }}
+                    className="absolute right-0 top-0 h-full w-2 cursor-col-resize hover:bg-blue-300"
                   />
                 </th>
               ))}
             </tr>
           </thead>
           <tbody>
-            {rows.slice(0, MAX_ROWS).map((row, i) => (
-              <tr key={i} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+            {sortedRows.slice(0, MAX_ROWS).map((row, i) => (
+              <tr
+                key={i}
+                className={`${i % 2 === 0 ? 'bg-white' : 'bg-gray-50'} cursor-pointer hover:bg-blue-50`}
+                onDoubleClick={() => setDetailRow(row)}
+              >
                 {keys.map(k => (
-                  <td key={k} className="px-3 py-1.5 border-b border-gray-100 truncate overflow-hidden" title={String(row?.[k] ?? '')}>
-                    {renderCellValue(row?.[k])}
+                  <td key={k} className="px-3 py-1.5 border-b border-gray-100 truncate overflow-hidden" title={typeof row?.[k] !== 'object' ? String(row?.[k] ?? '') : undefined}>
+                    {renderCellValue(row?.[k], onDrillDown, k)}
                   </td>
                 ))}
               </tr>
@@ -1121,20 +1260,24 @@ function ObjectTable({ rows }) {
       {rows.length > MAX_ROWS && (
         <p className="text-xs text-gray-400 italic mt-1">{rows.length - MAX_ROWS} more rows not shown</p>
       )}
+      {detailRow && (
+        <RowDetailModal row={detailRow} onClose={() => setDetailRow(null)} />
+      )}
     </div>
   );
 }
 
-function PropertyGrid({ obj }) {
+function PropertyGrid({ obj, onDrillDown }) {
+  const expanded = useContext(OutputExpandedCtx);
   const entries = Object.entries(obj);
   return (
-    <div className="overflow-y-auto max-h-[480px] rounded border border-gray-100">
+    <div className={`overflow-y-auto rounded border border-gray-100 ${expanded ? 'flex-1 min-h-0' : 'max-h-[480px]'}`}>
       <table className="w-full text-sm border-collapse">
         <tbody>
           {entries.map(([k, v]) => (
             <tr key={k} className="border-b border-gray-100 hover:bg-gray-50">
               <td className="px-3 py-2 font-medium text-gray-600 whitespace-nowrap w-1/3 align-top">{k}</td>
-              <td className="px-3 py-2 text-gray-800 break-words">{renderDeepValue(v)}</td>
+              <td className="px-3 py-2 text-gray-800 break-words">{renderDeepValue(v, onDrillDown)}</td>
             </tr>
           ))}
         </tbody>
@@ -1143,35 +1286,207 @@ function PropertyGrid({ obj }) {
   );
 }
 
-function renderCellValue(val) {
+function RowDetailModal({ row, onClose }) {
+  const [size, setSize] = useState(() => ({
+    width: Math.min(1000, window.innerWidth - 64),
+    height: Math.min(700, window.innerHeight - 80),
+  }));
+  const resizingRef = useRef(null);
+
+  useEffect(() => {
+    const handler = (e) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [onClose]);
+
+  const startModalResize = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    resizingRef.current = { startX: e.clientX, startY: e.clientY, startW: size.width, startH: size.height };
+    const onMove = (ev) => {
+      const { startX, startY, startW, startH } = resizingRef.current;
+      setSize({
+        width: Math.max(480, startW + ev.clientX - startX),
+        height: Math.max(320, startH + ev.clientY - startY),
+      });
+    };
+    const onUp = () => {
+      resizingRef.current = null;
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center" onClick={onClose}>
+      <div
+        className="bg-white rounded-lg shadow-xl flex flex-col relative"
+        style={{ width: size.width, height: size.height, maxWidth: '95vw', maxHeight: '95vh' }}
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 shrink-0">
+          <span className="text-sm font-semibold text-gray-700">Row Detail</span>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X size={16} /></button>
+        </div>
+        <div className="overflow-y-auto flex-1 p-4">
+          <table className="w-full text-sm border-collapse">
+            <tbody>
+              {Object.entries(row).map(([k, v]) => (
+                <tr key={k} className="border-b border-gray-100">
+                  <td className="py-2 pr-4 font-medium text-gray-600 whitespace-nowrap align-top w-1/4">{k}</td>
+                  <td className="py-2 text-gray-800 break-words"><DetailValue val={v} /></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div
+          className="absolute bottom-0 right-0 w-5 h-5 cursor-se-resize rounded-br-lg"
+          onMouseDown={startModalResize}
+          style={{ background: 'radial-gradient(circle, #9ca3af 1.5px, transparent 1.5px)', backgroundSize: '4px 4px', backgroundPosition: '2px 2px' }}
+        />
+      </div>
+    </div>
+  );
+}
+
+function DetailValue({ val, depth = 0 }) {
   if (val === null || val === undefined) return <span className="text-gray-300">—</span>;
   if (typeof val === 'boolean') return <span className={val ? 'text-green-600' : 'text-red-500'}>{String(val)}</span>;
   if (typeof val === 'number') return <span className="text-blue-600">{val}</span>;
-  if (typeof val === 'object') return <span className="text-gray-400 italic">{Array.isArray(val) ? `[${val.length}]` : '{…}'}</span>;
+  if (typeof val === 'string') return <span>{val}</span>;
+  if (depth >= 4) return <span className="text-gray-400 italic text-xs">{Array.isArray(val) ? `[${val.length}]` : '{…}'}</span>;
+  if (Array.isArray(val)) {
+    if (val.length === 0) return <span className="text-gray-400 italic text-xs">[]</span>;
+    if (val.every(v => v === null || typeof v !== 'object')) {
+      return <span className="text-gray-700">{val.map(v => String(v ?? '—')).join(', ')}</span>;
+    }
+    return <DetailObjectTable rows={val} depth={depth} />;
+  }
+  return (
+    <table className="w-full text-xs border-collapse mt-0.5">
+      <tbody>
+        {Object.entries(val).map(([k, v]) => (
+          <tr key={k} className="border-b border-gray-100">
+            <td className="py-1 pr-3 font-medium text-gray-500 whitespace-nowrap align-top w-1/3">{k}</td>
+            <td className="py-1 text-gray-700 break-words"><DetailValue val={v} depth={depth + 1} /></td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
+function DetailObjectTable({ rows, depth }) {
+  const MAX = 100;
+  const keys = [...new Set(rows.slice(0, MAX).flatMap(r => (r && typeof r === 'object') ? Object.keys(r) : []))];
+  const [colWidths, setColWidths] = useState(() => keys.map(() => 120));
+  const [sortCol, setSortCol] = useState(null);
+  const [sortDir, setSortDir] = useState('asc');
+  const resizingRef = useRef(null);
+  const didResizeRef = useRef(false);
+
+  const startResize = (e, colIdx) => {
+    e.preventDefault();
+    resizingRef.current = { colIdx, startX: e.clientX, startW: colWidths[colIdx] };
+    const onMove = (ev) => {
+      didResizeRef.current = true;
+      const { colIdx, startX, startW } = resizingRef.current;
+      setColWidths(prev => { const n = [...prev]; n[colIdx] = Math.max(40, startW + ev.clientX - startX); return n; });
+    };
+    const onUp = () => {
+      resizingRef.current = null;
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      setTimeout(() => { didResizeRef.current = false; }, 0);
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  };
+
+  const handleSort = (k) => {
+    if (didResizeRef.current) return;
+    if (sortCol === k) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
+    else { setSortCol(k); setSortDir('asc'); }
+  };
+
+  const sortedRows = sortCol ? [...rows].sort((a, b) => compareValues(a?.[sortCol], b?.[sortCol], sortDir)) : rows;
+  const totalWidth = colWidths.reduce((a, b) => a + b, 0);
+
+  return (
+    <div className="overflow-x-auto mt-1 rounded border border-gray-200">
+      <table className="text-xs border-collapse" style={{ tableLayout: 'fixed', width: totalWidth }}>
+        <colgroup>
+          {keys.map((k, i) => <col key={k} style={{ width: colWidths[i] }} />)}
+        </colgroup>
+        <thead>
+          <tr className="bg-gray-100">
+            {keys.map((k, i) => (
+              <th
+                key={k}
+                className="relative px-2 py-1 text-left font-semibold text-gray-600 border-b border-gray-200 overflow-hidden cursor-pointer select-none hover:bg-gray-200"
+                onClick={() => handleSort(k)}
+              >
+                <span className="block truncate pr-4">{k}</span>
+                {sortCol === k && (
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-blue-500">
+                    {sortDir === 'asc' ? <ChevronUp size={11} /> : <ChevronDown size={11} />}
+                  </span>
+                )}
+                <div
+                  onMouseDown={e => { e.stopPropagation(); startResize(e, i); }}
+                  onClick={e => e.stopPropagation()}
+                  className="absolute right-0 top-0 h-full w-2 cursor-col-resize hover:bg-blue-300"
+                />
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {sortedRows.slice(0, MAX).map((row, i) => (
+            <tr key={i} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+              {keys.map(k => (
+                <td key={k} className="px-2 py-1 border-b border-gray-100 align-top overflow-hidden">
+                  <DetailValue val={row?.[k]} depth={depth + 1} />
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {rows.length > MAX && <p className="text-xs text-gray-400 italic px-2 py-1">{rows.length - MAX} more rows not shown</p>}
+    </div>
+  );
+}
+
+function renderCellValue(val, onDrillDown, colKey) {
+  if (val === null || val === undefined) return <span className="text-gray-300">—</span>;
+  if (typeof val === 'boolean') return <span className={val ? 'text-green-600' : 'text-red-500'}>{String(val)}</span>;
+  if (typeof val === 'number') return <span className="text-blue-600">{val}</span>;
+  if (typeof val === 'object') {
+    const label = Array.isArray(val) ? `[${val.length}]` : '{…}';
+    return (
+      <button className="text-blue-500 hover:underline italic" onClick={() => onDrillDown(val, colKey)}>
+        {label}
+      </button>
+    );
+  }
   return String(val);
 }
 
-function renderDeepValue(val, depth = 0) {
+function renderDeepValue(val, onDrillDown) {
   if (val === null || val === undefined) return <span className="text-gray-300">—</span>;
   if (typeof val === 'boolean') return <span className={val ? 'text-green-600 font-medium' : 'text-red-500'}>{String(val)}</span>;
   if (typeof val === 'number') return <span className="text-blue-600">{val}</span>;
   if (typeof val === 'string') return val;
-  if (depth >= 2) return <span className="text-gray-400 italic">{Array.isArray(val) ? `[Array(${val.length})]` : '[Object]'}</span>;
-  if (Array.isArray(val)) {
-    if (val.length === 0) return <span className="text-gray-400">[]</span>;
-    if (typeof val[0] === 'object' && val[0] !== null) {
-      return <span className="text-gray-500 italic">[{val.length} objects]</span>;
-    }
-    return <span className="text-gray-700">{val.map(v => renderScalar(v)).join(', ')}</span>;
-  }
   if (typeof val === 'object') {
+    const label = Array.isArray(val) ? `[${val.length}]` : '{…}';
     return (
-      <div className="pl-2 border-l-2 border-gray-100 space-y-0.5 text-xs">
-        {Object.entries(val).slice(0, 10).map(([k, v]) => (
-          <div key={k}><span className="font-medium text-gray-500">{k}: </span>{renderDeepValue(v, depth + 1)}</div>
-        ))}
-        {Object.keys(val).length > 10 && <div className="text-gray-400">…+{Object.keys(val).length - 10} more</div>}
-      </div>
+      <button className="text-blue-500 hover:underline italic text-xs" onClick={() => onDrillDown(val, label)}>
+        {label}
+      </button>
     );
   }
   return String(val);
