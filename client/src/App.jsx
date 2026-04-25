@@ -4,6 +4,7 @@ import FindBar from './components/FindBar';
 import {
   LayoutDashboard, PackagePlus, FolderOpen, Play, GitBranch, Settings,
   Monitor, Package, Archive, UsersRound, HelpCircle, ScrollText, X, ShieldCheck, Terminal, FileCode,
+  ChevronsLeft, ChevronsRight,
 } from 'lucide-react';
 import Dashboard from './pages/Dashboard';
 import CreatePackage from './pages/CreatePackage';
@@ -147,18 +148,52 @@ export default function App() {
     }
   }, [canClose, doClose]);
 
+  const [navCollapsed, setNavCollapsed] = useState(
+    () => localStorage.getItem('navCollapsed') === 'true'
+  );
+  const toggleNav = () => setNavCollapsed(c => {
+    const next = !c;
+    localStorage.setItem('navCollapsed', String(next));
+    return next;
+  });
+
   return (
     <TabGuardContext.Provider value={registerGuard}>
     <div className="flex h-screen overflow-hidden">
       <FindBar />
 
       {/* ── Sidebar ── */}
-      <nav className="w-56 bg-gray-900 text-gray-300 flex flex-col shrink-0">
-        <div className="px-4 py-5 border-b border-gray-700">
-          <div className="text-white font-bold text-lg leading-tight">Deployment Manager</div>
-          <div className="text-gray-500 text-xs mt-0.5">v{__APP_VERSION__}</div>
-        </div>
-        <div className="flex-1 py-3 overflow-y-auto">
+      <nav className={`${navCollapsed ? 'w-14' : 'w-56'} bg-gray-900 text-gray-300 flex flex-col shrink-0 transition-[width] duration-200 overflow-hidden`}>
+        {/* Header */}
+        {navCollapsed ? (
+          <div className="flex flex-col items-center gap-1 py-3 border-b border-gray-700">
+            <span className="text-white font-bold text-sm tracking-wide">DM</span>
+            <button
+              onClick={toggleNav}
+              title="Expand sidebar"
+              className="p-1.5 rounded hover:bg-gray-700 text-gray-400 hover:text-white"
+            >
+              <ChevronsRight size={15} />
+            </button>
+          </div>
+        ) : (
+          <div className="px-4 py-4 border-b border-gray-700 flex items-start justify-between gap-2">
+            <div className="min-w-0">
+              <div className="text-white font-bold text-base leading-tight truncate" style={{ fontSize: ".9rem" }}>Deployment Manager</div>
+              <div className="text-gray-500 text-xs mt-0.5">v{__APP_VERSION__}</div>
+            </div>
+            <button
+              onClick={toggleNav}
+              title="Collapse sidebar"
+              className="shrink-0 p-1.5 rounded hover:bg-gray-700 text-gray-400 hover:text-white mt-0.5"
+            >
+              <ChevronsLeft size={15} />
+            </button>
+          </div>
+        )}
+
+        {/* Nav items */}
+        <div className="flex-1 py-2 overflow-y-auto">
           {NAV_ITEMS.map((item, index) => {
             if (item.divider) {
               return <div key={`divider-${index}`} className="my-2 border-t border-gray-700" />;
@@ -166,7 +201,21 @@ export default function App() {
             const { to, icon: Icon, label } = item;
             const isActive = activeTo === to;
             const isOpen   = openTabs.includes(to);
-            return (
+            return navCollapsed ? (
+              <button
+                key={to}
+                onClick={() => openTab(to)}
+                title={label}
+                className={`relative w-full flex items-center justify-center py-2.5 hover:bg-gray-800 ${
+                  isActive ? 'bg-gray-800 text-white border-l-2 border-blue-500' : ''
+                }`}
+              >
+                <Icon size={18} />
+                {isOpen && !isActive && (
+                  <span className="absolute right-2 top-2 w-1.5 h-1.5 rounded-full bg-blue-400" />
+                )}
+              </button>
+            ) : (
               <button
                 key={to}
                 onClick={() => openTab(to)}
@@ -176,7 +225,6 @@ export default function App() {
               >
                 <Icon size={18} />
                 <span className="flex-1">{label}</span>
-                {/* Dot indicator: tab is open but not active */}
                 {isOpen && !isActive && (
                   <span className="w-1.5 h-1.5 rounded-full bg-blue-400 shrink-0" />
                 )}

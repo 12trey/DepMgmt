@@ -10,7 +10,7 @@
     "port": 4000
   },
   "execution": {
-    "powershellPath": "powershell.exe",
+    "powershellPath": "pwsh.exe",
     "defaultArgs": [
       "-NoProfile",
       "-ExecutionPolicy",
