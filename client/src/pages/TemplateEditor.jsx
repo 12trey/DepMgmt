@@ -16,6 +16,7 @@ export default function TemplateEditor() {
   const [psadtVersion, setPsadtVersion] = useState('v4');
   const [selectedFile, setSelectedFile] = useState(V4_FILES[0]);
   const [content, setContent] = useState('');
+  const [originalContent, setOriginalContent] = useState('');
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [isCustom, setIsCustom] = useState(false);
@@ -30,6 +31,7 @@ export default function TemplateEditor() {
     try {
       const data = await readTemplate(version, fileObj.file);
       setContent(data.content);
+      setOriginalContent(data.content);
       setIsCustom(data.isCustom);
     } catch (err) {
       setMsg(`Error loading template: ${err.message}`);
@@ -54,11 +56,15 @@ export default function TemplateEditor() {
     loadFile(psadtVersion, f);
   };
 
+  const isDirty = content !== originalContent;
+
   const handleSave = async () => {
+    if (!isDirty) return;
     setSaving(true);
     setMsg('');
     try {
       await saveTemplate(psadtVersion, selectedFile.file, content);
+      setOriginalContent(content);
       setIsCustom(true);
       setMsg('Saved. New and regenerated packages will use this template.');
       setMsgType('info');
@@ -157,7 +163,7 @@ export default function TemplateEditor() {
                 <button onClick={() => setPendingReset(false)} className="btn-secondary text-xs py-1">Cancel</button>
               </div>
             )}
-            <button onClick={handleSave} disabled={saving || loading} className="btn-primary text-sm flex items-center gap-1.5">
+            <button onClick={handleSave} disabled={saving || loading || !isDirty} className="btn-primary text-sm flex items-center gap-1.5">
               {saving ? <><Loader size={13} className="animate-spin" /> Saving...</> : <><Save size={13} /> Save</>}
             </button>
           </div>

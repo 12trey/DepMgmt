@@ -25,6 +25,12 @@ const userDataDir = isPackaged
 // Read-only: templates ship with the app
 const templatesDir = path.join(appRoot, 'templates');
 
+// Writable: user-customized templates. Kept separate from the bundled templates/
+// directory so dev mode never treats source files as custom overrides.
+const customTemplatesDir = isPackaged
+  ? path.join(userDataDir, 'templates')
+  : path.join(appRoot, '.userdata', 'templates');
+
 // Read-only: built React client
 const clientDist = path.join(appRoot, 'client', 'dist');
 
@@ -67,6 +73,7 @@ module.exports = {
   appRoot,
   userDataDir,
   templatesDir,
+  customTemplatesDir,
   clientDist,
   configPath,
   // Dynamic getters — re-read config.json on every access so path changes

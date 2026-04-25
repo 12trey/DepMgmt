@@ -67,7 +67,7 @@ exports.parseScript = function parseScript(scriptPath) {
           });
         }
       });
-    } catch {}
+    } catch { }
   }
   return {
     name: path.basename(scriptPath),
@@ -233,7 +233,7 @@ exports.disconnectMgGraph = function () {
     const ps = config.execution?.powershellPath || 'powershell.exe';
     const proc = spawn(ps, [
       '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command',
-      'try { Import-Module Microsoft.Graph.Authentication -ErrorAction Stop; Disconnect-MgGraph } catch {}',
+      'try { Import-Module Microsoft.Graph.Authentication -ErrorAction Stop; Disconnect-MgGraph } catch {}; try { Remove-Item "$env:USERPROFILE\\.mg" -Recurse -Force -ErrorAction SilentlyContinue } catch {}',
     ], { env: spawnEnv(), windowsHide: true });
     proc.on('close', () => resolve());
     proc.on('error', () => resolve());
@@ -288,6 +288,10 @@ exports.installAz = function (res) {
   return proc;
 };
 
+function toBase64PS(script) {
+  return Buffer.from(script, 'utf16le').toString('base64');
+}
+
 // Connect to Azure via direct PS spawn with -AccountId triggering WAM/browser dialog
 exports.connectAz = async function (accountId, subscriptionId, subscriptionName, res) {
   const config = getConfig();
@@ -296,56 +300,89 @@ exports.connectAz = async function (accountId, subscriptionId, subscriptionName,
   const send = makeSend(res);
   const psEsc = s => String(s).replace(/'/g, "''");
 
+  const acct  = accountId      && accountId.trim()      ? psEsc(accountId.trim())      : '';
+  const sid   = subscriptionId && subscriptionId.trim() ? psEsc(subscriptionId.trim()) : '';
+  const sname = subscriptionName && subscriptionName.trim() ? psEsc(subscriptionName.trim()) : '';
+
   const lines = [
     '$WarningPreference = "Continue"',
     'Import-Module Az.Accounts -ErrorAction Stop',
+    '$_ctx = Get-AzContext',
+    '$_skipConnect = $false',
   ];
 
-  const connectParts = ['Connect-AzAccount', '-ErrorAction Stop'];
-  
-    //connectParts.push(`-TenantId '637dae3a-8825-4b77-9fc0-f9e9fdf966b7'`);
-  if (accountId && accountId.trim())
-    connectParts.push(`-AccountId '${psEsc(accountId.trim())}'`);
+  // If we have an accountId, check whether an existing context already satisfies the request
+  if (acct) {
+    lines.push(`if ($_ctx -and $_ctx.Account.Id -eq '${acct}') {`);
+    if (sid) {
+      lines.push(`  if ($_ctx.Subscription.Id -eq '${sid}') { $_skipConnect = $true }`);
+    } else if (sname) {
+      lines.push(`  if ($_ctx.Subscription.Name -eq '${sname}') { $_skipConnect = $true }`);
+    } else {
+      lines.push('  $_skipConnect = $true');
+    }
+    lines.push('}');
+  }
 
-  if (subscriptionId && subscriptionId.trim())
-    connectParts.push(`-SubscriptionId '${psEsc(subscriptionId.trim())}'`);
-  else if (subscriptionName && subscriptionName.trim())
-    connectParts.push(`-Subscription '${psEsc(subscriptionName.trim())}'`);
-
-  // 3>&1 captures warning stream (where Az emits prompts) into the output pipeline
-  lines.push(`${connectParts.join(' ')} 4>&1 | ForEach-Object { Write-Output "$_" }`);
-
-  // if (subscriptionId && subscriptionId.trim())
-  //   lines.push(`Set-AzContext -SubscriptionId '${psEsc(subscriptionId.trim())}' -ErrorAction Stop`);
-  // else if (subscriptionName && subscriptionName.trim())
-  //   lines.push(`Set-AzContext -Subscription '${psEsc(subscriptionName.trim())}' -ErrorAction Stop`);
+  const connectParts = ['  Connect-AzAccount', '-ErrorAction Stop'];
+  if (acct)  connectParts.push(`-AccountId '${acct}'`);
+  // Pass subscription directly to Connect-AzAccount to avoid a second interactive prompt
+  if (sid)        connectParts.push(`-SubscriptionId '${sid}'`);
+  else if (sname) connectParts.push(`-Subscription '${sname}'`);
+  connectParts.push('4>&1 | ForEach-Object { Write-Output "$_" }');
 
   lines.push(
-    'while (-not (Get-AzContext)) { Start-Sleep -Seconds 1 }',
+    'if (-not $_skipConnect) {',
+    connectParts.join(' '),
+    '  while (-not (Get-AzContext)) { Start-Sleep -Seconds 1 }',
+    '}',
     '$_ctx = Get-AzContext',
     'if ($_ctx) { Write-Host "Connected as: $($_ctx.Account.Id) | Subscription: $($_ctx.Subscription.Name)" } else { Write-Host "Connected. Run Get-AzContext to verify." }',
     ''
   );
 
-  const script = lines.join('; ');
+  const script = lines.join('\n');
   send('stdout', 'Connecting to Azure...\n');
 
+  // The following commented lines of code are attempts to get this working
+  // like the connectMgGraph function. The WAM never appears. Have to run it through
+  // cmd.exe /c start
+  
   //var ENV = spawnEnv();
   //const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
   // Direct spawn — same pattern as Connect-MgGraph which works correctly
-  const proc = spawn(ps, ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', script], {
-    env: spawnEnv(),
-    windowsHide: false,
-    detached: false
-    // No windowsHide — required for WAM/browser dialogs to appear
+  // const proc = spawn(ps, ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', script], {
+  //   env: spawnEnv(),
+  //   windowsHide: false,
+  //   detached: false
+  //   // No windowsHide — required for WAM/browser dialogs to appear
+  // });
+
+  // const proc = spawn('cmd.exe', ['/c', 'start', '', ps, '-NoProfile', '-Command', script], {
+  //   windowsHide: false
+  // });
+
+  const encoded = toBase64PS(script);
+
+  const proc = spawn('cmd.exe', [
+    '/c',
+    'start',
+    '',
+    ps,
+    '-NoProfile',
+    '-ExecutionPolicy', 'Bypass',
+    '-EncodedCommand',
+    encoded
+  ], {
+    windowsHide: false
   });
 
-  //await(6000);
+  //await (6000);
   proc.stdout.on('data', c => send('stdout', c.toString()));
   proc.stderr.on('data', c => send('stderr', c.toString()));
   proc.on('close', code => {
-    send('exit', code); res.end(); 
+    send('exit', code); res.end();
   });
   proc.on('error', err => {
     send('error', err.message);
@@ -361,7 +398,7 @@ exports.disconnectAz = function () {
     const ps = config.execution?.powershellPath || 'powershell.exe';
     const proc = spawn(ps, [
       '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command',
-      'try { Import-Module Az.Accounts -ErrorAction Stop; Disconnect-AzAccount -Confirm:$false } catch {}',
+      'try { Import-Module Az.Accounts -ErrorAction Stop; Disconnect-AzAccount -Confirm:$false } catch {}; try { Remove-Item "$env:USERPROFILE\\.Azure" -Recurse -Force -ErrorAction SilentlyContinue } catch {}',
     ], { env: spawnEnv(), windowsHide: true });
     proc.on('close', () => resolve());
     proc.on('error', () => resolve());
@@ -377,11 +414,13 @@ exports.runScript = function (scriptPath, params, useMgGraph, useAz, res) {
   const send = makeSend(res);
 
   const psEsc = s => String(s).replace(/'/g, "''");
+  const tmpFile = path.join(os.tmpdir(), `script-result-${Date.now()}.json`);
 
   const lines = [
     '$ErrorActionPreference = "Continue"',
     '$ProgressPreference = "SilentlyContinue"',
-    '$InformationPreference = "Continue"',
+    '$WarningPreference = "SilentlyContinue"',
+    '$InformationPreference = "SilentlyContinue"',
     '$__params = @{}',
   ];
 
@@ -395,6 +434,14 @@ exports.runScript = function (scriptPath, params, useMgGraph, useAz, res) {
     }
   }
 
+  if (useAz) {
+    lines.push(
+      'Import-Module Az.Accounts -ErrorAction Stop',
+      '$__azCtx = Get-AzContext -ErrorAction SilentlyContinue',
+      'if (-not $__azCtx) { Connect-AzAccount -UseDeviceAuthentication -ErrorAction Stop 3>&1 | ForEach-Object { Write-Output "$_" } }',
+    );
+  }
+
   if (useMgGraph) {
     lines.push(
       'Import-Module Microsoft.Graph.Authentication -ErrorAction Stop',
@@ -402,52 +449,60 @@ exports.runScript = function (scriptPath, params, useMgGraph, useAz, res) {
     );
   }
 
-  if (useAz) {
-    lines.push(
-      '$WarningPreference = "Continue"',
-      'Import-Module Az.Accounts -ErrorAction Stop',
-      '$__azCtx = Get-AzContext -ErrorAction SilentlyContinue',
-      'if (-not $__azCtx) { Connect-AzAccount -UseDeviceAuthentication -ErrorAction Stop 3>&1 | ForEach-Object { Write-Output "$_" } }',
-    );
-  }
-
   lines.push(
-    // Capture pipeline output via ForEach-Object so the loop runs in real-time.
-    // Strings are echoed to console immediately; objects are silently collected.
-    '$__capturedObjects = [System.Collections.Generic.List[object]]::new()',
-    `& '${psEsc(scriptPath)}' @__params | ForEach-Object {`,
-    '  $__capturedObjects.Add($_)',
-    '  if ($_ -is [string]) { Write-Host $_ }',
-    '}',
-    "Write-Output '<<<STRUCTURED_RESULT_START>>>'",
-    'try {',
-    '  $__arr = $__capturedObjects.ToArray()',
-    '  if ($__arr.Length -eq 0) {',
-    '    Write-Output "null"',
-    '  } else {',
-    '    $__slice = if ($__arr.Length -gt 500) { $__arr[0..499] } else { $__arr }',
-    '    $__slice | ConvertTo-Json -Depth 5 -Compress -WarningAction SilentlyContinue',
-    '  }',
-    '} catch { Write-Output """[Serialization Error: $($_.Exception.Message)]""" }',
-    "Write-Output '<<<STRUCTURED_RESULT_END>>>'",
+    `& '${psEsc(scriptPath)}' @__params | ConvertTo-Json -Compress -Depth 100 | Out-File -FilePath '${psEsc(tmpFile)}' -Encoding 'utf8'`,
   );
 
-  const script = lines.join('\n');
-  const encoded = Buffer.from(script, 'utf16le').toString('base64');
+  const command = `Invoke-Command -ScriptBlock {\n${lines.join('\n')}\n}`;
 
-  const proc = spawn(ps, ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', encoded], {
+  const proc = spawn(ps, ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', command], {
     cwd: path.dirname(scriptPath),
     env: spawnEnv(),
     windowsHide: true,
   });
 
-  proc.stdout.on('data', c => send('stdout', c.toString()));
-  proc.stderr.on('data', c => send('stderr', c.toString()));
-  proc.on('close', code => { send('exit', code); res.end(); });
-  proc.on('error', err => { send('error', err.message); res.end(); });
+  proc.stdout.on('data', c => { send('stdout', c.toString()); });
+  proc.stderr.on('data', c => { send('stderr', c.toString()); });
+  proc.on('close', code => {
+    try {
+      if (fs.existsSync(tmpFile)) {
+        const raw = fs.readFileSync(tmpFile, 'utf8').replace(/^﻿/, '').trim();
+        fs.unlinkSync(tmpFile);
+        if (raw && raw !== 'null') {
+          const parsed = convertWcfDates(JSON.parse(raw));
+          if (parsed !== null && parsed !== undefined) {
+            send('structured', parsed);
+          }
+        }
+      }
+    } catch (e) {
+      send('stderr', `[Result parse error: ${e.message}]\n`);
+    }
+    send('exit', code);
+    res.end();
+  });
+  proc.on('error', err => {
+    try { fs.existsSync(tmpFile) && fs.unlinkSync(tmpFile); } catch {}
+    send('error', err.message); res.end();
+  });
 
   return proc;
 };
+
+function convertWcfDates(obj) {
+  if (typeof obj === 'string') {
+    const m = obj.match(/^\/Date\((-?\d+)(?:[+-]\d{4})?\)\/$/);
+    if (m) return new Date(parseInt(m[1], 10)).toLocaleString();
+    return obj;
+  }
+  if (Array.isArray(obj)) return obj.map(convertWcfDates);
+  if (obj !== null && typeof obj === 'object') {
+    const out = {};
+    for (const [k, v] of Object.entries(obj)) out[k] = convertWcfDates(v);
+    return out;
+  }
+  return obj;
+}
 
 function sseHeaders(res) {
   res.setHeader('Content-Type', 'text/event-stream');

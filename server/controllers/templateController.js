@@ -11,7 +11,7 @@ const ALLOWED_FILES = new Set([
 ]);
 
 function customPath(version, file) {
-  return path.join(paths.userDataDir, 'templates', version, file);
+  return path.join(paths.customTemplatesDir, version, file);
 }
 
 function bundledPath(version, file) {
