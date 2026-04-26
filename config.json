@@ -10,7 +10,7 @@
     "port": 4000
   },
   "execution": {
-    "powershellPath": "powershell.exe",
+    "powershellPath": "pwsh.exe",
     "defaultArgs": [
       "-NoProfile",
       "-ExecutionPolicy",
@@ -18,11 +18,11 @@
     ]
   },
   "scripts": {
-    "folderPath": "C:\\Users\\trey\\Documents\\Deployments\\powershell_scripts"
+    "folderPath": ""
   },
   "defaultFiles": {
-    "sourcePath": "C:\\Users\\trey\\Documents\\Deployments\\PDADT_Template",
-    "copyOnCreate": true
+    "sourcePath": "",
+    "copyOnCreate": false
   },
   "groups": {
     "adDomain": "",

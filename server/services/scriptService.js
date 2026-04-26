@@ -407,7 +407,7 @@ exports.disconnectAz = function () {
 
 // Run a user script with params, streaming output via SSE
 // Returns the child process so the caller can kill it on client disconnect.
-exports.runScript = function (scriptPath, params, useMgGraph, useAz, res) {
+exports.runScript = function (scriptPath, params, useMgGraph, useAz, res, depth) {
   const config = getConfig();
   const ps = config.execution?.powershellPath || 'powershell.exe';
   sseHeaders(res);
@@ -450,10 +450,10 @@ exports.runScript = function (scriptPath, params, useMgGraph, useAz, res) {
   }
 
   lines.push(
-    `& '${psEsc(scriptPath)}' @__params | ConvertTo-Json -Compress -Depth 100 | Out-File -FilePath '${psEsc(tmpFile)}' -Encoding 'utf8'`,
+    `& '${psEsc(scriptPath)}' @__params | ConvertTo-Json -Compress -Depth ${Math.max(2, Math.min(100, parseInt(depth) || 10))} | Out-File -FilePath '${psEsc(tmpFile)}' -Encoding 'utf8'`,
   );
 
-  const command = `Invoke-Command -ScriptBlock {\n${lines.join('\n')}\n}`;
+  const command = `Invoke-Command -ScriptBlock {\n${lines.join(';')}\n}`;
 
   const proc = spawn(ps, ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', command], {
     cwd: path.dirname(scriptPath),

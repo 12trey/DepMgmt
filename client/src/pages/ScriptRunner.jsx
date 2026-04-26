@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback, createContext, useContext } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import {
   Terminal, FolderOpen, FileCode, Play, Square, RefreshCw,
   ChevronRight, ArrowLeft, Download, LogIn, LogOut, CheckCircle,
@@ -12,6 +13,8 @@ import {
 
 
 export default function ScriptRunner() {
+  const navigate = useNavigate();
+
   // ── MgGraph state ──────────────────────────────────────────────────────────
   const [mgStatus, setMgStatus] = useState(null); // { installed, version }
   const [mgConnected, setMgConnected] = useState(false);
@@ -62,6 +65,39 @@ export default function ScriptRunner() {
   const fullStdoutRef = useRef('');
   const abortRef = useRef(null);
   const consoleEndRef = useRef(null);
+
+  // ── JSON depth ────────────────────────────────────────────────────────────
+  const [jsonDepth, setJsonDepth] = useState(() => {
+    const v = parseInt(localStorage.getItem('script_json_depth') || '10', 10);
+    return v >= 2 && v <= 100 ? v : 10;
+  });
+  useEffect(() => { localStorage.setItem('script_json_depth', String(jsonDepth)); }, [jsonDepth]);
+
+  // ── Run timer / timeout prompt ────────────────────────────────────────────
+  const [runMinutes, setRunMinutes] = useState(0);
+  const [showTimeoutPrompt, setShowTimeoutPrompt] = useState(false);
+  const runTimerRef = useRef(null);
+  const runSecondsRef = useRef(0);
+
+  useEffect(() => {
+    if (running) {
+      runSecondsRef.current = 0;
+      setRunMinutes(0);
+      setShowTimeoutPrompt(false);
+      runTimerRef.current = setInterval(() => {
+        runSecondsRef.current += 1;
+        if (runSecondsRef.current % 60 === 0) {
+          setRunMinutes(runSecondsRef.current / 60);
+          setShowTimeoutPrompt(true);
+        }
+      }, 1000);
+    } else {
+      clearInterval(runTimerRef.current);
+      runTimerRef.current = null;
+      setShowTimeoutPrompt(false);
+    }
+    return () => clearInterval(runTimerRef.current);
+  }, [running]);
 
   // ── Load module status on mount ───────────────────────────────────────────
   useEffect(() => {
@@ -169,7 +205,7 @@ export default function ScriptRunner() {
     abortRef.current = ctrl;
 
     try {
-      await runScript(scriptRel, paramValues, useMgGraph, useAz, (evt) => {
+      await runScript(scriptRel, paramValues, useMgGraph, useAz, jsonDepth, (evt) => {
         if (evt.type === 'stdout') {
           fullStdoutRef.current += evt.data;
           setConsoleText(prev => prev + evt.data);
@@ -195,7 +231,7 @@ export default function ScriptRunner() {
       }
       setRunning(false);
     }
-  }, [scriptRel, scriptMeta, paramValues, useMgGraph, useAz]);
+  }, [scriptRel, scriptMeta, paramValues, useMgGraph, useAz, jsonDepth]);
 
   const handleStop = () => {
     abortRef.current?.abort();
@@ -311,7 +347,7 @@ export default function ScriptRunner() {
         <Terminal size={24} />
         Script Runner
       </h1>
-
+      <div className='text-xs'><button onClick={ () => navigate('/help')}>* Please read Script Runner section in Help *</button></div>
       {/* MgGraph panel */}
       <MgGraphPanel
         status={mgStatus}
@@ -484,7 +520,7 @@ export default function ScriptRunner() {
                 )}
 
                 {/* Run controls */}
-                <div className="flex items-center gap-3 pt-1">
+                <div className="flex flex-wrap items-center gap-3 pt-1">
                   {!running ? (
                     <button onClick={handleRun} className="btn-primary flex items-center gap-2">
                       <Play size={14} /> Run Script
@@ -511,7 +547,47 @@ export default function ScriptRunner() {
                       Exit {exitCode} {exitCode === 0 ? '✓' : '✗'}
                     </span>
                   )}
+                  <div className="ml-auto flex items-center gap-1.5">
+                    <label className="text-xs text-gray-500 whitespace-nowrap">JSON Depth</label>
+                    <input
+                      type="number"
+                      min="2"
+                      max="100"
+                      value={jsonDepth}
+                      onChange={e => setJsonDepth(Math.max(2, Math.min(100, parseInt(e.target.value) || 2)))}
+                      className="w-16 input text-xs py-1"
+                    />
+                    {jsonDepth > 10 && (
+                      <span className="text-xs text-amber-600 flex items-center gap-1">
+                        <AlertCircle size={11} className="shrink-0" /> May hang on complex objects
+                      </span>
+                    )}
+                  </div>
                 </div>
+
+                {/* Timeout prompt */}
+                {showTimeoutPrompt && running && (
+                  <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 flex items-center justify-between gap-3">
+                    <span className="text-sm text-amber-800 flex items-center gap-1.5">
+                      <AlertCircle size={14} className="shrink-0" />
+                      Script has been running for {runMinutes} minute{runMinutes !== 1 ? 's' : ''}. Still waiting?
+                    </span>
+                    <div className="flex gap-2 shrink-0">
+                      <button
+                        onClick={() => setShowTimeoutPrompt(false)}
+                        className="text-sm px-3 py-1 border border-amber-400 text-amber-700 rounded hover:bg-amber-100"
+                      >
+                        Keep Waiting
+                      </button>
+                      <button
+                        onClick={() => { handleStop(); setShowTimeoutPrompt(false); }}
+                        className="text-sm px-3 py-1 border border-red-300 text-red-600 rounded hover:bg-red-50"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Output panel — stays visible once the script has been run */}

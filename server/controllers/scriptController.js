@@ -45,13 +45,13 @@ exports.parseScript = (req, res) => {
 
 exports.runScript = (req, res) => {
   const scriptsRoot = getScriptsRoot();
-  const { path: rel, params, useMgGraph, useAz } = req.body;
+  const { path: rel, params, useMgGraph, useAz, depth } = req.body;
   if (!rel) return res.status(400).json({ error: 'path required' });
   const absPath = svc.safePath(scriptsRoot, rel);
   if (!absPath || !absPath.endsWith('.ps1')) return res.status(400).json({ error: 'Invalid script path' });
   if (!fs.existsSync(absPath)) return res.status(404).json({ error: 'Script not found' });
 
-  const proc = svc.runScript(absPath, params || {}, useMgGraph || false, useAz || false, res);
+  const proc = svc.runScript(absPath, params || {}, useMgGraph || false, useAz || false, res, depth);
   res.on('close', () => { try { proc.kill(); } catch {} });
 };
 

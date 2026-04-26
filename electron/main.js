@@ -18,6 +18,8 @@ if (!gotLock) {
   process.exit(0);
 }
 
+app.commandLine.appendSwitch('remote-debugging-port', '9222');
+
 let mainWindow;
 let serverProcess;
 
@@ -43,6 +45,15 @@ function createWindow() {
       nodeIntegration: false,
     },
   });
+
+  const appVersion = app.getVersion();
+
+  // Set the title once the content is loaded to avoid it being overwritten
+  mainWindow.on('page-title-updated', (event) => {
+    event.preventDefault(); // Prevents the title in index.html from changing the window title
+  });
+
+  mainWindow.setTitle(`Deployment Manager - v${appVersion}`);
 
   ipcMain.on('iframe-message', (event, data) => {
     console.log('Received from iframe:', data);

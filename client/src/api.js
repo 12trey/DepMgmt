@@ -190,11 +190,11 @@ async function streamSSE(url, options, onEvent, signal) {
   }
 }
 
-export const runScript = (relPath, params, useMgGraph, useAz, onEvent, signal) =>
+export const runScript = (relPath, params, useMgGraph, useAz, depth, onEvent, signal) =>
   streamSSE('/api/scripts/run', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ path: relPath, params, useMgGraph, useAz }),
+    body: JSON.stringify({ path: relPath, params, useMgGraph, useAz, depth }),
   }, onEvent, signal);
 
 export const installMgGraph = (onEvent, signal) =>
