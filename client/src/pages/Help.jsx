@@ -583,6 +583,12 @@ export default function Help() {
             The scripts folder is configured in <strong>Settings</strong>.
           </p>
 
+          <Callout type="tip">
+            Your Powershell scripts <strong>MUST</strong> output an object or array on the pipeline, with no other extraneous output.
+            Actions in your scripts that could output unwanted data should be piped to <strong>Out-Null</strong>. The Script Runner process will
+            execute your script and attempt to pipe the script output through ConvertTo-Json to prepare the data for display with this application.
+          </Callout>
+
           <h3 className="font-semibold mt-4 mb-1">Running a script</h3>
           <div className="space-y-1.5">
             <Step n={1}>Browse the left panel to find a <Code>.ps1</Code> file and click it.</Step>
@@ -619,6 +625,37 @@ export default function Help() {
               </tbody>
             </table>
           </div>
+          <h3 className="font-semibold mt-4 mb-1">Expected Powershell script format (.ps1)</h3>
+          <p>
+            Your Powershell <Code>.ps1</Code> scripts should only output the data you wish to view on the pipeline.
+          </p>
+          <p className="mt-2 font-medium">Example scripts:</p>
+          <pre className="bg-gray-950 text-gray-100 rounded p-3 text-xs font-mono overflow-x-auto mt-1">{`<#
+.SYNOPSIS
+  List user information. MgGraph required.
+#>
+
+param(
+  [Parameter(Mandatory=$true, HelpMessage="The display name or UPN of the Azure user")]
+  [string]$DisplayNameOrUPN
+)
+
+Get-MgUser -ConsistencyLevel eventual -Count userCount -Filter "startsWith(DisplayName, '$DisplayNameOrUPN') or startsWith(UserPrincipalName, '$DisplayNameOrUPN')" -OrderBy UserPrincipalName
+`}</pre>
+<pre className="bg-gray-950 text-gray-100 rounded p-3 text-xs font-mono overflow-x-auto mt-1">{`<#
+.SYNOPSIS
+  List host information for a host pool. Az required.
+#>
+
+param(
+  [Parameter(Mandatory=$true, HelpMessage="Resource Group Name")]
+  [string]$ResourceGroupName,
+  [string]$HostPoolName
+)
+
+Get-AzWvdSessionHost -ResourceGroupName $ResourceGroupName -HostPoolName $HostPoolName | Select-Object Name, AllowNewSession, Session, Status
+`}</pre>
+
           <p className="mt-2">
             Parameters decorated with <Code>Mandatory=$true</Code> are marked with a red asterisk and must be filled before the script will run.
             The <Code>HelpMessage</Code> attribute value is shown as a hint below the field.
