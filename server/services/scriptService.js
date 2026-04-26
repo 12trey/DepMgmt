@@ -215,10 +215,12 @@ exports.connectMgGraph = function (res) {
     '$ctx = Get-MgContext',
     'if ($ctx) { Write-Host "Connected as: $($ctx.Account)" } else { Write-Host "Authentication may not have completed. Try again." }',
   ].join('; ');
-  const proc = spawn(ps, ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', script], {
-    env: spawnEnv(),
-    // Do NOT set windowsHide:true — the browser popup needs to appear
-  });
+  const encoded = toBase64PS(script);
+  const proc = spawn('cmd.exe', [
+    '/c', 'start', '', ps,
+    '-NoProfile', '-ExecutionPolicy', 'Bypass',
+    '-EncodedCommand', encoded
+  ], { windowsHide: false });
   proc.stdout.on('data', c => send('stdout', c.toString()));
   proc.stderr.on('data', c => send('stderr', c.toString()));
   proc.on('close', code => { send('exit', code); res.end(); });
