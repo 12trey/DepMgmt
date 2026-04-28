@@ -94,7 +94,7 @@ app.post('/runplay', async (req, res) => {
         ANSIBLE_COMMAND_WARNINGS: 'False',
         ANSIBLE_ACTION_WARNINGS: 'False',
         ANSIBLE_SYSTEM_WARNINGS: 'False',
-        ANSIBLE_CALLBACK_PLUGINS: '../callback_plugins',
+        ANSIBLE_CALLBACK_PLUGINS: '/home/ansibleapp/callback_plugins',
         ANSIBLE_CALLBAKS_ENABLED: 'cmtrace'
       },
     }
