@@ -6,23 +6,24 @@ const fs = require('fs');
 // doesn't give access to app APIs, so env vars are the reliable path.
 const isPackaged = process.env.ELECTRON_IS_PACKAGED === '1';
 
-// Diagnostic log — written every startup so we can confirm the paths in use.
-// Check %USERPROFILE%\aipsadt-paths.log after running the packaged app.
-try {
-  const logPath = path.join(process.env.USERPROFILE || process.env.HOME || 'C:\\', 'aipsadt-paths.log');
-  const line = `${new Date().toISOString()} isPackaged=${isPackaged} ELECTRON_USER_DATA=${process.env.ELECTRON_USER_DATA || '(not set)'} __dirname=${__dirname}\n`;
-  fs.appendFileSync(logPath, line);
-} catch { /* non-fatal */ }
-
 // Root of the source code (the directory containing server/)
 const appRoot = path.resolve(__dirname, '..');
 
 // Writable directory for user data (config, packages, logs, repo).
 // In packaged mode this is %APPDATA%\<productName> passed in by main.js.
 // In dev / plain node it's the project root.
-const userDataDir = isPackaged
+const userDataDir = (isPackaged && process.env.ELECTRON_USER_DATA)
   ? process.env.ELECTRON_USER_DATA
   : appRoot;
+
+// Diagnostic log — written every startup so we can confirm the paths in use.
+// Check %USERPROFILE%\aipsadt-paths.log after running the packaged app.
+try {
+  const logPath = path.join(process.env.USERPROFILE || process.env.HOME || 'C:\\', 'aipsadt-paths.log');
+  const configExists = fs.existsSync(path.join(userDataDir, 'config.json'));
+  const line = `${new Date().toISOString()} isPackaged=${isPackaged} userDataDir=${userDataDir} configExists=${configExists} ELECTRON_USER_DATA=${process.env.ELECTRON_USER_DATA || '(not set)'}\n`;
+  fs.appendFileSync(logPath, line);
+} catch { /* non-fatal */ }
 
 // Read-only: templates ship with the app
 const templatesDir = path.join(appRoot, 'templates');
