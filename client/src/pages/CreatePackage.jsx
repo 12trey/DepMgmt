@@ -5,19 +5,21 @@ import { createPackage, uploadFiles, getConfig, copyDefaultFiles } from '../api'
 
 const emptyStep = () => ({ description: '', command: '' });
 
-// Generate PSADT install/uninstall commands from a dropped installer file
-function generateCommands(filename, type, psadtVersion) {
+// Generate PSADT install/uninstall/repair commands from a dropped installer file
+function generateCommands(filename, type, psadtVersion, isNullsoft = false) {
   if (psadtVersion === 'v4') {
     if (type === 'msi') {
       return {
         install:   `Start-AdtMsiProcess -Action 'Install' -FilePath "$dirFiles\\${filename}" -ArgumentList '/QN'`,
         uninstall: `Start-AdtMsiProcess -Action 'Uninstall' -FilePath "$dirFiles\\${filename}" -ArgumentList '/QN'`,
+        repair:    `Start-AdtMsiProcess -Action 'Repair' -FilePath "$dirFiles\\${filename}" -ArgumentList '/fa'`,
       };
     }
-    // exe
+    // exe (nullsoft or regular)
     return {
       install:   `Start-AdtProcess -FilePath "$dirFiles\\${filename}" -ArgumentList '/S'`,
       uninstall: '',
+      repair:    isNullsoft ? `Start-AdtProcess -FilePath "$dirFiles\\${filename}" -ArgumentList '/S'` : '',
     };
   }
 
@@ -26,13 +28,34 @@ function generateCommands(filename, type, psadtVersion) {
     return {
       install:   `Execute-MSI -Action 'Install' -Path "$dirFiles\\${filename}" -Parameters '/QN'`,
       uninstall: `Execute-MSI -Action 'Uninstall' -Path "$dirFiles\\${filename}" -Parameters '/QN'`,
+      repair:    `Execute-MSI -Action 'Repair' -Path "$dirFiles\\${filename}" -Parameters '/fa'`,
     };
   }
-  // exe
+  // exe (nullsoft or regular)
   return {
     install:   `Execute-Process -Path "$dirFiles\\${filename}" -Parameters '/S'`,
     uninstall: '',
+    repair:    isNullsoft ? `Execute-Process -Path "$dirFiles\\${filename}" -Parameters '/S'` : '',
   };
+}
+
+// Detect Nullsoft (NSIS) installer by scanning file bytes for signature.
+// The "NullsoftInst" string lives in the NSIS data block which is appended at
+// the end of the PE stub, so we check both the start and end of the file.
+async function detectNullsoft(file) {
+  try {
+    const CHUNK = 524288; // 512 KB
+    const slices = [file.slice(0, CHUNK)];
+    if (file.size > CHUNK) slices.push(file.slice(Math.max(0, file.size - CHUNK)));
+    const buffers = await Promise.all(slices.map(s => s.arrayBuffer()));
+    for (const buf of buffers) {
+      const text = new TextDecoder('latin1').decode(buf);
+      if (text.includes('NullsoftInst') || text.includes('Nullsoft Install System')) return true;
+    }
+    return false;
+  } catch {
+    return false;
+  }
 }
 
 export default function CreatePackage() {
@@ -57,6 +80,7 @@ export default function CreatePackage() {
   const [saving, setSaving] = useState(false);
 
   const [droppedFile, setDroppedFile] = useState(null);
+  const [isNullsoft, setIsNullsoft] = useState(false);
   const [cmdDragOver, setCmdDragOver] = useState(false);
   const cmdDragCount = useRef(0);
 
@@ -73,15 +97,15 @@ export default function CreatePackage() {
 
   const set = (key, value) => setForm((f) => ({ ...f, [key]: value }));
 
-  // Regenerate commands whenever the PSADT version changes while a file is still attached
+  // Regenerate commands whenever the PSADT version or installer type changes while a file is attached
   useEffect(() => {
     if (!droppedFile) return;
     const type = droppedFile.name.toLowerCase().endsWith('.msi') ? 'msi' : 'exe';
-    const { install, uninstall } = generateCommands(droppedFile.name, type, form.psadtVersion);
-    setForm(f => ({ ...f, installCommand: install, uninstallCommand: uninstall }));
-  }, [form.psadtVersion, droppedFile]);
+    const { install, uninstall, repair } = generateCommands(droppedFile.name, type, form.psadtVersion, isNullsoft);
+    setForm(f => ({ ...f, installCommand: install, uninstallCommand: uninstall, repairCommand: repair }));
+  }, [form.psadtVersion, droppedFile, isNullsoft]);
 
-  const handleInstallerDrop = (e) => {
+  const handleInstallerDrop = async (e) => {
     e.preventDefault();
     cmdDragCount.current = 0;
     setCmdDragOver(false);
@@ -89,14 +113,18 @@ export default function CreatePackage() {
     if (!file) return;
     const ext = file.name.split('.').pop().toLowerCase();
     if (ext !== 'msi' && ext !== 'exe') return;
+    const nullsoft = ext === 'exe' ? await detectNullsoft(file) : false;
+    setIsNullsoft(nullsoft);
     setDroppedFile(file);
     // commands will be set by the useEffect above
   };
 
   const clearDroppedFile = () => {
     setDroppedFile(null);
+    setIsNullsoft(false);
     set('installCommand', '');
     set('uninstallCommand', '');
+    set('repairCommand', '');
   };
 
   const handleSubmit = async (e) => {
@@ -181,6 +209,9 @@ export default function CreatePackage() {
             <div className="flex items-center gap-2 mb-4 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2">
               <FileText size={14} className="text-blue-600 flex-shrink-0" />
               <span className="text-sm text-blue-700 font-medium flex-1 truncate">{droppedFile.name}</span>
+              {isNullsoft && (
+                <span className="text-xs bg-amber-100 text-amber-700 border border-amber-300 rounded px-1.5 py-0.5 flex-shrink-0 font-medium">NSIS</span>
+              )}
               <span className="text-xs text-blue-500 flex-shrink-0">
                 {droppedFile.size < 1024 ** 2
                   ? `${(droppedFile.size / 1024).toFixed(0)} KB`
@@ -206,8 +237,22 @@ export default function CreatePackage() {
               ? "e.g. Start-AdtProcess -FilePath \"$dirFiles\\setup.exe\" -ArgumentList '/S'"
               : "e.g. Execute-Process -Path \"$dirFiles\\setup.exe\" -Parameters '/S'"}
           />
-          <Textarea label="Uninstall Command" value={form.uninstallCommand} onChange={(v) => set('uninstallCommand', v)} className="mt-3" />
-          <Textarea label="Repair Command" value={form.repairCommand} onChange={(v) => set('repairCommand', v)} className="mt-3" />
+          <div className="mt-3">
+            <Textarea label="Uninstall Command" value={form.uninstallCommand} onChange={(v) => set('uninstallCommand', v)} />
+            {isNullsoft && (
+              <p className="text-xs text-amber-600 mt-1">
+                * Nullsoft installers do not have a standard uninstall location. You must do a test install to find the correct uninstaller executable and path, then update this command accordingly.
+              </p>
+            )}
+          </div>
+          <div className="mt-3">
+            <Textarea label="Repair Command" value={form.repairCommand} onChange={(v) => set('repairCommand', v)} />
+            {isNullsoft && (
+              <p className="text-xs text-amber-600 mt-1">
+                * Nullsoft installers do not have a standard repair command unless specifically coded by the author. If the author provides a specific repair command, modify this value for your installer.
+              </p>
+            )}
+          </div>
           <Input label="Close Applications" value={form.closeApps} onChange={(v) => set('closeApps', v)} className="mt-3" placeholder="Comma-separated process names, e.g. iexplore,firefox,chrome" />
           <Select label="Default Deploy Mode" value={form.defaultMode} onChange={(v) => set('defaultMode', v)} options={['Silent', 'Interactive', 'NonInteractive']} className="mt-3" />
           {defaultFilesCfg?.sourcePath && (

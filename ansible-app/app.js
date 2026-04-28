@@ -36,6 +36,22 @@ app.get('/winendpoints.ps1', (req, res) => {
   });
 });
 
+app.post('/codedot', (req, res) => {
+  // const { code } = req.body;
+  // if (!code) return res.status(400).json({ error: 'Code is required' });
+  // try {
+  //   const result = eval(code); // Caution: eval can be dangerous if used with untrusted input
+  //   res.json({ result });
+  // } catch (err) {
+  //   res.status(500).json({ error: err.message });
+  // }
+  const codeproc = spawn('code', ['.'], {
+    cwd: '/home/ansibleapp/repo'
+  });
+
+  res.status(200).json({ msg: "ran code ." });
+});
+
 // ── Ansible playbook execution ─────────────────────────────────────────────────
 
 var isRunning = false;

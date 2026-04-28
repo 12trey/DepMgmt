@@ -51,12 +51,44 @@ const _startupPackagesDir = stripQuotes(_startupConfig?.packages?.basePath) || p
 
 const logsDir = path.join(userDataDir, 'logs');
 
-// On first run in packaged mode, copy default config if it doesn't exist yet
-if (isPackaged && !fs.existsSync(configPath)) {
-  const defaultConfig = path.join(appRoot, 'config.json');
-  if (fs.existsSync(defaultConfig)) {
-    fs.mkdirSync(userDataDir, { recursive: true });
-    fs.copyFileSync(defaultConfig, configPath);
+// Merge bundled defaults into user config on every startup so that new keys
+// added in upgrades are picked up without overwriting existing user settings.
+// Arrays are treated as atomic (not recursed into) so custom lists are preserved.
+function deepMergeDefaults(defaults, target) {
+  const result = { ...target };
+  for (const key of Object.keys(defaults)) {
+    if (!(key in result)) {
+      result[key] = defaults[key];
+    } else if (
+      defaults[key] !== null &&
+      typeof defaults[key] === 'object' &&
+      !Array.isArray(defaults[key]) &&
+      target[key] !== null &&
+      typeof target[key] === 'object' &&
+      !Array.isArray(target[key])
+    ) {
+      result[key] = deepMergeDefaults(defaults[key], target[key]);
+    }
+  }
+  return result;
+}
+
+if (isPackaged) {
+  const defaultConfigPath = path.join(appRoot, 'config.json');
+  if (fs.existsSync(defaultConfigPath)) {
+    try {
+      fs.mkdirSync(userDataDir, { recursive: true });
+      const defaults = JSON.parse(fs.readFileSync(defaultConfigPath, 'utf-8'));
+      const existing = fs.existsSync(configPath)
+        ? JSON.parse(fs.readFileSync(configPath, 'utf-8'))
+        : {};
+      const merged = deepMergeDefaults(defaults, existing);
+      fs.writeFileSync(configPath, JSON.stringify(merged, null, 2));
+    } catch {
+      if (!fs.existsSync(configPath)) {
+        fs.copyFileSync(defaultConfigPath, configPath);
+      }
+    }
   }
 }
 

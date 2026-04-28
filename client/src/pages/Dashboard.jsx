@@ -73,22 +73,23 @@ const FEATURES = [
   {
     icon: Terminal,
     label: 'Script Runner',
-    color: 'blue',
+    color: 'darkteal',
     to: '/script-runner',
     desc: 'Run your Powershell scripts using a dynamically generated UI. MgGraph cmdlets are supported!',
   },
 ];
 
 const FEATURE_COLORS = {
-  blue:   { card: 'bg-blue-50',   icon: 'bg-blue-100 text-blue-600',     link: 'text-blue-600' },
-  green:  { card: 'bg-green-50',  icon: 'bg-green-100 text-green-600',   link: 'text-green-600' },
+  blue: { card: 'bg-blue-50', icon: 'bg-blue-100 text-blue-600', link: 'text-blue-600' },
+  green: { card: 'bg-green-50', icon: 'bg-green-100 text-green-600', link: 'text-green-600' },
   orange: { card: 'bg-orange-50', icon: 'bg-orange-100 text-orange-600', link: 'text-orange-600' },
   purple: { card: 'bg-purple-50', icon: 'bg-purple-100 text-purple-600', link: 'text-purple-600' },
-  gray:   { card: 'bg-gray-50',   icon: 'bg-gray-100 text-gray-600',     link: 'text-gray-600' },
-  teal:   { card: 'bg-teal-50',   icon: 'bg-teal-100 text-teal-600',     link: 'text-teal-600' },
+  gray: { card: 'bg-gray-50', icon: 'bg-gray-100 text-gray-600', link: 'text-gray-600' },
+  teal: { card: 'bg-teal-50', icon: 'bg-teal-100 text-teal-600', link: 'text-teal-600' },
   indigo: { card: 'bg-indigo-50', icon: 'bg-indigo-100 text-indigo-600', link: 'text-indigo-600' },
-  rose:   { card: 'bg-rose-50',   icon: 'bg-rose-100 text-rose-600',     link: 'text-rose-600' },
-  amber:  { card: 'bg-amber-50',  icon: 'bg-amber-100 text-amber-600',   link: 'text-amber-600' },
+  rose: { card: 'bg-rose-50', icon: 'bg-rose-100 text-rose-600', link: 'text-rose-600' },
+  amber: { card: 'bg-amber-50', icon: 'bg-amber-100 text-amber-600', link: 'text-amber-600' },
+  darkteal: { card: 'bg-teal-100', icon: 'bg-teal-200 text-teal-700', link: 'text-teal-700' },
 };
 
 export default function Dashboard() {
@@ -97,8 +98,8 @@ export default function Dashboard() {
   const [logs, setLogs] = useState([]);
 
   useEffect(() => {
-    listPackages().then(setPackages).catch(() => {});
-    listLogs().then(setLogs).catch(() => {});
+    listPackages().then(setPackages).catch(() => { });
+    listLogs().then(setLogs).catch(() => { });
   }, []);
 
   const recent = logs.slice(0, 5);
@@ -111,10 +112,10 @@ export default function Dashboard() {
 
       {/* Stats */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
-        <StatCard icon={Package}       label="Total Packages"   value={packages.length} color="blue" />
-        <StatCard icon={Activity}      label="Total Executions" value={logs.length}     color="purple" />
-        <StatCard icon={CheckCircle}   label="Successful"       value={successCount}    color="green" />
-        <StatCard icon={XCircle}       label="Failed"           value={failedCount}     color="red" />
+        <StatCard icon={Package} label="Total Packages" value={packages.length} color="blue" />
+        <StatCard icon={Activity} label="Total Executions" value={logs.length} color="purple" />
+        <StatCard icon={CheckCircle} label="Successful" value={successCount} color="green" />
+        <StatCard icon={XCircle} label="Failed" value={failedCount} color="red" />
       </div>
 
       {/* Recent activity */}
@@ -190,9 +191,9 @@ export default function Dashboard() {
 
 function StatCard({ icon: Icon, label, value, color }) {
   const colors = {
-    blue:   'bg-blue-50 text-blue-600',
-    green:  'bg-green-50 text-green-600',
-    red:    'bg-red-50 text-red-600',
+    blue: 'bg-blue-50 text-blue-600',
+    green: 'bg-green-50 text-green-600',
+    red: 'bg-red-50 text-red-600',
     purple: 'bg-purple-50 text-purple-600',
   };
   return (
@@ -210,14 +211,14 @@ function StatCard({ icon: Icon, label, value, color }) {
 
 function StatusBadge({ status }) {
   const styles = {
-    draft:     'bg-gray-100 text-gray-700',
-    ready:     'bg-blue-100 text-blue-700',
+    draft: 'bg-gray-100 text-gray-700',
+    ready: 'bg-blue-100 text-blue-700',
     published: 'bg-green-100 text-green-700',
-    imported:  'bg-purple-100 text-purple-700',
-    Success:   'bg-green-100 text-green-700',
-    Failed:    'bg-red-100 text-red-700',
-    Running:   'bg-yellow-100 text-yellow-700',
-    Pending:   'bg-blue-100 text-blue-700',
+    imported: 'bg-purple-100 text-purple-700',
+    Success: 'bg-green-100 text-green-700',
+    Failed: 'bg-red-100 text-red-700',
+    Running: 'bg-yellow-100 text-yellow-700',
+    Pending: 'bg-blue-100 text-blue-700',
     Completed: 'bg-green-100 text-green-700',
   };
   return (
