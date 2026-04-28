@@ -55,7 +55,8 @@ export default function ManageGroups() {
   // Filtered + already-sorted group list
   const filteredGroups = groupFilter.trim()
     ? groups.filter((g) =>
-        g.name.toLowerCase().startsWith(groupFilter.trim().toLowerCase())
+        // g.name.toLowerCase().startsWith(groupFilter.trim().toLowerCase())
+        g.name.toLowerCase().includes(groupFilter.trim().toLowerCase(),0)
       )
     : groups;
 

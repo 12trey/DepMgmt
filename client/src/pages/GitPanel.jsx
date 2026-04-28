@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
-import { gitClone, gitPull, gitPush, gitLog } from '../api';
+import { Link } from 'react-router-dom';
+import { gitClone, gitPull, gitPush, gitLog, getConfig } from '../api';
 import { GitBranch, ArrowUp, ArrowDown, RefreshCw, Upload, Download, KeyRound } from 'lucide-react';
 import { useConfigContext } from '../context/ConfigContext';
 import { useTabGuard } from '../context/TabGuardContext';
 
 export default function GitPanel() {
   const [repoLog, setRepoLog] = useState(null);
-  const [url, setUrl] = useState('');
+  const [repoUrl, setRepoUrl] = useState('');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showCreds, setShowCreds] = useState(false);
@@ -21,7 +22,10 @@ export default function GitPanel() {
 
   const { configVersion } = useConfigContext();
   const loadLog = () => gitLog().then(setRepoLog).catch(() => {});
-  useEffect(() => { loadLog(); }, [configVersion]);
+  useEffect(() => {
+    loadLog();
+    getConfig().then((c) => setRepoUrl(c.repository?.url || '')).catch(() => {});
+  }, [configVersion]);
 
   const credentials = { username: username || undefined, password: password || undefined };
 
@@ -112,13 +116,20 @@ export default function GitPanel() {
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Clone a repository</label>
-          <div className="flex gap-2">
-            <input className="input flex-1" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://github.com/org/repo.git" />
-            <button onClick={() => action('clone', () => gitClone(url, credentials))} disabled={!!loading || !url} className="btn-primary">
-              {loading === 'clone' ? 'Cloning…' : 'Clone'}
-            </button>
-          </div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Repository</label>
+          {repoUrl ? (
+            <div className="flex gap-2 items-center">
+              <span className="input flex-1 bg-gray-50 text-gray-600 truncate select-all">{repoUrl}</span>
+              <button onClick={() => action('clone', () => gitClone('', credentials))} disabled={!!loading} className="btn-primary flex-shrink-0">
+                {loading === 'clone' ? 'Cloning…' : 'Clone'}
+              </button>
+            </div>
+          ) : (
+            <p className="text-sm text-amber-600">
+              No repository URL configured.{' '}
+              <Link to="/config" className="underline hover:text-amber-800">Set one in Settings.</Link>
+            </p>
+          )}
         </div>
 
         {initialized && (

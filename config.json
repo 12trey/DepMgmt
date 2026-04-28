@@ -18,10 +18,10 @@
     ]
   },
   "scripts": {
-    "folderPath": ""
+    "folderPath": ".\\powershell_scripts"
   },
   "defaultFiles": {
-    "sourcePath": "",
+    "sourcePath": ".\\PSADT_Template",
     "copyOnCreate": false
   },
   "groups": {
