@@ -131,7 +131,13 @@ function startServer() {
   return new Promise((resolve, reject) => {
     const serverPath = path.join(__dirname, '../server/index.js');
     serverProcess = fork(serverPath, [], {
-      env: { ...process.env, PORT: String(SERVER_PORT), NODE_ENV: 'production' },
+      env: {
+        ...process.env,
+        PORT: String(SERVER_PORT),
+        NODE_ENV: 'production',
+        ELECTRON_USER_DATA: app.getPath('userData'),
+        ELECTRON_IS_PACKAGED: '1',
+      },
     });
     serverProcess.once('message', (msg) => {
       if (msg === 'ready') resolve();

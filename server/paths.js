@@ -1,26 +1,28 @@
 const path = require('path');
 const fs = require('fs');
-const electron = (() => { try { return require('electron'); } catch { return null; } })();
 
-// When packaged with electron-builder:
-//   app.getAppPath()  → ...resources/app.asar  (read-only code)
-//   process.resourcesPath → ...resources        (extraResources land here)
-//   app.getPath('userData') → %APPDATA%/AIPSADT (writable per-user data)
-//
-// In dev / plain node:
-//   Everything is relative to project root.
+// When packaged with electron-builder the main process injects these env vars
+// before forking the server. Trying to require('electron') from a child process
+// doesn't give access to app APIs, so env vars are the reliable path.
+const isPackaged = process.env.ELECTRON_IS_PACKAGED === '1';
 
-const isPackaged = electron && electron.app && electron.app.isPackaged;
+// Diagnostic log — written every startup so we can confirm the paths in use.
+// Check %USERPROFILE%\aipsadt-paths.log after running the packaged app.
+try {
+  const logPath = path.join(process.env.USERPROFILE || process.env.HOME || 'C:\\', 'aipsadt-paths.log');
+  const line = `${new Date().toISOString()} isPackaged=${isPackaged} ELECTRON_USER_DATA=${process.env.ELECTRON_USER_DATA || '(not set)'} __dirname=${__dirname}\n`;
+  fs.appendFileSync(logPath, line);
+} catch { /* non-fatal */ }
 
-// Root of the source code (inside asar when packaged)
-const appRoot = isPackaged
-  ? electron.app.getAppPath()
-  : path.resolve(__dirname, '..');
+// Root of the source code (the directory containing server/)
+const appRoot = path.resolve(__dirname, '..');
 
-// Writable directory for user data (config, packages, logs, repo)
+// Writable directory for user data (config, packages, logs, repo).
+// In packaged mode this is %APPDATA%\<productName> passed in by main.js.
+// In dev / plain node it's the project root.
 const userDataDir = isPackaged
-  ? electron.app.getPath('userData')
-  : path.resolve(__dirname, '..');
+  ? process.env.ELECTRON_USER_DATA
+  : appRoot;
 
 // Read-only: templates ship with the app
 const templatesDir = path.join(appRoot, 'templates');
