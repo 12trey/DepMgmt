@@ -33,7 +33,9 @@
       "Bash(cp C:/Users/trey/source/AICMTrace/public/intuneTab.js C:/Users/trey/source/aipsadt/server/logviewer/public/intuneTab.js)",
       "Bash(cp C:/Users/trey/source/AICMTrace/public/dsregTab.js C:/Users/trey/source/aipsadt/server/logviewer/public/dsregTab.js)",
       "Bash(cp C:/Users/trey/source/AICMTrace/public/errorCodes.js C:/Users/trey/source/aipsadt/server/logviewer/public/errorCodes.js)",
-      "Bash(ls src/components/FindBar*)"
+      "Bash(ls src/components/FindBar*)",
+      "Bash(npm audit *)",
+      "Bash(npm ls *)"
     ]
   }
 }
