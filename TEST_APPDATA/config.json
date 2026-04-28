@@ -1,0 +1,40 @@
+{
+  "repository": {
+    "url": "",
+    "localPath": ".\\repo"
+  },
+  "packages": {
+    "basePath": ".\\packages"
+  },
+  "server": {
+    "port": 4000
+  },
+  "execution": {
+    "powershellPath": "pwsh.exe",
+    "defaultArgs": [
+      "-NoProfile",
+      "-ExecutionPolicy",
+      "Bypass"
+    ]
+  },
+  "scripts": {
+    "folderPath": ".\\powershell_scripts"
+  },
+  "defaultFiles": {
+    "sourcePath": ".\\PSADT_Template",
+    "copyOnCreate": false
+  },
+  "groups": {
+    "adDomain": "",
+    "managedGroups": [
+      {
+        "name": "Administrators",
+        "type": "local"
+      },
+      {
+        "name": "Users",
+        "type": "local"
+      }
+    ]
+  }
+}
