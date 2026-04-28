@@ -283,6 +283,18 @@ const WIN_TASKS = [
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
+const clearBtnStyle = {
+  background: 'transparent',
+  border: 'none',
+  cursor: 'pointer',
+  color: '#9ca3af',
+  fontSize: '11px',
+  lineHeight: 1,
+  padding: '2px 4px',
+  borderRadius: '3px',
+  flexShrink: 0,
+};
+
 const ctxItemStyle = {
   padding: '6px 12px',
   fontSize: '13px',
@@ -375,9 +387,10 @@ function App() {
   // ── File browser ──────────────────────────────────────────────────────────
 
   function getFiles(fldr) {
-    // Match original behaviour: prepend '/' so the backend's `find .${folder}`
-    // becomes `find ./subdir` not `find .subdir` (the latter is a hidden-file search).
-    const folder = (fldr && String(fldr).trim().length > 1) ? `/${fldr}` : '/';
+    // Strip any leading slashes from fldr before prepending exactly one, so that
+    // passing an already-absolute path like '/subfolder' doesn't produce '//subfolder'.
+    const raw = fldr ? String(fldr).trim().replace(/^\/+/, '') : '';
+    const folder = raw.length > 0 ? `/${raw}` : '/';
     fetch(`${BASE}/files`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -924,13 +937,19 @@ function App() {
             <div style={{ fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px' }}>
               <span style={{ color: '#6b7280', width: '64px', flexShrink: 0 }}>Playbook:</span>
               {selectedYaml
-                ? <span style={{ color: '#2563eb', fontFamily: 'ui-monospace, Consolas, monospace', fontSize: '12px', background: '#eff6ff', padding: '2px 6px', borderRadius: '4px' }}>{selectedYaml}</span>
+                ? <>
+                    <span style={{ color: '#2563eb', fontFamily: 'ui-monospace, Consolas, monospace', fontSize: '12px', background: '#eff6ff', padding: '2px 6px', borderRadius: '4px' }}>{selectedYaml}</span>
+                    <button onClick={() => setSelectedYaml('')} title="Deselect" style={clearBtnStyle}>✕</button>
+                  </>
                 : <span style={{ color: '#9ca3af', fontSize: '12px' }}>none — right-click a YAML file to select</span>}
             </div>
             <div style={{ fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px' }}>
               <span style={{ color: '#6b7280', width: '64px', flexShrink: 0 }}>Hosts:</span>
               {selectedIni
-                ? <span style={{ color: '#059669', fontFamily: 'ui-monospace, Consolas, monospace', fontSize: '12px', background: '#f0fdf4', padding: '2px 6px', borderRadius: '4px' }}>{selectedIni}</span>
+                ? <>
+                    <span style={{ color: '#059669', fontFamily: 'ui-monospace, Consolas, monospace', fontSize: '12px', background: '#f0fdf4', padding: '2px 6px', borderRadius: '4px' }}>{selectedIni}</span>
+                    <button onClick={() => setSelectedIni('')} title="Deselect" style={clearBtnStyle}>✕</button>
+                  </>
                 : <span style={{ color: '#9ca3af', fontSize: '12px' }}>none — right-click an INI file to select</span>}
             </div>
           </div>
