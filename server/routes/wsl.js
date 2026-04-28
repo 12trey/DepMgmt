@@ -403,6 +403,7 @@ rsync -av --delete \
   --exclude='.git' \
   --exclude='my-react-app/node_modules' \
   --exclude='my-react-app/dist' \
+  --exclude='repo' \
   "${ANSIBLE_APP_WSL}/" "${APP_PATH}/"
 `);
 
@@ -523,6 +524,67 @@ except:pass`
     ws.on('message', (data) => { try { child.stdin.write(data); } catch {} });
     ws.on('close', () => { try { child.kill(); } catch {} });
   });
+}
+
+// POST /api/wsl/krb5 — write /etc/krb5.conf in a WSL instance as root
+// Body: { instance, realm, kdcServers, adminServer, defaultDomain }
+router.post('/krb5', async (req, res) => {
+  const { instance, realm, kdcServers, adminServer, defaultDomain } = req.body;
+  if (!instance) return res.status(400).json({ error: 'instance is required' });
+  if (!realm)    return res.status(400).json({ error: 'realm is required' });
+
+  const content = buildKrb5Conf({ realm, kdcServers, adminServer, defaultDomain });
+
+  try {
+    await new Promise((resolve, reject) => {
+      // Pipe content directly into tee running as root — no bash, no heredoc escaping issues.
+      const child = spawn('wsl.exe', ['-d', instance, '-u', 'root', 'tee', '/etc/krb5.conf'], {
+        windowsHide: true,
+      });
+      let errOut = '';
+      child.stderr.on('data', d => { errOut += d.toString(); });
+      child.on('close', code => {
+        if (code === 0) resolve();
+        else reject(new Error(errOut.trim() || `wsl tee exited with code ${code}`));
+      });
+      child.on('error', reject);
+      child.stdin.write(content);
+      child.stdin.end();
+    });
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+function buildKrb5Conf({ realm, kdcServers, adminServer, defaultDomain }) {
+  const r      = (realm         || '').trim().toUpperCase();
+  const kdcs   = (Array.isArray(kdcServers) ? kdcServers : []).map(s => s.trim()).filter(Boolean);
+  const admin  = (adminServer   || '').trim() || kdcs[0] || '';
+  const domain = (defaultDomain || '').trim() || r.toLowerCase();
+  const kdcLines = kdcs.map(s => `        kdc = ${s}`).join('\n');
+  return `[libdefaults]
+    default_realm = ${r}
+
+    kdc_timesync = 1
+    ccache_type = 4
+    forwardable = true
+    proxiable = true
+    rdns = false
+
+    fcc-mit-ticketflags = true
+
+[realms]
+    ${r} = {
+${kdcLines}
+        admin_server = ${admin}
+        default_domain = ${domain}
+    }
+
+[domain_realm]
+    .${domain} = ${r}
+    ${domain} = ${r}
+`;
 }
 
 module.exports = router;

@@ -11,8 +11,24 @@ const { cwd } = require('process');
 const execPromise = promisify(exec);
 
 const ansiblePlaybookPath = '/home/.ansiblevenv/bin/ansible-playbook';
-const repoFolder = '/home/ansibleapp/repo';
-const configPath = path.join(__dirname, 'appconfig.json');
+const DEFAULT_REPO_FOLDER = '/home/ansibleapp/repo';
+
+// Config lives in the user's home dir so it survives a "Sync to WSL" that
+// overwrites the ansible-app directory. Migrate from the legacy location once.
+const configPath = path.join(process.env.HOME || '/root', '.dmttools-config.json');
+const legacyConfigPath = path.join(__dirname, 'appconfig.json');
+if (!fs.existsSync(configPath) && fs.existsSync(legacyConfigPath)) {
+  try { fs.copyFileSync(legacyConfigPath, configPath); } catch { /* ignore */ }
+}
+
+function getRepoFolder() {
+  try {
+    const c = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+    return c.repoFolder || DEFAULT_REPO_FOLDER;
+  } catch {
+    return DEFAULT_REPO_FOLDER;
+  }
+}
 
 const port = 7000;
 
@@ -37,16 +53,8 @@ app.get('/winendpoints.ps1', (req, res) => {
 });
 
 app.post('/codedot', (req, res) => {
-  // const { code } = req.body;
-  // if (!code) return res.status(400).json({ error: 'Code is required' });
-  // try {
-  //   const result = eval(code); // Caution: eval can be dangerous if used with untrusted input
-  //   res.json({ result });
-  // } catch (err) {
-  //   res.status(500).json({ error: err.message });
-  // }
   const codeproc = spawn('code', ['.'], {
-    cwd: '/home/ansibleapp/repo'
+    cwd: getRepoFolder()
   });
 
   res.status(200).json({ msg: "ran code ." });
@@ -58,6 +66,7 @@ var isRunning = false;
 
 app.post('/runplay', async (req, res) => {
   isRunning = true;
+  const repoFolder = getRepoFolder();
 
   let inifile = req.body.ini ? `.${req.body.ini}` : '';
   let yamlfile = req.body.yaml ? `.${req.body.yaml}` : '';
@@ -155,6 +164,7 @@ app.get('/logs/cmtrace', (req, res) => {
 // ── File browser ───────────────────────────────────────────────────────────────
 
 app.post('/files', async (req, res) => {
+  const repoFolder = getRepoFolder();
   // Use explicit cwd option instead of process.chdir() — chdir mutates global
   // process state and causes downstream failures (e.g. git clone after rm -rf).
   const execOpts = { shell: '/bin/bash', cwd: repoFolder };
@@ -175,12 +185,14 @@ app.post('/files', async (req, res) => {
 });
 
 app.post('/getfilecontent', async (req, res) => {
+  const repoFolder = getRepoFolder();
   let cmd = `cat .${req.body.file}`;
   const { stdout } = await execPromise(cmd, { shell: '/bin/bash', cwd: repoFolder });
   res.json({ content: objuscate(stdout) });
 });
 
 app.post('/savefile', async (req, res) => {
+  const repoFolder = getRepoFolder();
   const { file, content } = req.body;
   if (!file || content === undefined) {
     return res.status(400).json({ error: 'file and content are required' });
@@ -200,6 +212,7 @@ app.post('/savefile', async (req, res) => {
 });
 
 app.post('/mkdir', (req, res) => {
+  const repoFolder = getRepoFolder();
   const { dir } = req.body;
   if (!dir) return res.status(400).json({ error: 'dir is required' });
   const fullPath = path.resolve(repoFolder, '.' + dir);
@@ -214,6 +227,7 @@ app.post('/mkdir', (req, res) => {
 });
 
 app.post('/renamefile', (req, res) => {
+  const repoFolder = getRepoFolder();
   const { file, newName } = req.body;
   if (!file || !newName) return res.status(400).json({ error: 'file and newName are required' });
   const oldPath = path.resolve(repoFolder, '.' + file);
@@ -232,6 +246,7 @@ app.post('/renamefile', (req, res) => {
 });
 
 app.post('/deletefile', (req, res) => {
+  const repoFolder = getRepoFolder();
   const { file } = req.body;
   if (!file) return res.status(400).json({ error: 'file is required' });
   const fullPath = path.resolve(repoFolder, '.' + file);
@@ -352,6 +367,7 @@ function buildAuthUrl(repoUrl, username, token) {
 }
 
 app.post('/git/clone', async (req, res) => {
+  const repoFolder = getRepoFolder();
   const config = readConfig();
   const repoUrl = config.ansibleRepoUrl;
   if (!repoUrl) return res.status(400).json({ error: 'No repo URL configured. Set it first.' });
@@ -398,6 +414,7 @@ app.post('/git/clone', async (req, res) => {
 });
 
 app.get('/git/status', async (req, res) => {
+  const repoFolder = getRepoFolder();
   try {
     const { stdout } = await execPromise(
       `git -C "${repoFolder}" status --porcelain=v1`,
@@ -419,6 +436,7 @@ app.get('/git/status', async (req, res) => {
 });
 
 app.post('/git/stage', async (req, res) => {
+  const repoFolder = getRepoFolder();
   try {
     await execPromise(`git -C "${repoFolder}" add -A`, { shell: '/bin/bash' });
     res.json({ ok: true });
@@ -428,6 +446,7 @@ app.post('/git/stage', async (req, res) => {
 });
 
 app.post('/git/commit', async (req, res) => {
+  const repoFolder = getRepoFolder();
   const { message } = req.body;
   if (!message) return res.status(400).json({ error: 'Commit message is required' });
   try {
@@ -443,6 +462,7 @@ app.post('/git/commit', async (req, res) => {
 });
 
 app.post('/git/push', async (req, res) => {
+  const repoFolder = getRepoFolder();
   try {
     const config = readConfig();
     const pushUrl = buildAuthUrl(
@@ -516,6 +536,54 @@ app.post('/kerberos/destroy', async (req, res) => {
   }
 });
 
+// ── Config page endpoints ──────────────────────────────────────────────────────
+
+// Browse WSL filesystem directories for the folder picker
+app.get('/browse', (req, res) => {
+  const dirPath = req.query.path || '/';
+  try {
+    const entries = fs.readdirSync(dirPath, { withFileTypes: true });
+    const dirs = entries
+      .filter(e => e.isDirectory())
+      .map(e => e.name)
+      .sort((a, b) => a.localeCompare(b));
+    const parent = dirPath === '/' ? null : path.dirname(dirPath);
+    res.json({ path: dirPath, parent, dirs });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Get/set the app config (repoFolder, etc.)
+app.get('/config/app', (req, res) => {
+  const config = readConfig();
+  res.json({ repoFolder: config.repoFolder || DEFAULT_REPO_FOLDER });
+});
+
+app.post('/config/app', (req, res) => {
+  const { repoFolder: folder } = req.body;
+  if (!folder) return res.status(400).json({ error: 'repoFolder is required' });
+  const config = readConfig();
+  config.repoFolder = folder;
+  writeConfig(config);
+  res.json({ ok: true });
+});
+
+// Returns the WSL distro name for this instance (set automatically by WSL)
+app.get('/config/instance', (req, res) => {
+  res.json({ instance: process.env.WSL_DISTRO_NAME || '' });
+});
+
+// Get /etc/krb5.conf as structured form fields (parsed)
+app.get('/config/krb5', (req, res) => {
+  try {
+    const content = fs.readFileSync('/etc/krb5.conf', 'utf-8');
+    res.json(parseKrb5(content));
+  } catch {
+    res.json({ realm: '', kdcServers: [], adminServer: '', defaultDomain: '' });
+  }
+});
+
 // ── Catch-all ──────────────────────────────────────────────────────────────────
 
 app.get('/*name', (req, res) => {
@@ -528,6 +596,14 @@ app.listen(port, '0.0.0.0', () => {
 });
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
+
+function parseKrb5(content) {
+  const realm       = (content.match(/default_realm\s*=\s*(.+)/)    || [])[1]?.trim() || '';
+  const kdcServers  = [...content.matchAll(/^\s*kdc\s*=\s*(.+)/mg)].map(m => m[1].trim());
+  const adminServer = (content.match(/admin_server\s*=\s*(.+)/)     || [])[1]?.trim() || '';
+  const defaultDomain = (content.match(/default_domain\s*=\s*(.+)/) || [])[1]?.trim() || '';
+  return { realm, kdcServers, adminServer, defaultDomain };
+}
 
 function objuscate(text) {
   return text.replace(/(password)=(.*?)(?=\s|,|$)/gi, '$1=******');

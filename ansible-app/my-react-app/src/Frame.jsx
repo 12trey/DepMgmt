@@ -4,6 +4,7 @@ import App from './App.jsx';
 import Welcome from './Welcome.jsx';
 import GitPanel from './GitPanel.jsx';
 import KerberosBar from './KerberosBar.jsx';
+import Config from './Config.jsx';
 
 function Frame() {
     const [view, setView] = useState('close');
@@ -14,6 +15,7 @@ function Frame() {
                 <span style={{ margin: '0 10px' }}>DMT Tools UI v1.0</span> /
                 <button className="headerbutton" onClick={() => setView('app')}>Ansible</button> /
                 <button className="headerbutton" onClick={() => setView('git')}>Git</button> /
+                <button className="headerbutton" onClick={() => setView('config')}>Config</button> /
                 <button className="headerbutton" onClick={() => setView('close')}>Home</button> /
             </div>
             <KerberosBar />
@@ -22,6 +24,7 @@ function Frame() {
             <div style={{ flex: 1, position: 'relative', overflow: 'hidden', minHeight: 0 }}>
                 {view === 'app' && <App />}
                 {view === 'git' && <GitPanel />}
+                {view === 'config' && <Config />}
                 {view === 'close' && <Welcome />}
             </div>
         </div>

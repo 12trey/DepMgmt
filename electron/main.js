@@ -56,6 +56,7 @@ function createWindow() {
   mainWindow.setTitle(`Deployment Manager - v${appVersion}`);
 
   ipcMain.on('iframe-message', (event, data) => {
+    if (!data) return;
     console.log('Received from iframe:', data);
     clipboard.writeText(data);
 
