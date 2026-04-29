@@ -24,6 +24,11 @@
     "sourcePath": ".\\PSADT_Template",
     "copyOnCreate": false
   },
+  "signing": {
+    "defaultThumbprint": "",
+    "defaultPfxPath": "",
+    "defaultTimestamp": "http://timestamp.digicert.com"
+  },
   "groups": {
     "adDomain": "",
     "managedGroups": [

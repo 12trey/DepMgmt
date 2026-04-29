@@ -52,6 +52,12 @@ app.get('/winendpoints.ps1', (req, res) => {
   });
 });
 
+app.get('/vscode-status', (req, res) => {
+  exec('which code', (err) => {
+    res.json({ available: !err });
+  });
+});
+
 app.post('/codedot', (req, res) => {
   const codeproc = spawn('code', ['.'], {
     cwd: getRepoFolder()

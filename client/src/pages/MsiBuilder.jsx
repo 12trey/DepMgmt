@@ -3,7 +3,7 @@ import {
   AlertCircle, CheckCircle, ChevronDown, ChevronRight,
   FileText, Folder, FolderPlus, Plus, Trash2, Package, HardDrive, Server, Settings, ShieldCheck,
 } from 'lucide-react';
-import { detectMsiTools, probeMsi, buildMsi } from '../api';
+import { detectMsiTools, probeMsi, buildMsi, getConfig } from '../api';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -570,7 +570,8 @@ export default function MsiBuilder() {
   const [signingEnabled, setSigningEnabled] = useState(false);
   const [signingMethod, setSigningMethod] = useState('thumbprint'); // 'thumbprint' | 'pfx'
   const [signingThumbprint, setSigningThumbprint] = useState('');
-  const [signingPfxFile, setSigningPfxFile] = useState(null);
+  const [signingPfxFile, setSigningPfxFile] = useState(null);  // File object when user picks locally
+  const [signingPfxPath, setSigningPfxPath] = useState('');    // path shown in UI
   const [signingPfxPassword, setSigningPfxPassword] = useState('');
   const [signingTimestamp, setSigningTimestamp] = useState('http://timestamp.digicert.com');
   const pfxInputRef = useRef();
@@ -580,6 +581,12 @@ export default function MsiBuilder() {
       .then(r => setWixTool(r))
       .catch(() => setWixTool({ type: null }))
       .finally(() => setWixChecked(true));
+    getConfig().then(cfg => {
+      const s = cfg.signing || {};
+      if (s.defaultThumbprint) setSigningThumbprint(s.defaultThumbprint);
+      if (s.defaultPfxPath)    setSigningPfxPath(s.defaultPfxPath);
+      if (s.defaultTimestamp)  setSigningTimestamp(s.defaultTimestamp);
+    }).catch(() => {});
   }, []);
 
   const det = (field, value) => setDetails(d => ({ ...d, [field]: value }));
@@ -734,7 +741,7 @@ export default function MsiBuilder() {
           timestamp: signingTimestamp.trim() || undefined,
           ...(signingMethod === 'thumbprint'
             ? { thumbprint: signingThumbprint.trim() }
-            : { pfxPassword: signingPfxPassword }),
+            : { pfxPassword: signingPfxPassword, ...(signingPfxFile ? {} : { pfxPath: signingPfxPath }) }),
         };
         formData.append('signing', JSON.stringify(signingPayload));
         if (signingMethod === 'pfx' && signingPfxFile) {
@@ -1181,27 +1188,35 @@ export default function MsiBuilder() {
                       type="file"
                       accept=".pfx,.p12"
                       className="hidden"
-                      onChange={e => setSigningPfxFile(e.target.files?.[0] || null)}
+                      onChange={e => {
+                        const f = e.target.files?.[0] || null;
+                        setSigningPfxFile(f);
+                        setSigningPfxPath(f ? f.name : '');
+                      }}
                     />
                     <button className="btn-secondary text-sm" onClick={() => pfxInputRef.current?.click()}>
                       Browse…
                     </button>
-                    {signingPfxFile
-                      ? <span className="text-sm text-gray-700">{signingPfxFile.name}</span>
+                    {signingPfxPath
+                      ? <span className="text-sm text-gray-700 font-mono">{signingPfxPath}</span>
                       : <span className="text-sm text-gray-400">No file selected</span>
                     }
                   </div>
+                  <p className="text-xs text-gray-400 mt-0.5">
+                    Set a default PFX path in Settings to avoid re-browsing each session.
+                  </p>
                 </div>
                 <label className="block">
                   <span className="text-sm font-medium text-gray-700">PFX Password</span>
                   <input
                     type="password"
                     className="input mt-1 w-64"
-                    autoComplete="new-password"
+                    autoComplete="off"
                     value={signingPfxPassword}
                     onChange={e => setSigningPfxPassword(e.target.value)}
                     placeholder="Leave blank if no password"
                   />
+                  <p className="text-xs text-gray-400 mt-0.5">Password is never saved.</p>
                 </label>
               </div>
             )}
@@ -1236,7 +1251,7 @@ export default function MsiBuilder() {
               building ||
               !details.productName || !details.version || !details.upgradeCode ||
               (signingEnabled && signingMethod === 'thumbprint' && !signingThumbprint.trim()) ||
-              (signingEnabled && signingMethod === 'pfx' && !signingPfxFile)
+              (signingEnabled && signingMethod === 'pfx' && !signingPfxFile && !signingPfxPath.trim())
             }
             className="btn-primary"
           >

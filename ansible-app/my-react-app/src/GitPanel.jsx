@@ -89,6 +89,8 @@ export default function GitPanel() {
   const [pushing, setPushing] = useState(false);
   const [pushResult, setPushResult] = useState('');
 
+  const [repoPath, setRepoPath] = useState('/home/ansibleapp/repo');
+
   useEffect(() => {
     api('/git/config')
       .then(r => r.json())
@@ -98,6 +100,10 @@ export default function GitPanel() {
         setGitUsername(d.gitUsername || '');
         setGitToken(d.gitToken || '');
       })
+      .catch(() => {});
+    api('/config/app')
+      .then(r => r.json())
+      .then(d => { if (d.repoFolder) setRepoPath(d.repoFolder); })
       .catch(() => {});
   }, []);
 
@@ -261,7 +267,7 @@ export default function GitPanel() {
         <div style={{ fontSize: '11px', color: '#9ca3af', marginTop: '6px' }}>
           We advise using a personal access token for better security. Credentials are encrypted and 
           persisted to the WSL disk using the WSL installation's machine-id. Alternatively, you
-          can use the terminal to access the repo at <code style={{ color: '#787878' }}>/home/ansibleapp/repo</code> and push/pull from the command line.
+          can use the terminal to access the repo at <code style={{ color: '#787878' }}>{repoPath}</code> and push/pull from the command line.
         </div>
         <div style={{ fontSize: '11px', color: '#9ca3af', marginTop: '6px' }}>
           Credentials are used for clone and push. Leave blank for public repos or SSH remotes.
@@ -273,7 +279,7 @@ export default function GitPanel() {
         )}
         <div style={{ display: 'flex', gap: '8px', marginTop: '12px', alignItems: 'center' }}>
           <button onClick={startClone} disabled={cloning || !savedUrl} style={btnStyle('secondary', cloning || !savedUrl)}>
-            {cloning ? 'Cloning…' : 'Clone / Re-clone to /home/ansibleapp/repo'}
+            {cloning ? 'Cloning…' : `Clone / Re-clone to ${repoPath}`}
           </button>
         </div>
         {cloneLog !== null && (

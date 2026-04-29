@@ -1,5 +1,6 @@
-import { useRef, useState } from 'react';
+import { useRef, useState, useEffect } from 'react';
 import { ShieldCheck, Upload, X, AlertCircle, CheckCircle, FileText } from 'lucide-react';
+import { getConfig } from '../api';
 
 const SIGNABLE_EXTS = new Set([
   '.msi', '.exe', '.dll', '.cab', '.sys', '.ocx', '.cat',
@@ -22,10 +23,20 @@ export default function CodeSigning() {
   // Signing options
   const [method, setMethod] = useState('thumbprint'); // 'thumbprint' | 'pfx'
   const [thumbprint, setThumbprint] = useState('');
-  const [pfxFile, setPfxFile] = useState(null);
+  const [pfxFile, setPfxFile] = useState(null);   // File object when user picks locally
+  const [pfxPath, setPfxPath] = useState('');     // path shown in UI (default or filename)
   const [pfxPassword, setPfxPassword] = useState('');
   const [timestamp, setTimestamp] = useState('http://timestamp.digicert.com');
   const pfxInputRef = useRef();
+
+  useEffect(() => {
+    getConfig().then(cfg => {
+      const s = cfg.signing || {};
+      if (s.defaultThumbprint) setThumbprint(s.defaultThumbprint);
+      if (s.defaultPfxPath)    { setPfxPath(s.defaultPfxPath); }
+      if (s.defaultTimestamp)  setTimestamp(s.defaultTimestamp);
+    }).catch(() => {});
+  }, []);
 
   // Status
   const [signing, setSigning] = useState(false);
@@ -51,7 +62,7 @@ export default function CodeSigning() {
   };
 
   const canSign = targetFile &&
-    (method === 'thumbprint' ? thumbprint.trim() : pfxFile);
+    (method === 'thumbprint' ? thumbprint.trim() : pfxPath.trim());
 
   const handleSign = async () => {
     setError(''); setSuccess(false); setSigning(true);
@@ -61,7 +72,7 @@ export default function CodeSigning() {
         timestamp: timestamp.trim() || undefined,
         ...(method === 'thumbprint'
           ? { thumbprint: thumbprint.trim() }
-          : { pfxPassword }),
+          : { pfxPassword, ...(pfxFile ? {} : { pfxPath }) }),
       };
 
       const formData = new FormData();
@@ -195,27 +206,35 @@ export default function CodeSigning() {
                   type="file"
                   accept=".pfx,.p12"
                   className="hidden"
-                  onChange={e => setPfxFile(e.target.files?.[0] || null)}
+                  onChange={e => {
+                    const f = e.target.files?.[0] || null;
+                    setPfxFile(f);
+                    setPfxPath(f ? f.name : '');
+                  }}
                 />
                 <button className="btn-secondary text-sm" onClick={() => pfxInputRef.current?.click()}>
                   Browse…
                 </button>
-                {pfxFile
-                  ? <span className="text-sm text-gray-700">{pfxFile.name}</span>
+                {pfxPath
+                  ? <span className="text-sm text-gray-700 font-mono">{pfxPath}</span>
                   : <span className="text-sm text-gray-400">No file selected</span>
                 }
               </div>
+              <p className="text-xs text-gray-400 mt-0.5">
+                Set a default PFX path in Settings to avoid re-browsing each session.
+              </p>
             </div>
             <label className="block">
               <span className="text-sm font-medium text-gray-700">PFX Password</span>
               <input
                 type="password"
                 className="input mt-1 w-64"
-                autoComplete="new-password"
+                autoComplete="off"
                 value={pfxPassword}
                 onChange={e => setPfxPassword(e.target.value)}
                 placeholder="Leave blank if no password"
               />
+              <p className="text-xs text-gray-400 mt-0.5">Password is never saved.</p>
             </label>
           </div>
         )}

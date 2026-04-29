@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Plus, Trash2, CheckCircle, AlertCircle, Loader, FolderOpen } from 'lucide-react';
-import { getConfig, updateConfig, verifyGroup, browseFolder } from '../api';
+import { getConfig, updateConfig, verifyGroup, browseFolder, browseFile } from '../api';
 import { useAdCredential } from '../context/AdCredentialContext';
 import { useConfigContext } from '../context/ConfigContext';
 
@@ -188,6 +188,36 @@ export default function Config() {
         />
       </Section>
 
+      {/* Code Signing Defaults */}
+      <Section title="Code Signing Defaults">
+        <Field
+          label="Default Thumbprint"
+          hint="Pre-fills the thumbprint field on Code Signing and MSI Builder pages"
+          value={config.signing?.defaultThumbprint || ''}
+          onChange={(v) => setNested('signing', 'defaultThumbprint', v)}
+          placeholder="a9 09 50 2d d8 2a e4 14 33 e6 f8 38 86 b0 0d 42 77 a3 2a 7b"
+          mono
+        />
+        <Field
+          label="Default PFX Path"
+          hint="Pre-fills the PFX path on Code Signing and MSI Builder pages (password is never saved)"
+          value={config.signing?.defaultPfxPath || ''}
+          onChange={(v) => setNested('signing', 'defaultPfxPath', v)}
+          onBrowse={async () => {
+            const result = await browseFile([{ name: 'PFX Certificate', extensions: ['pfx', 'p12'] }]);
+            if (result.path) setNested('signing', 'defaultPfxPath', result.path);
+          }}
+          className="mt-3"
+        />
+        <Field
+          label="Default Timestamp Server"
+          value={config.signing?.defaultTimestamp || ''}
+          onChange={(v) => setNested('signing', 'defaultTimestamp', v)}
+          placeholder="http://timestamp.digicert.com"
+          className="mt-3"
+        />
+      </Section>
+
       {/* Group management settings */}
       <Section title="Group Management">
         <Field
@@ -344,7 +374,7 @@ function Section({ title, children }) {
   );
 }
 
-function Field({ label, hint, value, onChange, onBrowse, className = '', placeholder = '' }) {
+function Field({ label, hint, value, onChange, onBrowse, className = '', placeholder = '', mono = false }) {
   const [browsing, setBrowsing] = useState(false);
 
   const handleBrowse = async () => {
@@ -358,7 +388,7 @@ function Field({ label, hint, value, onChange, onBrowse, className = '', placeho
       {hint && <span className="text-xs text-gray-400 ml-2">{hint}</span>}
       <div className="flex gap-2 mt-1">
         <input
-          className="input flex-1"
+          className={`input flex-1${mono ? ' font-mono text-xs' : ''}`}
           value={value}
           placeholder={placeholder}
           onChange={(e) => onChange(e.target.value)}

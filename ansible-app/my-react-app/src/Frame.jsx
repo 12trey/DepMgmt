@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import './Frame.css';
 import App from './App.jsx';
 import Welcome from './Welcome.jsx';
@@ -8,6 +8,18 @@ import Config from './Config.jsx';
 
 function Frame() {
     const [view, setView] = useState('close');
+    const [vsCodeAvailable, setVsCodeAvailable] = useState(false);
+
+    useEffect(() => {
+        fetch('/vscode-status')
+            .then(r => r.json())
+            .then(d => setVsCodeAvailable(d.available))
+            .catch(() => {});
+    }, []);
+
+    const openInVsCode = () => {
+        fetch('/codedot', { method: 'POST' }).catch(() => {});
+    };
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', height: '100svh', overflow: 'hidden' }}>
@@ -17,6 +29,9 @@ function Frame() {
                 <button className="headerbutton" onClick={() => setView('git')}>Git</button> /
                 <button className="headerbutton" onClick={() => setView('config')}>Config</button> /
                 <button className="headerbutton" onClick={() => setView('close')}>Home</button> /
+                {vsCodeAvailable && (
+                    <button className="headerbutton" onClick={openInVsCode} title="Open repo in VS Code">VS Code</button>
+                )}
             </div>
             <KerberosBar />
             {/* Content area fills the remaining height and provides the

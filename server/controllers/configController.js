@@ -36,6 +36,27 @@ exports.browseFolder = (req, res) => {
   proc.on('error', (e) => res.status(500).json({ error: e.message }));
 };
 
+exports.browseFile = (req, res) => {
+  const { filters = [] } = req.body || {};
+  // Build a PowerShell OpenFileDialog filter string, e.g. "PFX Files (*.pfx)|*.pfx;*.p12"
+  const filterStr = filters.length
+    ? filters.map(f => `${f.name} (${f.extensions.map(e => `*.${e}`).join(';')})|${f.extensions.map(e => `*.${e}`).join(';')}`).join('|')
+    : 'All Files (*.*)|*.*';
+  const ps = [
+    'Add-Type -AssemblyName System.Windows.Forms',
+    '$d = New-Object System.Windows.Forms.OpenFileDialog',
+    `$d.Filter = '${filterStr.replace(/'/g, "''")}'`,
+    '$d.Multiselect = $false',
+    'if ($d.ShowDialog() -eq "OK") { $d.FileName } else { "" }',
+  ].join('; ');
+
+  const proc = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', ps]);
+  let out = '';
+  proc.stdout.on('data', (d) => { out += d.toString(); });
+  proc.on('close', () => res.json({ path: out.trim() || null }));
+  proc.on('error', (e) => res.status(500).json({ error: e.message }));
+};
+
 exports.update = (req, res) => {
   const current = JSON.parse(fs.readFileSync(paths.configPath, 'utf-8'));
   const body = req.body;

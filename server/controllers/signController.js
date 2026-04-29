@@ -21,10 +21,16 @@ exports.signFile = async (req, res) => {
     fs.writeFileSync(filePath, targetFile.buffer);
 
     if (signing.method === 'pfx') {
-      if (!pfxFile) return res.status(400).json({ error: 'PFX file was not uploaded' });
-      tmpPfx = path.join(os.tmpdir(), `sign_${uuidv4()}.pfx`);
-      fs.writeFileSync(tmpPfx, pfxFile.buffer);
-      signing.pfxPath = tmpPfx;
+      if (pfxFile) {
+        // Browser-uploaded file — write to temp location
+        tmpPfx = path.join(os.tmpdir(), `sign_${uuidv4()}.pfx`);
+        fs.writeFileSync(tmpPfx, pfxFile.buffer);
+        signing.pfxPath = tmpPfx;
+      } else if (signing.pfxPath && fs.existsSync(signing.pfxPath)) {
+        // Stored path on server disk — use directly (no temp copy needed)
+      } else {
+        return res.status(400).json({ error: 'No PFX file provided and no valid default PFX path configured' });
+      }
     }
 
     await signFile(filePath, signing);
