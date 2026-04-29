@@ -76,6 +76,7 @@ app.post('/runplay', async (req, res) => {
 
   let inifile = req.body.ini ? `.${req.body.ini}` : '';
   let yamlfile = req.body.yaml ? `.${req.body.yaml}` : '';
+  const ansibleConfig = req.body.ansibleConfig || '';
 
   if (!inifile || !yamlfile) {
     res.json({ msg: 'Please provide both ini and yaml files.' });
@@ -94,7 +95,7 @@ app.post('/runplay', async (req, res) => {
       cwd: repoFolder,
       env: {
         ...process.env,
-        ANSIBLE_CONFIG: '',
+        ANSIBLE_CONFIG: ansibleConfig,
         ANSIBLE_STDOUT_CALLBACK: 'ansible.posix.json',
         ANSIBLE_DEPRECATION_WARNINGS: 'False',
         ANSIBLE_COMMAND_WARNINGS: 'False',
@@ -547,6 +548,7 @@ app.post('/kerberos/destroy', async (req, res) => {
 // Browse WSL filesystem directories for the folder picker
 app.get('/browse', (req, res) => {
   const dirPath = req.query.path || '/';
+  const includeFiles = req.query.files === '1';
   try {
     const entries = fs.readdirSync(dirPath, { withFileTypes: true });
     const dirs = entries
@@ -554,7 +556,15 @@ app.get('/browse', (req, res) => {
       .map(e => e.name)
       .sort((a, b) => a.localeCompare(b));
     const parent = dirPath === '/' ? null : path.dirname(dirPath);
-    res.json({ path: dirPath, parent, dirs });
+    const stat = fs.statSync(dirPath);
+    const result = { path: dirPath, parent, dirs, worldWritable: !!(stat.mode & 0o002) };
+    if (includeFiles) {
+      result.files = entries
+        .filter(e => e.isFile())
+        .map(e => e.name)
+        .sort((a, b) => a.localeCompare(b));
+    }
+    res.json(result);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

@@ -11,10 +11,25 @@ export default function Execution() {
   const [selectedLog, setSelectedLog] = useState(null);
   const [logContent, setLogContent] = useState('');
   const [activeExecId, setActiveExecId] = useState(null);
-  const [tab, setTab] = useState('single'); // 'single' | 'wrapper'
-  const [singleForm, setSingleForm] = useState({ appName: navState?.appName || '', version: navState?.version || '', deploymentType: 'Install', mode: 'Silent', target: '', username: '', password: '' });
+  const [tab, setTab] = useState('single'); // 'single' | 'multi'
+
+  const [singleForm, setSingleForm] = useState({
+    appName: navState?.appName || '',
+    version: navState?.version || '',
+    deploymentType: 'Install',
+    mode: 'Silent',
+    target: '',
+    username: '',
+    password: '',
+  });
   const [useAltCreds, setUseAltCreds] = useState(false);
+
   const [wrapperSteps, setWrapperSteps] = useState([]);
+  const [wrapperTarget, setWrapperTarget] = useState('');
+  const [wrapperUseAltCreds, setWrapperUseAltCreds] = useState(false);
+  const [wrapperUsername, setWrapperUsername] = useState('');
+  const [wrapperPassword, setWrapperPassword] = useState('');
+
   const { messages, subscribe, clear } = useWebSocket(activeExecId);
   const terminalRef = useRef();
 
@@ -38,7 +53,8 @@ export default function Execution() {
 
   const handleRunWrapper = async () => {
     clear();
-    const result = await runWrapper(wrapperSteps);
+    const creds = wrapperUseAltCreds && wrapperUsername && wrapperPassword ? { username: wrapperUsername, password: wrapperPassword } : {};
+    const result = await runWrapper(wrapperSteps, wrapperTarget || undefined, creds.username, creds.password);
     setActiveExecId(result.id);
     subscribe(result.id);
   };
@@ -49,6 +65,8 @@ export default function Execution() {
     setLogContent(data.log);
   };
 
+  const hasRemoteTarget = (t) => t && t.trim().length > 0;
+
   return (
     <div>
       <h1 className="text-2xl font-bold mb-6">Execution & Logs</h1>
@@ -57,7 +75,7 @@ export default function Execution() {
       <div className="bg-white rounded-lg shadow p-5 mb-6">
         <div className="flex gap-4 mb-4">
           <button onClick={() => setTab('single')} className={`text-sm font-medium pb-1 ${tab === 'single' ? 'border-b-2 border-blue-500 text-blue-600' : 'text-gray-500'}`}>Single Package</button>
-          <button onClick={() => setTab('wrapper')} className={`text-sm font-medium pb-1 ${tab === 'wrapper' ? 'border-b-2 border-blue-500 text-blue-600' : 'text-gray-500'}`}>Master Wrapper</button>
+          <button onClick={() => setTab('multi')} className={`text-sm font-medium pb-1 ${tab === 'multi' ? 'border-b-2 border-blue-500 text-blue-600' : 'text-gray-500'}`}>Multi Package</button>
         </div>
 
         {tab === 'single' ? (
@@ -90,16 +108,17 @@ export default function Execution() {
             </div>
             <div className="border-t pt-3 space-y-3">
               <label className="block">
-                <span className="text-sm font-medium text-gray-700">Remote Target <span className="text-gray-400 font-normal">(optional — leave blank to run locally)</span></span>
-                <input
-                  className="input mt-1"
-                  placeholder="hostname or IP address"
+                <span className="text-sm font-medium text-gray-700">Remote Targets <span className="text-gray-400 font-normal">(optional — leave blank to run locally; comma, space, or newline separated)</span></span>
+                <textarea
+                  className="input mt-1 font-mono text-sm resize-y"
+                  rows={2}
+                  placeholder="hostname1, hostname2&#10;192.168.1.10"
                   value={singleForm.target}
                   onChange={(e) => setSingleForm({ ...singleForm, target: e.target.value })}
                 />
               </label>
-              {singleForm.target && (
-                <p className="text-xs text-gray-400">Requires WinRM enabled on the target. Package files are copied to a temp directory, executed, then removed.</p>
+              {hasRemoteTarget(singleForm.target) && (
+                <p className="text-xs text-gray-400">Requires WinRM enabled on each target. Package files are copied to a temp directory, executed, then removed. All targets run sequentially in a single combined log.</p>
               )}
 
               <label className="flex items-center gap-2 cursor-pointer select-none">
@@ -119,7 +138,7 @@ export default function Execution() {
                       <span className="text-sm font-medium text-gray-700">Username</span>
                       <input
                         className="input mt-1"
-                        placeholder={singleForm.target ? 'DOMAIN\\user or .\\localuser' : '.\\localuser or DOMAIN\\user'}
+                        placeholder={hasRemoteTarget(singleForm.target) ? 'DOMAIN\\user or .\\localuser' : '.\\localuser or DOMAIN\\user'}
                         value={singleForm.username}
                         onChange={(e) => setSingleForm({ ...singleForm, username: e.target.value })}
                         autoComplete="username"
@@ -137,8 +156,8 @@ export default function Execution() {
                     </label>
                   </div>
                   <p className="text-xs text-gray-400">
-                    {singleForm.target
-                      ? 'Used for WinRM authentication to the remote target. Supports local accounts (MACHINE\\user or .\\user) and domain accounts (DOMAIN\\user or user@domain.com).'
+                    {hasRemoteTarget(singleForm.target)
+                      ? 'Used for WinRM authentication to the remote targets. Supports local accounts (MACHINE\\user or .\\user) and domain accounts (DOMAIN\\user or user@domain.com).'
                       : 'Runs the deployment as this user on the local machine via Start-Process -Credential. Use .\\user for local workgroup accounts or DOMAIN\\user for domain accounts.'}
                   </p>
                 </div>
@@ -146,29 +165,89 @@ export default function Execution() {
             </div>
           </div>
         ) : (
-          <div>
-            {wrapperSteps.map((step, i) => (
-              <div key={i} className="flex gap-2 mb-2 items-center">
-                <span className="text-sm text-gray-500 w-6">{i + 1}.</span>
-                <select className="input flex-1" value={`${step.appName}|${step.version}`} onChange={(e) => { const [a, v] = e.target.value.split('|'); const arr = [...wrapperSteps]; arr[i] = { ...step, appName: a, version: v }; setWrapperSteps(arr); }}>
-                  <option value="|">Select...</option>
-                  {packages.map((p, j) => <option key={j} value={`${p.appName}|${p.version}`}>{p.appName} v{p.version}</option>)}
-                </select>
-                <select className="input w-32" value={step.deploymentType || 'Install'} onChange={(e) => { const arr = [...wrapperSteps]; arr[i] = { ...step, deploymentType: e.target.value }; setWrapperSteps(arr); }}>
-                  <option>Install</option>
-                  <option>Uninstall</option>
-                  <option>Repair</option>
-                </select>
-                <select className="input w-36" value={step.mode} onChange={(e) => { const arr = [...wrapperSteps]; arr[i] = { ...step, mode: e.target.value }; setWrapperSteps(arr); }}>
-                  <option>Silent</option>
-                  <option>Interactive</option>
-                </select>
-                <button onClick={() => setWrapperSteps(wrapperSteps.filter((_, j) => j !== i))} className="text-red-500"><Trash2 size={16} /></button>
+          <div className="space-y-3">
+            <div>
+              {wrapperSteps.map((step, i) => (
+                <div key={i} className="flex gap-2 mb-2 items-center">
+                  <span className="text-sm text-gray-500 w-6">{i + 1}.</span>
+                  <select className="input flex-1" value={`${step.appName}|${step.version}`} onChange={(e) => { const [a, v] = e.target.value.split('|'); const arr = [...wrapperSteps]; arr[i] = { ...step, appName: a, version: v }; setWrapperSteps(arr); }}>
+                    <option value="|">Select...</option>
+                    {packages.map((p, j) => <option key={j} value={`${p.appName}|${p.version}`}>{p.appName} v{p.version}</option>)}
+                  </select>
+                  <select className="input w-32" value={step.deploymentType || 'Install'} onChange={(e) => { const arr = [...wrapperSteps]; arr[i] = { ...step, deploymentType: e.target.value }; setWrapperSteps(arr); }}>
+                    <option>Install</option>
+                    <option>Uninstall</option>
+                    <option>Repair</option>
+                  </select>
+                  <select className="input w-36" value={step.mode} onChange={(e) => { const arr = [...wrapperSteps]; arr[i] = { ...step, mode: e.target.value }; setWrapperSteps(arr); }}>
+                    <option>Silent</option>
+                    <option>Interactive</option>
+                  </select>
+                  <button onClick={() => setWrapperSteps(wrapperSteps.filter((_, j) => j !== i))} className="text-red-500"><Trash2 size={16} /></button>
+                </div>
+              ))}
+              <div className="flex gap-2 mt-2">
+                <button onClick={() => setWrapperSteps([...wrapperSteps, { appName: '', version: '', deploymentType: 'Install', mode: 'Silent' }])} className="btn-secondary text-sm"><Plus size={16} /> Add Step</button>
+                <button onClick={handleRunWrapper} disabled={wrapperSteps.length === 0} className="btn-primary text-sm"><Play size={16} /> Run All</button>
               </div>
-            ))}
-            <div className="flex gap-2 mt-2">
-              <button onClick={() => setWrapperSteps([...wrapperSteps, { appName: '', version: '', deploymentType: 'Install', mode: 'Silent' }])} className="btn-secondary text-sm"><Plus size={16} /> Add Step</button>
-              <button onClick={handleRunWrapper} disabled={wrapperSteps.length === 0} className="btn-primary text-sm"><Play size={16} /> Run All</button>
+            </div>
+
+            <div className="border-t pt-3 space-y-3">
+              <label className="block">
+                <span className="text-sm font-medium text-gray-700">Remote Targets <span className="text-gray-400 font-normal">(optional — leave blank to run locally; comma, space, or newline separated)</span></span>
+                <textarea
+                  className="input mt-1 font-mono text-sm resize-y"
+                  rows={2}
+                  placeholder="hostname1, hostname2&#10;192.168.1.10"
+                  value={wrapperTarget}
+                  onChange={(e) => setWrapperTarget(e.target.value)}
+                />
+              </label>
+              {hasRemoteTarget(wrapperTarget) && (
+                <p className="text-xs text-gray-400">Each step will run on all targets before proceeding to the next step. All output is compiled into a single log.</p>
+              )}
+
+              <label className="flex items-center gap-2 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  className="rounded"
+                  checked={wrapperUseAltCreds}
+                  onChange={(e) => setWrapperUseAltCreds(e.target.checked)}
+                />
+                <span className="text-sm font-medium text-gray-700">Use alternate credentials</span>
+              </label>
+
+              {wrapperUseAltCreds && (
+                <div className="space-y-2 pl-1">
+                  <div className="flex gap-3">
+                    <label className="block flex-1">
+                      <span className="text-sm font-medium text-gray-700">Username</span>
+                      <input
+                        className="input mt-1"
+                        placeholder={hasRemoteTarget(wrapperTarget) ? 'DOMAIN\\user or .\\localuser' : '.\\localuser or DOMAIN\\user'}
+                        value={wrapperUsername}
+                        onChange={(e) => setWrapperUsername(e.target.value)}
+                        autoComplete="username"
+                      />
+                    </label>
+                    <label className="block flex-1">
+                      <span className="text-sm font-medium text-gray-700">Password</span>
+                      <input
+                        className="input mt-1"
+                        type="password"
+                        value={wrapperPassword}
+                        onChange={(e) => setWrapperPassword(e.target.value)}
+                        autoComplete="current-password"
+                      />
+                    </label>
+                  </div>
+                  <p className="text-xs text-gray-400">
+                    {hasRemoteTarget(wrapperTarget)
+                      ? 'Used for WinRM authentication to the remote targets.'
+                      : 'Runs each deployment step as this user on the local machine.'}
+                  </p>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -191,7 +270,7 @@ export default function Execution() {
         <div className="divide-y">
           {logs.map((l) => (
             <div key={l.id} className="py-2 flex justify-between items-center text-sm cursor-pointer hover:bg-gray-50 px-2 rounded" onClick={() => viewLog(l.id)}>
-              <span>{l.appName || 'Wrapper'} {l.version && `v${l.version}`}</span>
+              <span>{l.appName || 'Multi Package'} {l.version && `v${l.version}`}</span>
               <div className="flex items-center gap-3">
                 <span className="text-gray-400 text-xs">{new Date(l.startedAt).toLocaleString()}</span>
                 <span className={`px-2 py-0.5 rounded text-xs font-medium ${l.status === 'Success' ? 'bg-green-100 text-green-700' : l.status === 'Failed' ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700'}`}>{l.status}</span>

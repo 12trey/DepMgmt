@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   AlertCircle, CheckCircle, ChevronDown, ChevronRight,
-  FileText, Folder, FolderPlus, Plus, Trash2, Package, HardDrive, Server, Settings, ShieldCheck,
+  FileText, Folder, FolderPlus, Plus, Trash2, Package, HardDrive, Server, Settings, ShieldCheck, SearchCode
 } from 'lucide-react';
 import { detectMsiTools, probeMsi, buildMsi, getConfig } from '../api';
 
@@ -526,7 +526,7 @@ function TreeNode({ node, onAddFolder, onAddNodes, onDelete, onRename, onConfigS
 
 const EMPTY_DETAILS = {
   productName: '', manufacturer: '', version: '1.0.0',
-  upgradeCode: '', installDirName: '', platform: 'x64', scope: 'perMachine',
+  upgradeCode: '', installDirName: '', platform: 'x64', scope: 'perMachine', productCode: ''
 };
 
 const INSTALL_DIR_DEST = { id: 'ROOT', wixId: 'INSTALLDIR', name: 'Install Directory', customPath: null, type: 'dir', children: [] };
@@ -679,6 +679,7 @@ export default function MsiBuilder() {
         manufacturer: info.manufacturer || d.manufacturer,
         upgradeCode: info.upgradeCode || d.upgradeCode,
         platform: info.platform || d.platform,
+        productCode: info.productCode || d.productCode,
         version: incrementVersion(info.version),
       }));
     } catch (err) {
@@ -833,6 +834,7 @@ export default function MsiBuilder() {
             Imported from existing MSI — detected version: <code className="font-mono bg-blue-100 px-1 rounded">{detectedVersion}</code>
             <span className="text-blue-400">→</span>
             new version: <code className="font-mono bg-blue-100 px-1 rounded">{details.version}</code>
+            <SearchCode size={13} className="flex-shrink-0" /> v{detectedVersion} Product Code: <code className="font-mono bg-blue-100 px-1 rounded">{details.productCode}</code>       
           </div>
         )}
         <div className="grid grid-cols-2 gap-4">

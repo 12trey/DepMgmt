@@ -3,12 +3,13 @@ import { Link, useNavigate } from 'react-router-dom';
 import {
   Terminal, FolderOpen, FileCode, Play, Square, RefreshCw,
   ChevronRight, ArrowLeft, Download, LogIn, LogOut, CheckCircle,
-  AlertCircle, Loader, Cloud, CloudOff, ChevronDown, ChevronUp, X, Maximize2, Minimize2,
+  AlertCircle, Loader, Cloud, CloudOff, ChevronDown, ChevronUp, X, Maximize2, Minimize2, ExternalLink,
 } from 'lucide-react';
 import {
   browseScripts, parseScript, getMgGraphStatus, installMgGraph,
   connectMgGraph, mgGraphDisconnect, runScript,
   getAzStatus, installAz, connectAz, azDisconnect,
+  openInVscode,
 } from '../api';
 
 
@@ -47,6 +48,7 @@ export default function ScriptRunner() {
   const [browseLoading, setBrowseLoading] = useState(false);
   const [browseError, setBrowseError] = useState('');
   const [noFolder, setNoFolder] = useState(false);
+  const [scriptsRoot, setScriptsRoot] = useState('');
 
   // ── Script state ──────────────────────────────────────────────────────────
   const [scriptRel, setScriptRel] = useState('');
@@ -119,6 +121,7 @@ export default function ScriptRunner() {
       const data = await browseScripts(rel);
       setItems(data.items);
       setCrumbs(newCrumbs);
+      if (data.scriptsRoot) setScriptsRoot(data.scriptsRoot);
     } catch (err) {
       if (err.message.includes('not configured')) {
         setNoFolder(true);
@@ -395,6 +398,16 @@ export default function ScriptRunner() {
             <span className="text-sm font-semibold text-gray-700 flex items-center gap-1.5">
               <FolderOpen size={14} /> Scripts
             </span>
+            <div className="flex items-center gap-2">
+              {scriptsRoot && (
+                <button
+                  onClick={() => openInVscode(scriptsRoot)}
+                  className="text-gray-400 hover:text-blue-600"
+                  title="Open scripts folder in VS Code"
+                >
+                  <ExternalLink size={13} />
+                </button>
+              )}
             <button
               onClick={() => browseTo(crumbs.length > 0 ? crumbs[crumbs.length - 1].rel : '', crumbs)}
               className="text-gray-400 hover:text-gray-600"
@@ -402,6 +415,7 @@ export default function ScriptRunner() {
             >
               <RefreshCw size={13} className={browseLoading ? 'animate-spin' : ''} />
             </button>
+            </div>
           </div>
 
           {/* Breadcrumb */}

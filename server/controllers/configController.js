@@ -57,6 +57,15 @@ exports.browseFile = (req, res) => {
   proc.on('error', (e) => res.status(500).json({ error: e.message }));
 };
 
+exports.openInVscode = (req, res) => {
+  const { path: folderPath } = req.body;
+  if (!folderPath) return res.status(400).json({ error: 'path is required' });
+  const proc = spawn('cmd', ['/c', 'code', folderPath], { windowsHide: true, detached: true, stdio: 'ignore' });
+  proc.unref();
+  proc.on('error', () => {}); // VS Code not installed — silently ignore
+  res.json({ ok: true });
+};
+
 exports.update = (req, res) => {
   const current = JSON.parse(fs.readFileSync(paths.configPath, 'utf-8'));
   const body = req.body;

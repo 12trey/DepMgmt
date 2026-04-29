@@ -2,6 +2,7 @@ import { useEffect, useState, useRef, useCallback } from 'react';
 import { RefreshCw, ChevronDown, CheckCircle, XCircle, AlertCircle, Loader2, Settings, Upload, TerminalSquare, X, Wrench, Plus, Minus } from 'lucide-react';
 
 const STORAGE_KEY = 'dmt-wsl-instance';
+const SKIP_ENV_CHECK_KEY = 'dmt-skip-env-check';
 
 const DMT_URL = 'http://localhost:7000';
 const POLL_INTERVAL = 2000;
@@ -13,6 +14,23 @@ async function fetchInstances() {
   const r = await fetch('/api/wsl/instances');
   if (!r.ok) throw new Error(await r.text());
   return r.json();
+}
+
+function readSkipEnvCheck() {
+  return localStorage.getItem(SKIP_ENV_CHECK_KEY) === 'true';
+}
+
+async function fetchSkipEnvCheck() {
+  try {
+    const r = await fetch('/api/config');
+    if (!r.ok) return readSkipEnvCheck();
+    const c = await r.json();
+    const val = c.dmt?.skipEnvCheck === true;
+    localStorage.setItem(SKIP_ENV_CHECK_KEY, String(val));
+    return val;
+  } catch {
+    return readSkipEnvCheck();
+  }
 }
 
 async function checkSetup(instance) {
@@ -235,9 +253,11 @@ const DEFAULT_KRB5 = {
 };
 
 export default function DMTTools() {
-  const [stage, setStage] = useState('select-instance');
+  const [stage, setStage] = useState(() =>
+    localStorage.getItem(STORAGE_KEY) ? 'launching' : 'select-instance'
+  );
   const [instances, setInstances] = useState([]);
-  const [selectedInstance, setSelectedInstance] = useState('');
+  const [selectedInstance, setSelectedInstance] = useState(() => localStorage.getItem(STORAGE_KEY) || '');
   const [checkResult, setCheckResult] = useState(null);
   const [setupLog, setSetupLog] = useState([]);
   const [error, setError] = useState('');
@@ -343,32 +363,42 @@ export default function DMTTools() {
 
   const handleInstanceSelect = async (instance) => {
     if (!instance) return;
-    const gen = ++opGenRef.current; // bump generation so any prior async callbacks abort
+    const gen = ++opGenRef.current;
     localStorage.setItem(STORAGE_KEY, instance);
     setSelectedInstance(instance);
-    setStage('checking');
     setCheckResult(null);
     setError('');
+
     try {
-      const result = await checkSetup(instance);
-      if (opGenRef.current !== gen) return;
-      setCheckResult(result);
-      if (result.ready) {
-        try {
-          await fetch(DMT_URL, { mode: 'no-cors', signal: AbortSignal.timeout(3000) });
-          if (opGenRef.current !== gen) return;
-          setServiceAvailable(true);
-          setStage('ready');
-        } catch {
-          if (opGenRef.current !== gen) return;
-          setStage('launching');
-          await launchApp(instance);
-          if (opGenRef.current !== gen) return;
-          startPolling(instance);
-        }
-      } else {
-        setStage('setup-needed');
+      // Always probe the service first — if it's already running we go straight
+      // to ready with no intermediate UI regardless of any other setting.
+      try {
+        await fetch(DMT_URL, { mode: 'no-cors', signal: AbortSignal.timeout(1500) });
+        if (opGenRef.current !== gen) return;
+        setServiceAvailable(true);
+        setStage('ready');
+        return;
+      } catch {
+        if (opGenRef.current !== gen) return;
       }
+
+      // Service isn't running. Refresh the skip flag from the server in the
+      // background (sync read is the fast path; fetch corrects it if stale).
+      const skipEnvCheck = readSkipEnvCheck() || await fetchSkipEnvCheck();
+      if (opGenRef.current !== gen) return;
+
+      if (!skipEnvCheck) {
+        setStage('checking');
+        const result = await checkSetup(instance);
+        if (opGenRef.current !== gen) return;
+        setCheckResult(result);
+        if (!result.ready) { setStage('setup-needed'); return; }
+      }
+
+      setStage('launching');
+      await launchApp(instance);
+      if (opGenRef.current !== gen) return;
+      startPolling(instance);
     } catch (err) {
       if (opGenRef.current !== gen) return;
       setError(err.message);

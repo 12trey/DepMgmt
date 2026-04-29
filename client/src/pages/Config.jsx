@@ -358,6 +358,24 @@ export default function Config() {
         </div>
       </Section>
 
+      {/* DMT Tools settings */}
+      <Section title="DMT Tools">
+        <label className="flex items-start gap-2 cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={config.dmt?.skipEnvCheck ?? false}
+            onChange={(e) => setNested('dmt', 'skipEnvCheck', e.target.checked)}
+            className="rounded mt-0.5"
+          />
+          <div>
+            <span className="text-sm font-medium text-gray-700">Skip environment check on launch</span>
+            <p className="text-xs text-gray-400 mt-0.5">
+              Skips the WSL package and dependency checks when opening the Ansible app. Use this if your WSL instance is already configured correctly and the check is slowing down access.
+            </p>
+          </div>
+        </label>
+      </Section>
+
       <button onClick={handleSave} disabled={saving} className="btn-primary">
         {saving ? 'Saving...' : 'Save Configuration'}
       </button>

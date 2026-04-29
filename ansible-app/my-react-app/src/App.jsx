@@ -337,7 +337,13 @@ function App() {
   const [taskResult, setTaskResult] = useState('No data yet');
   const [selectedIni, setSelectedIni] = useState('');
   const [selectedYaml, setSelectedYaml] = useState('');
+  const [selectedAnsibleCfg, setSelectedAnsibleCfg] = useState('');
   const [playbookStatus, setPlaybookStatus] = useState('');
+
+  // ansible.cfg file picker
+  const [showCfgPicker, setShowCfgPicker] = useState(false);
+  const [cfgPickerFiles, setCfgPickerFiles] = useState(null);
+  const [cfgPickerCwd, setCfgPickerCwd] = useState('/');
 
   // File browser
   const [files, setFiles] = useState(null);
@@ -594,6 +600,19 @@ function App() {
     editor.focus();
   }
 
+  // ── ansible.cfg picker ────────────────────────────────────────────────────
+
+  function getCfgFiles(fldr) {
+    const folder = fldr && fldr.startsWith('/') ? fldr : '/';
+    fetch(`${BASE}/browse?path=${encodeURIComponent(folder)}&files=1`)
+      .then(r => r.json())
+      .then(data => {
+        setCfgPickerFiles(data);
+        setCfgPickerCwd(data.path || '/');
+      })
+      .catch(console.error);
+  }
+
   // ── Playbook runner ───────────────────────────────────────────────────────
 
   async function SendTask() {
@@ -607,7 +626,7 @@ function App() {
     const response = await fetch(`${BASE}/runplay`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Accept': 'text/event-stream' },
-      body: JSON.stringify({ ini: selectedIni, yaml: selectedYaml }),
+      body: JSON.stringify({ ini: selectedIni, yaml: selectedYaml, ansibleConfig: selectedAnsibleCfg }),
     });
     const reader = response.body.getReader();
     while (true) {
@@ -684,6 +703,82 @@ function App() {
             <span style={{ color: '#dc2626' }}>Delete</span>
           </CtxItem>
         </div>
+      )}
+
+      {/* ── ansible.cfg picker modal ── */}
+      {showCfgPicker && (
+        <>
+          <div onClick={() => setShowCfgPicker(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 1999 }} />
+          <div style={{
+            position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
+            zIndex: 2000, background: '#fff', border: '1px solid #e5e7eb', borderRadius: '10px',
+            boxShadow: '0 20px 60px rgba(0,0,0,0.3)', width: '480px', maxHeight: '480px',
+            display: 'flex', flexDirection: 'column', overflow: 'hidden',
+          }}>
+            <div style={{ padding: '12px 16px', borderBottom: '1px solid #e5e7eb', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
+              <span style={{ fontWeight: 600, fontSize: '14px' }}>Select ansible.cfg</span>
+              <button onClick={() => setShowCfgPicker(false)} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#6b7280', fontSize: '16px', lineHeight: 1 }}>✕</button>
+            </div>
+            <div style={{ padding: '6px 16px', fontSize: '11px', color: '#6b7280', fontFamily: 'ui-monospace, Consolas, monospace', background: '#f9fafb', borderBottom: '1px solid #e5e7eb', flexShrink: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {cfgPickerCwd}
+            </div>
+            {cfgPickerFiles?.worldWritable && (
+              <div style={{ padding: '8px 16px', background: '#fefce8', borderBottom: '1px solid #fde68a', fontSize: '12px', color: '#92400e', flexShrink: 0 }}>
+                ⚠ This directory is world-writable. Ansible will not load a config file from here for security reasons.
+              </div>
+            )}
+            <div style={{ flex: 1, overflow: 'auto', padding: '4px 0' }}>
+              {cfgPickerFiles?.parent !== null && cfgPickerFiles?.parent !== undefined && (
+                <div
+                  style={{ padding: '6px 16px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px' }}
+                  onMouseEnter={e => (e.currentTarget.style.background = '#f3f4f6')}
+                  onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                  onClick={() => getCfgFiles(cfgPickerFiles.parent)}
+                >
+                  <ChevronUp size={14} style={{ color: '#9ca3af', flexShrink: 0 }} />
+                  <span>..</span>
+                </div>
+              )}
+              {cfgPickerFiles?.dirs?.map((name, i) => {
+                const fullDir = cfgPickerCwd === '/' ? `/${name}` : `${cfgPickerCwd}/${name}`;
+                return (
+                  <div key={i}
+                    style={{ padding: '6px 16px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px' }}
+                    onMouseEnter={e => (e.currentTarget.style.background = '#f3f4f6')}
+                    onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                    onClick={() => getCfgFiles(fullDir)}
+                  >
+                    <Folder size={14} style={{ color: '#f59e0b', flexShrink: 0 }} />
+                    <span>{name}</span>
+                  </div>
+                );
+              }) ?? <p style={{ fontSize: '13px', color: '#9ca3af', padding: '8px 16px' }}>Loading…</p>}
+              {cfgPickerFiles?.files?.map((name, i) => {
+                const isCfg = name.endsWith('.cfg');
+                const selectable = isCfg && !cfgPickerFiles.worldWritable;
+                const absPath = cfgPickerCwd === '/' ? `/${name}` : `${cfgPickerCwd}/${name}`;
+                return (
+                  <div key={i}
+                    style={{ padding: '6px 16px', cursor: selectable ? 'pointer' : 'default', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', opacity: selectable ? 1 : 0.35 }}
+                    onMouseEnter={e => { if (selectable) e.currentTarget.style.background = '#f5f3ff'; }}
+                    onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                    onClick={() => {
+                      if (!selectable) return;
+                      setSelectedAnsibleCfg(absPath);
+                      setShowCfgPicker(false);
+                    }}
+                  >
+                    <FileText size={14} style={{ color: isCfg ? '#7c3aed' : '#9ca3af', flexShrink: 0 }} />
+                    <span>{name}</span>
+                  </div>
+                );
+              })}
+            </div>
+            <div style={{ padding: '10px 16px', borderTop: '1px solid #e5e7eb', display: 'flex', justifyContent: 'flex-end', flexShrink: 0 }}>
+              <button onClick={() => setShowCfgPicker(false)} className="btn-secondary" style={{ fontSize: '12px', padding: '4px 12px' }}>Cancel</button>
+            </div>
+          </div>
+        </>
       )}
 
       {/* ── File browser ── */}
@@ -952,6 +1047,22 @@ function App() {
                   </>
                 : <span style={{ color: '#9ca3af', fontSize: '12px' }}>none — right-click an INI file to select</span>}
             </div>
+            <div style={{ fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <span style={{ color: '#6b7280', width: '64px', flexShrink: 0 }}>Config:</span>
+              {selectedAnsibleCfg
+                ? <>
+                    <span style={{ color: '#7c3aed', fontFamily: 'ui-monospace, Consolas, monospace', fontSize: '12px', background: '#f5f3ff', padding: '2px 6px', borderRadius: '4px', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '300px' }}>{selectedAnsibleCfg}</span>
+                    <button onClick={() => setSelectedAnsibleCfg('')} title="Clear" style={clearBtnStyle}>✕</button>
+                  </>
+                : <>
+                    <span style={{ color: '#9ca3af', fontSize: '12px' }}>none (optional)</span>
+                    <button
+                      onClick={() => { setShowCfgPicker(true); getCfgFiles('/'); }}
+                      className="btn-secondary"
+                      style={{ fontSize: '11px', padding: '2px 8px', marginLeft: '4px' }}
+                    >Browse…</button>
+                  </>}
+            </div>
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -972,7 +1083,7 @@ function App() {
         </div>
 
         <div className="subpanel" style={{ maxHeight: '340px' }}>
-          <h4 style={{ marginBottom: '8px' }}>Task output</h4>
+          <h4 style={{ marginBottom: '8px' }}>Raw output</h4>
           <div id="taskoutput" style={{ fontFamily: 'ui-monospace, Consolas, monospace', fontSize: '12px', color: '#374151', overflow: 'auto', maxHeight: '260px' }}>
             {typeof taskResult === 'string'
               ? <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>{taskResult || <span style={{ color: '#9ca3af' }}>No output yet.</span>}</pre>
@@ -981,7 +1092,7 @@ function App() {
         </div>
 
         <div className="subpanel" style={{ maxHeight: '340px' }}>
-          <h4 style={{ marginBottom: '8px' }}>Play output</h4>
+          <h4 style={{ marginBottom: '8px' }}>Formatted output</h4>
           <div style={{ overflow: 'auto', maxHeight: '270px' }}>
             {typeof playResults === 'object' && playResults != null
               ? Object.entries(playResults.msg.plays).map(([key, value]) =>

@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import Editor from '@monaco-editor/react';
 import {
   Upload, Trash2, FileText, Download, RefreshCw, Pencil, GitBranch,
-  AlertTriangle, Image, Code2, FolderOpen, PuzzleIcon, Save, X, Copy, Type,
+  AlertTriangle, Image, Code2, FolderOpen, PuzzleIcon, Save, X, Copy, Type, ExternalLink,
 } from 'lucide-react';
 import {
   getPackage, listFiles, uploadFiles, deleteFile, regeneratePackage,
@@ -13,7 +13,7 @@ import {
   getPsadtStatus, trustPsGallery, installPsadtModule, populateToolkit,
   createExtensionStubs, createAssetReadme,
   readEntryScript, saveEntryScript,
-  getConfig, copyDefaultFiles,
+  getConfig, copyDefaultFiles, openInVscode,
 } from '../api';
 
 // ── Constants ──────────────────────────────────────────────────────────────────
@@ -565,6 +565,7 @@ export default function PackageDetail() {
   const [activeTab, setActiveTab] = useState('files');
   const [editingScript, setEditingScript] = useState(false);
   const [hasDefaultFiles, setHasDefaultFiles] = useState(false);
+  const [packagesBasePath, setPackagesBasePath] = useState('');
   const fileInputRef = useRef();
 
   const load = async () => {
@@ -585,7 +586,10 @@ export default function PackageDetail() {
   useEffect(() => { load(); }, [appName, version]);
 
   useEffect(() => {
-    getConfig().then(cfg => setHasDefaultFiles(!!cfg.defaultFiles?.sourcePath)).catch(() => {});
+    getConfig().then(cfg => {
+      setHasDefaultFiles(!!cfg.defaultFiles?.sourcePath);
+      setPackagesBasePath(cfg.packages?.basePath || '');
+    }).catch(() => {});
   }, []);
 
   const handleUpload = async (e) => {
@@ -648,7 +652,7 @@ export default function PackageDetail() {
   const entryScriptName = isV4 ? 'Invoke-AppDeployToolkit.ps1' : 'Deploy-Application.ps1';
 
   return (
-    <div className="max-w-3xl">
+    <div className="max-w-4xl">
       {editingScript && (
         <TextEditorModal
           filename={entryScriptName}
@@ -670,16 +674,25 @@ export default function PackageDetail() {
           </div>
         </div>
         <div className="flex gap-2">
-          <button onClick={() => navigate(`/packages/${appName}/${version}/edit`)} className="btn-secondary" title="Edit package settings">
+          {packagesBasePath && (
+            <button
+              onClick={() => openInVscode(`${packagesBasePath}\\${appName}\\${version}`)}
+              className="btn-secondary text-xs"
+              title="Open package folder in VS Code"
+            >
+              <ExternalLink size={16} /> VS Code
+            </button>
+          )}
+          <button onClick={() => navigate(`/packages/${appName}/${version}/edit`)} className="btn-secondary text-xs" title="Edit package settings">
             <Pencil size={16} /> Edit
           </button>
-          <button onClick={handleRegenerate} className="btn-secondary" title="Regenerate scripts from current templates">
+          <button onClick={handleRegenerate} className="btn-secondary text-xs" title="Regenerate scripts from current templates">
             <RefreshCw size={16} /> Regenerate Scripts
           </button>
-          <button onClick={handlePublish} disabled={publishing} className="btn-secondary" title="Commit package to Git repository">
+          <button onClick={handlePublish} disabled={publishing} className="btn-secondary text-xs" title="Commit package to Git repository">
             <GitBranch size={16} /> {publishing ? 'Publishing…' : 'Publish to Repo'}
           </button>
-          <a href={`/api/packages/${appName}/${version}/download`} className="btn-primary">
+          <a href={`/api/packages/${appName}/${version}/download`} className="btn-primary text-xs">
             <Download size={16} /> Download ZIP
           </a>
         </div>
