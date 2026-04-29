@@ -441,6 +441,7 @@ function probeMsi(buffer) {
             manufacturer: data.Manufacturer || '',
             version: data.ProductVersion || '',
             upgradeCode: stripBraces(data.UpgradeCode),
+            productCode: stripBraces(data.ProductCode),
             platform,
           });
         } catch (e) {

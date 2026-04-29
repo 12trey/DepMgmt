@@ -1,11 +1,20 @@
 const executionService = require('../services/executionService');
 
+function parseTargets(target) {
+  if (!target || !target.trim()) return [];
+  return target.split(/[\s,]+/).map((s) => s.trim()).filter(Boolean);
+}
+
 exports.run = async (req, res) => {
   try {
     const { appName, version, mode, deploymentType, target, username, password } = req.body;
-    const result = target
-      ? await executionService.runRemote(appName, version, mode || 'Silent', target, username, password, deploymentType || 'Install')
-      : await executionService.runPackage(appName, version, mode || 'Silent', deploymentType || 'Install', username || undefined, password || undefined);
+    const targets = parseTargets(target);
+    let result;
+    if (targets.length === 0) {
+      result = await executionService.runPackage(appName, version, mode || 'Silent', deploymentType || 'Install', username || undefined, password || undefined);
+    } else {
+      result = await executionService.runMultiTarget(appName, version, mode || 'Silent', deploymentType || 'Install', targets, username || undefined, password || undefined);
+    }
     res.json(result);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -14,8 +23,9 @@ exports.run = async (req, res) => {
 
 exports.runWrapper = async (req, res) => {
   try {
-    const { steps } = req.body; // [{ appName, version, mode }]
-    const result = await executionService.runWrapper(steps);
+    const { steps, target, username, password } = req.body;
+    const targets = parseTargets(target);
+    const result = await executionService.runWrapper(steps, targets, username || undefined, password || undefined);
     res.json(result);
   } catch (err) {
     res.status(500).json({ error: err.message });

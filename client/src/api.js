@@ -43,8 +43,8 @@ export async function uploadFiles(appName, version, files) {
 // Execution
 export const runPackage = (appName, version, mode, deploymentType, target, username, password) =>
   request('/execution/run', { method: 'POST', body: JSON.stringify({ appName, version, mode, deploymentType, target, username, password }) });
-export const runWrapper = (steps) =>
-  request('/execution/run-wrapper', { method: 'POST', body: JSON.stringify({ steps }) });
+export const runWrapper = (steps, target, username, password) =>
+  request('/execution/run-wrapper', { method: 'POST', body: JSON.stringify({ steps, target, username, password }) });
 export const getExecStatus = (id) => request(`/execution/status/${id}`);
 export const listLogs = () => request('/execution/logs');
 export const getLog = (id) => request(`/execution/logs/${id}`);
@@ -117,6 +117,8 @@ export const browseFolder = (initialPath = '') =>
   request('/config/browse-folder', { method: 'POST', body: JSON.stringify({ initialPath }) });
 export const browseFile = (filters = []) =>
   request('/config/browse-file', { method: 'POST', body: JSON.stringify({ filters }) });
+export const openInVscode = (path) =>
+  request('/config/open-in-vscode', { method: 'POST', body: JSON.stringify({ path }) });
 
 // MSI Builder
 export const detectMsiTools = () => request('/msi/detect-tools');
