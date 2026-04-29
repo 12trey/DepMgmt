@@ -7,6 +7,7 @@ const process = require('process');
 const { exec, spawn } = require('child_process');
 const { promisify } = require('util');
 const { cwd } = require('process');
+const yaml = require('js-yaml');
 
 const execPromise = promisify(exec);
 
@@ -583,6 +584,37 @@ app.post('/config/app', (req, res) => {
   config.repoFolder = folder;
   writeConfig(config);
   res.json({ ok: true });
+});
+
+// Custom snippets file path
+app.get('/config/custom-snippets', (req, res) => {
+  const config = readConfig();
+  res.json({ path: config.customSnippetsPath || '' });
+});
+
+app.post('/config/custom-snippets', (req, res) => {
+  const { path: snippetsPath } = req.body;
+  const config = readConfig();
+  config.customSnippetsPath = snippetsPath || '';
+  writeConfig(config);
+  res.json({ ok: true });
+});
+
+// Read and return the custom snippets array from the configured YAML file.
+// Returns [] silently on any error so App.jsx doesn't need error handling.
+app.get('/config/snippets', (req, res) => {
+  const config = readConfig();
+  const filePath = config.customSnippetsPath || '';
+  if (!filePath) return res.json([]);
+  try {
+    const raw = fs.readFileSync(filePath, 'utf-8');
+    const parsed = yaml.load(raw);
+    if (!Array.isArray(parsed)) return res.json([]);
+    const valid = parsed.filter(x => x && typeof x.name === 'string' && typeof x.snippet === 'string');
+    res.json(valid);
+  } catch {
+    res.json([]);
+  }
 });
 
 // Returns the WSL distro name for this instance (set automatically by WSL)

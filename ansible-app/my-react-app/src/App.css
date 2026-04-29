@@ -1,11 +1,15 @@
 /* ── Layout ─────────────────────────────────────────────────────────────────── */
 
-#filebrowser {
+#layout {
   position: absolute;
-  top: 10px;
-  left: 10px;
-  bottom: 10px;
-  width: 220px;
+  inset: 10px;
+  display: flex;
+  overflow: hidden;
+}
+
+#filebrowser {
+  flex-shrink: 0;
+  overflow: hidden;
 }
 
 .filebrowser {
@@ -21,12 +25,27 @@
   overflow-x: hidden;
 }
 
-#center {
+.split-handle {
+  flex-shrink: 0;
+  width: 8px;
+  cursor: col-resize;
+  position: relative;
+}
+.split-handle::after {
+  content: '';
   position: absolute;
-  left: 240px;
-  top: 10px;
-  right: 10px;
-  bottom: 10px;
+  top: 0; bottom: 0;
+  left: 3px;
+  width: 2px;
+  border-radius: 1px;
+  background: transparent;
+  transition: background 0.15s;
+}
+.split-handle:hover::after { background: #93c5fd; }
+
+#center {
+  flex: 1;
+  min-width: 0;
   overflow: auto;
   display: flex;
   flex-direction: column;

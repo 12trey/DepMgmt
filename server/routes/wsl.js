@@ -389,6 +389,18 @@ chmod +x /tmp/dmt-launch.sh
   }
 });
 
+// POST /api/wsl/repair — run npm install in the app directory to fix missing dependencies
+router.post('/repair', async (req, res) => {
+  const { instance } = req.body;
+  if (!instance) return res.status(400).json({ error: 'instance is required' });
+  try {
+    await wslExec(instance, `cd "${APP_PATH}" && npm install`);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // POST /api/wsl/sync — rsync ansible-app/ into WSL, rebuild the React app, and restart app.js
 // Body: { instance }
 router.post('/sync', async (req, res) => {
@@ -407,7 +419,10 @@ rsync -av --delete \
   "${ANSIBLE_APP_WSL}/" "${APP_PATH}/"
 `);
 
-    // 2. Rebuild the embedded React app
+    // 2. Install backend npm dependencies (picks up any newly added packages)
+    await wslExec(instance, `cd "${APP_PATH}" && npm install`);
+
+    // 3. Rebuild the embedded React app
     await wslExec(instance, `cd "${APP_PATH}/my-react-app" && npm run build`);
 
     // 3. Kill the existing app.js process (ignore error if it wasn't running)
