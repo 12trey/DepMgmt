@@ -12,6 +12,83 @@ function mainApi(path, opts = {}) {
   return fetch(`${MAIN_BASE}${path}`, opts);
 }
 
+// ── WSL filesystem file browser modal (for .json file selection) ──────────────
+
+function FileBrowser({ current, onSelect, onClose }) {
+  const [browsePath, setBrowsePath] = useState('/');
+  const [entries, setEntries] = useState({ path: '/', parent: null, dirs: [], files: [] });
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    const start = current && current !== '/'
+      ? (current.split('/').slice(0, -1).join('/') || '/')
+      : '/';
+    navigate(start);
+  }, []);
+
+  async function navigate(p) {
+    setLoading(true);
+    setError('');
+    try {
+      const res = await api(`/browse?path=${encodeURIComponent(p)}&files=1`);
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      setEntries({
+        ...data,
+        files: (data.files || []).filter(f => f.endsWith('.yaml') || f.endsWith('.yml')),
+      });
+      setBrowsePath(data.path);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+      <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: '10px', padding: '20px', width: '480px', maxHeight: '70vh', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
+        <h3 style={{ margin: '0 0 12px', fontSize: '15px', color: '#111827' }}>Select Custom Snippets YAML</h3>
+        <div style={{ background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: '6px', padding: '6px 10px', fontFamily: 'ui-monospace, Consolas, monospace', fontSize: '12px', color: '#374151', marginBottom: '8px', wordBreak: 'break-all' }}>
+          {browsePath}
+        </div>
+        {error && <div style={{ color: '#dc2626', fontSize: '12px', marginBottom: '8px' }}>{error}</div>}
+        <div style={{ flex: 1, overflowY: 'auto', border: '1px solid #e5e7eb', borderRadius: '6px', minHeight: '200px' }}>
+          {loading && <div style={{ padding: '12px', color: '#9ca3af', fontSize: '13px' }}>Loading…</div>}
+          {!loading && entries.parent !== null && (
+            <div onClick={() => navigate(entries.parent)} style={dirRowStyle(false)}>
+              <span style={{ marginRight: '6px' }}>📁</span>..
+            </div>
+          )}
+          {!loading && entries.dirs.map(d => {
+            const fp = entries.path === '/' ? `/${d}` : `${entries.path}/${d}`;
+            return (
+              <div key={d} onClick={() => navigate(fp)} style={dirRowStyle(false)}>
+                <span style={{ marginRight: '6px' }}>📁</span>{d}
+              </div>
+            );
+          })}
+          {!loading && entries.files.map(f => {
+            const fp = entries.path === '/' ? `/${f}` : `${entries.path}/${f}`;
+            return (
+              <div key={f} onClick={() => onSelect(fp)} style={{ ...dirRowStyle(fp === current), color: fp === current ? '#2563eb' : '#059669' }}>
+                <span style={{ marginRight: '6px' }}>📄</span>{f}
+              </div>
+            );
+          })}
+          {!loading && entries.dirs.length === 0 && entries.files.length === 0 && (
+            <div style={{ padding: '12px', color: '#9ca3af', fontSize: '13px' }}>No subdirectories or .yaml/.yml files here</div>
+          )}
+        </div>
+        <div style={{ display: 'flex', gap: '8px', marginTop: '12px', justifyContent: 'flex-end' }}>
+          <button onClick={onClose} style={btnStyle('secondary')}>Cancel</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── WSL directory browser modal ────────────────────────────────────────────────
 
 function FolderBrowser({ current, onSelect, onClose }) {
@@ -175,6 +252,12 @@ function Config() {
   const [showBrowser, setShowBrowser] = useState(false);
   const [folderStatus, setFolderStatus] = useState('');
 
+  // Custom snippets state
+  const [snippetsPath, setSnippetsPath] = useState('');
+  const [savedSnippetsPath, setSavedSnippetsPath] = useState('');
+  const [showFileBrowser, setShowFileBrowser] = useState(false);
+  const [snippetsStatus, setSnippetsStatus] = useState('');
+
   // Kerberos form state
   const [realm, setRealm] = useState('');
   const [kdcServers, setKdcServers] = useState([]);
@@ -188,6 +271,11 @@ function Config() {
       .then(r => r.json())
       .then(d => { setRepoFolder(d.repoFolder || DEFAULT_REPO); setSavedFolder(d.repoFolder || DEFAULT_REPO); })
       .catch(() => { setRepoFolder(DEFAULT_REPO); setSavedFolder(DEFAULT_REPO); });
+
+    api('/config/custom-snippets')
+      .then(r => r.json())
+      .then(d => { setSnippetsPath(d.path || ''); setSavedSnippetsPath(d.path || ''); })
+      .catch(() => {});
 
     api('/config/instance')
       .then(r => r.json())
@@ -219,6 +307,23 @@ function Config() {
       setFolderStatus('Saved.');
     } catch (e) {
       setFolderStatus(`Error: ${e.message}`);
+    }
+  }
+
+  async function saveSnippetsPath() {
+    setSnippetsStatus('');
+    try {
+      const res = await api('/config/custom-snippets', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: snippetsPath }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      setSavedSnippetsPath(snippetsPath);
+      setSnippetsStatus('Saved.');
+    } catch (e) {
+      setSnippetsStatus(`Error: ${e.message}`);
     }
   }
 
@@ -276,6 +381,38 @@ function Config() {
         </div>
       </section>
 
+      {/* ── Custom Snippets ───────────────────────────────── */}
+      <section style={sectionStyle}>
+        <h3 style={sectionTitleStyle}>Ansible Custom Snippets</h3>
+        <p style={descStyle}>
+          Path to a YAML file containing a list of custom snippet objects. Each item must have <code>name</code> and <code>snippet</code> string fields, and optionally <code>desc</code>.
+          Use the <code>|</code> block scalar for multi-line snippets. The file can live on the Windows filesystem (accessible via <code>/mnt/c/...</code>) or anywhere in WSL.
+        </p>
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+          <input
+            value={snippetsPath}
+            onChange={e => setSnippetsPath(e.target.value)}
+            placeholder="e.g. /mnt/c/Users/you/snippets.yaml"
+            style={inputStyle}
+            spellCheck={false}
+          />
+          <button onClick={() => setShowFileBrowser(true)} style={btnStyle('secondary')}>Browse…</button>
+          {snippetsPath && (
+            <button onClick={() => setSnippetsPath('')} style={btnStyle('secondary')}>Clear</button>
+          )}
+        </div>
+        <div style={{ marginTop: '8px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <button
+            onClick={saveSnippetsPath}
+            disabled={snippetsPath === savedSnippetsPath}
+            style={btnStyle('primary', snippetsPath === savedSnippetsPath)}
+          >
+            Save
+          </button>
+          <StatusText msg={snippetsStatus} />
+        </div>
+      </section>
+
       {/* ── Kerberos Configuration ────────────────────────── */}
       <section style={sectionStyle}>
         <h3 style={sectionTitleStyle}>Kerberos Configuration</h3>
@@ -325,6 +462,14 @@ function Config() {
           current={repoFolder}
           onSelect={p => { setRepoFolder(p); setShowBrowser(false); }}
           onClose={() => setShowBrowser(false)}
+        />
+      )}
+
+      {showFileBrowser && (
+        <FileBrowser
+          current={snippetsPath}
+          onSelect={p => { setSnippetsPath(p); setShowFileBrowser(false); }}
+          onClose={() => setShowFileBrowser(false)}
         />
       )}
     </div>

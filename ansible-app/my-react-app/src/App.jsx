@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import Editor from '@monaco-editor/react';
-import { Folder, FileText, ChevronUp, Play, Server } from 'lucide-react';
+import { Folder, FileText, ChevronUp, Play, Server, Maximize2 } from 'lucide-react';
 import './App.css';
 
 const BASE = 'http://localhost:7000';
@@ -329,6 +329,94 @@ function CtxItem({ children, onClick }) {
   );
 }
 
+// ── Floating panel (undocked output) ─────────────────────────────────────────
+
+function FloatingPanel({ title, onDock, defaultW = 600, defaultH = 400, children }) {
+  const [pos, setPos] = useState(() => ({
+    x: Math.max(20, (window.innerWidth - defaultW) / 2),
+    y: Math.max(20, (window.innerHeight - defaultH) / 4),
+  }));
+  const [size, setSize] = useState({ w: defaultW, h: defaultH });
+
+  function startDrag(e) {
+    e.preventDefault();
+    const ox = e.clientX - pos.x;
+    const oy = e.clientY - pos.y;
+    function onMove(ev) { setPos({ x: ev.clientX - ox, y: ev.clientY - oy }); }
+    function onUp() {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+    }
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  }
+
+  function startResize(e, dir) {
+    e.preventDefault();
+    e.stopPropagation();
+    const sx = e.clientX, sy = e.clientY;
+    const sw = size.w, sh = size.h, spx = pos.x, spy = pos.y;
+    function onMove(ev) {
+      const dx = ev.clientX - sx, dy = ev.clientY - sy;
+      let nw = sw, nh = sh, nx = spx, ny = spy;
+      if (dir.includes('e')) nw = Math.max(200, sw + dx);
+      if (dir.includes('w')) { nw = Math.max(200, sw - dx); nx = spx + sw - nw; }
+      if (dir.includes('s')) nh = Math.max(150, sh + dy);
+      if (dir.includes('n')) { nh = Math.max(150, sh - dy); ny = spy + sh - nh; }
+      setSize({ w: nw, h: nh });
+      setPos({ x: nx, y: ny });
+    }
+    function onUp() {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+    }
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  }
+
+  const ez = 6;
+  const edges = [
+    { dir: 'n',  s: { top: 0, left: ez, right: ez, height: ez, cursor: 'n-resize' } },
+    { dir: 's',  s: { bottom: 0, left: ez, right: ez, height: ez, cursor: 's-resize' } },
+    { dir: 'w',  s: { left: 0, top: ez, bottom: ez, width: ez, cursor: 'w-resize' } },
+    { dir: 'e',  s: { right: 0, top: ez, bottom: ez, width: ez, cursor: 'e-resize' } },
+    { dir: 'nw', s: { top: 0, left: 0, width: ez, height: ez, cursor: 'nw-resize' } },
+    { dir: 'ne', s: { top: 0, right: 0, width: ez, height: ez, cursor: 'ne-resize' } },
+    { dir: 'sw', s: { bottom: 0, left: 0, width: ez, height: ez, cursor: 'sw-resize' } },
+    { dir: 'se', s: { bottom: 0, right: 0, width: ez, height: ez, cursor: 'se-resize' } },
+  ];
+
+  return (
+    <div style={{
+      position: 'fixed', left: pos.x, top: pos.y, width: size.w, height: size.h,
+      background: 'var(--panel-bg)', border: '1px solid var(--border)',
+      borderRadius: '8px', boxShadow: '0 8px 24px rgba(0,0,0,0.2)',
+      display: 'flex', flexDirection: 'column', overflow: 'hidden', zIndex: 500,
+    }}>
+      {edges.map(({ dir, s }) => (
+        <div key={dir} onMouseDown={e => startResize(e, dir)} style={{ position: 'absolute', ...s, zIndex: 1 }} />
+      ))}
+      <div
+        onMouseDown={startDrag}
+        style={{
+          padding: '6px 10px', background: '#f9fafb', borderBottom: '1px solid var(--border)',
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          cursor: 'move', flexShrink: 0, userSelect: 'none', zIndex: 2, position: 'relative',
+        }}
+      >
+        <span style={{ fontSize: '12px', fontWeight: 600, color: '#374151' }}>{title}</span>
+        <button
+          onClick={onDock}
+          style={{ background: 'transparent', border: '1px solid #d1d5db', borderRadius: '4px', cursor: 'pointer', color: '#6b7280', fontSize: '11px', padding: '2px 8px', lineHeight: 1.4 }}
+        >Dock</button>
+      </div>
+      <div style={{ flex: 1, overflow: 'auto', padding: '10px' }}>
+        {children}
+      </div>
+    </div>
+  );
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 
 function App() {
@@ -361,6 +449,11 @@ function App() {
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState('');
   const [showTaskPanel, setShowTaskPanel] = useState(false);
+  const [customSnippets, setCustomSnippets] = useState([]);
+  const [snippetFilter, setSnippetFilter] = useState('');
+  const [browserWidth, setBrowserWidth] = useState(220);
+  const [rawDocked, setRawDocked] = useState(true);
+  const [formattedDocked, setFormattedDocked] = useState(true);
 
   const editorRef = useRef(null);
   const monacoRef = useRef(null);
@@ -373,6 +466,13 @@ function App() {
     const dismiss = () => setCtxMenu(null);
     document.addEventListener('click', dismiss);
     return () => document.removeEventListener('click', dismiss);
+  }, []);
+
+  useEffect(() => {
+    fetch(`${BASE}/config/snippets`)
+      .then(r => r.json())
+      .then(d => Array.isArray(d) ? setCustomSnippets(d) : null)
+      .catch(() => {});
   }, []);
 
   // Focus the new-file input when it appears
@@ -600,6 +700,31 @@ function App() {
     editor.focus();
   }
 
+  // js-yaml strips all consistent leading indentation from block scalars, so
+  // custom snippets arrive with 0-indented content. Re-add the standard 4-space
+  // indent and leading newline to match the built-in snippet format.
+  function insertCustomTask(snippet) {
+    const normalized = '\n' + snippet.trimEnd().split('\n')
+      .map(line => line.trim() ? '    ' + line : '')
+      .join('\n') + '\n';
+    insertTask(normalized);
+  }
+
+  function startSplitterDrag(e) {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startW = browserWidth;
+    function onMove(ev) {
+      setBrowserWidth(Math.max(120, Math.min(600, startW + ev.clientX - startX)));
+    }
+    function onUp() {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+    }
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  }
+
   // ── ansible.cfg picker ────────────────────────────────────────────────────
 
   function getCfgFiles(fldr) {
@@ -781,8 +906,10 @@ function App() {
         </>
       )}
 
+      {/* ── Layout (resizable split) ── */}
+      <div id="layout">
       {/* ── File browser ── */}
-      <section id="filebrowser">
+      <section id="filebrowser" style={{ width: browserWidth }}>
         <div className="filebrowser">
           {/* Path breadcrumb */}
           <div style={{ fontSize: '11px', color: '#6b7280', marginBottom: '8px', fontFamily: 'ui-monospace, Consolas, monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -918,6 +1045,7 @@ function App() {
           )}
         </div>
       </section>
+      <div className="split-handle" onMouseDown={startSplitterDrag} />
 
       {/* ── Editor overlay ── */}
       {activeEditor && (
@@ -980,44 +1108,96 @@ function App() {
               </div>
             </div>
 
-            {/* Task injection panel */}
-            {showTaskPanel && activeEditor.language === 'yaml' && (
-              <div style={{ padding: '8px 12px', background: '#111827', borderBottom: '1px solid #1f2937', flexShrink: 0 }}>
-                <div style={{ fontSize: '11px', color: '#6b7280', marginBottom: '6px' }}>
-                  Click a module to insert a scaffold at the cursor
-                </div>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
-                  {WIN_TASKS.map(task => (
-                    <button
-                      key={task.name}
-                      title={task.desc}
-                      onClick={() => insertTask(task.snippet)}
-                      style={{
-                        background: '#1e293b', color: '#93c5fd',
-                        border: '1px solid #334155', borderRadius: '4px',
-                        padding: '3px 8px', fontSize: '11px',
-                        cursor: 'pointer', fontFamily: 'ui-monospace, Consolas, monospace',
-                      }}
-                      onMouseEnter={e => (e.currentTarget.style.background = '#1e3a5f')}
-                      onMouseLeave={e => (e.currentTarget.style.background = '#1e293b')}
-                    >
-                      {task.name}
-                    </button>
-                  ))}
-                </div>
+            <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
+              {/* Monaco editor */}
+              <div style={{ flex: 1, overflow: 'hidden' }}>
+                <Editor
+                  height="100%"
+                  language={activeEditor.language}
+                  value={editorContent}
+                  onChange={val => setEditorContent(val ?? '')}
+                  theme="vs-dark"
+                  onMount={(editor, monaco) => { editorRef.current = editor; monacoRef.current = monaco; }}
+                  options={{ fontSize: 13, minimap: { enabled: false }, scrollBeyondLastLine: false, wordWrap: 'on', automaticLayout: true }}
+                />
               </div>
-            )}
 
-            <div style={{ flex: 1, overflow: 'hidden' }}>
-              <Editor
-                height="100%"
-                language={activeEditor.language}
-                value={editorContent}
-                onChange={val => setEditorContent(val ?? '')}
-                theme="vs-dark"
-                onMount={(editor, monaco) => { editorRef.current = editor; monacoRef.current = monaco; }}
-                options={{ fontSize: 13, minimap: { enabled: false }, scrollBeyondLastLine: false, wordWrap: 'on', automaticLayout: true }}
-              />
+              {/* Snippet sidebar */}
+              {showTaskPanel && activeEditor.language === 'yaml' && (() => {
+                const lf = snippetFilter.toLowerCase();
+                const filteredBuiltin = [...WIN_TASKS]
+                  .sort((a, b) => a.name.localeCompare(b.name))
+                  .filter(t => t.name.toLowerCase().includes(lf));
+                const filteredCustom = [...customSnippets]
+                  .sort((a, b) => a.name.localeCompare(b.name))
+                  .filter(t => t.name.toLowerCase().includes(lf));
+                return (
+                  <div style={{ width: '220px', borderLeft: '1px solid #374151', background: '#111827', display: 'flex', flexDirection: 'column', overflow: 'hidden', flexShrink: 0 }}>
+                    {/* Filter input */}
+                    <div style={{ padding: '7px 8px', borderBottom: '1px solid #374151', flexShrink: 0 }}>
+                      <input
+                        value={snippetFilter}
+                        onChange={e => setSnippetFilter(e.target.value)}
+                        placeholder="Filter snippets…"
+                        style={{
+                          width: '100%', boxSizing: 'border-box',
+                          background: '#1f2937', border: '1px solid #374151', borderRadius: '4px',
+                          color: '#d1d5db', fontSize: '11px', padding: '4px 8px', outline: 'none',
+                        }}
+                      />
+                    </div>
+
+                    {/* List */}
+                    <div style={{ flex: 1, overflowY: 'auto' }}>
+                      {/* Built-in label */}
+                      <div style={{ padding: '5px 10px 3px', fontSize: '9px', color: '#6b7280', letterSpacing: '0.07em', textTransform: 'uppercase', fontWeight: 700 }}>
+                        Built-in
+                      </div>
+
+                      {filteredBuiltin.map(task => (
+                        <div
+                          key={task.name}
+                          title={task.desc}
+                          onClick={() => insertTask(task.snippet)}
+                          style={{ padding: '4px 10px', fontSize: '11px', color: '#93c5fd', cursor: 'pointer', fontFamily: 'ui-monospace, Consolas, monospace', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
+                          onMouseEnter={e => (e.currentTarget.style.background = '#1e3a5f')}
+                          onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                        >
+                          {task.name}
+                        </div>
+                      ))}
+                      {filteredBuiltin.length === 0 && (
+                        <div style={{ padding: '4px 10px', fontSize: '11px', color: '#4b5563', fontStyle: 'italic' }}>No matches</div>
+                      )}
+
+                      {/* Custom snippets section */}
+                      {customSnippets.length > 0 && (
+                        <>
+                          <div style={{ borderTop: '1px solid #374151', margin: '4px 0' }} />
+                          <div style={{ padding: '5px 10px 3px', fontSize: '9px', color: '#6b7280', letterSpacing: '0.07em', textTransform: 'uppercase', fontWeight: 700 }}>
+                            Custom
+                          </div>
+                          {filteredCustom.map((task, i) => (
+                            <div
+                              key={i}
+                              title={task.desc || task.name}
+                              onClick={() => insertCustomTask(task.snippet)}
+                              style={{ padding: '4px 10px', fontSize: '11px', color: '#86efac', cursor: 'pointer', fontFamily: 'ui-monospace, Consolas, monospace', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
+                              onMouseEnter={e => (e.currentTarget.style.background = '#14532d')}
+                              onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                            >
+                              {task.name}
+                            </div>
+                          ))}
+                          {filteredCustom.length === 0 && (
+                            <div style={{ padding: '4px 10px', fontSize: '11px', color: '#4b5563', fontStyle: 'italic' }}>No matches</div>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
           </div>
         </>
@@ -1082,17 +1262,38 @@ function App() {
           </div>
         </div>
 
-        <div className="subpanel" style={{ maxHeight: '340px' }}>
-          <h4 style={{ marginBottom: '8px' }}>Raw output</h4>
-          <div id="taskoutput" style={{ fontFamily: 'ui-monospace, Consolas, monospace', fontSize: '12px', color: '#374151', overflow: 'auto', maxHeight: '260px' }}>
-            {typeof taskResult === 'string'
-              ? <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>{taskResult || <span style={{ color: '#9ca3af' }}>No output yet.</span>}</pre>
-              : JSON.stringify(taskResult)}
+        {rawDocked ? (
+          <div className="subpanel" style={{ maxHeight: '340px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+              <h4>Raw output</h4>
+              <button onClick={() => setRawDocked(false)} title="Undock" style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#9ca3af', padding: '2px', display: 'flex', alignItems: 'center' }}>
+                <Maximize2 size={14} />
+              </button>
+            </div>
+            <div id="taskoutput" style={{ fontFamily: 'ui-monospace, Consolas, monospace', fontSize: '12px', color: '#374151', overflow: 'auto', maxHeight: '260px' }}>
+              {typeof taskResult === 'string'
+                ? <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>{taskResult || <span style={{ color: '#9ca3af' }}>No output yet.</span>}</pre>
+                : JSON.stringify(taskResult)}
+            </div>
           </div>
-        </div>
+        ) : (
+          <FloatingPanel title="Raw output" onDock={() => setRawDocked(true)}>
+            <div id="taskoutput" style={{ fontFamily: 'ui-monospace, Consolas, monospace', fontSize: '12px', color: '#374151' }}>
+              {typeof taskResult === 'string'
+                ? <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>{taskResult || <span style={{ color: '#9ca3af' }}>No output yet.</span>}</pre>
+                : JSON.stringify(taskResult)}
+            </div>
+          </FloatingPanel>
+        )}
 
-        <div className="subpanel" style={{ maxHeight: '340px' }}>
-          <h4 style={{ marginBottom: '8px' }}>Formatted output</h4>
+        {formattedDocked ? (
+          <div className="subpanel" style={{ maxHeight: '340px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+              <h4>Formatted output</h4>
+              <button onClick={() => setFormattedDocked(false)} title="Undock" style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#9ca3af', padding: '2px', display: 'flex', alignItems: 'center' }}>
+                <Maximize2 size={14} />
+              </button>
+            </div>
           <div style={{ overflow: 'auto', maxHeight: '270px' }}>
             {typeof playResults === 'object' && playResults != null
               ? Object.entries(playResults.msg.plays).map(([key, value]) =>
@@ -1116,8 +1317,34 @@ function App() {
                 )
               : <span style={{ color: '#9ca3af', fontSize: '13px' }}>No results yet.</span>}
           </div>
-        </div>
+          </div>
+        ) : (
+          <FloatingPanel title="Formatted output" onDock={() => setFormattedDocked(true)}>
+            {typeof playResults === 'object' && playResults != null
+              ? Object.entries(playResults.msg.plays).map(([key, value]) =>
+                  value.tasks
+                    ? Object.entries(value.tasks).map(([taskKey, taskValue]) =>
+                        taskValue.hosts
+                          ? Object.entries(taskValue.hosts).map(([hostKey, hostValue]) => (
+                            <div key={`${key}-${taskKey}-${hostKey}`} style={{ marginBottom: '12px', padding: '10px', background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: '6px', fontSize: '13px' }}>
+                              <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '2px 10px', marginBottom: '8px' }}>
+                                <span style={{ color: '#6b7280', fontWeight: 500 }}>Task</span><span>{taskValue.task.name}</span>
+                                <span style={{ color: '#6b7280', fontWeight: 500 }}>Host</span><span>{hostKey}</span>
+                                <span style={{ color: '#6b7280', fontWeight: 500 }}>Start</span><span>{taskValue.task.duration.start}</span>
+                                <span style={{ color: '#6b7280', fontWeight: 500 }}>End</span><span>{taskValue.task.duration.end}</span>
+                              </div>
+                              <pre style={{ fontFamily: 'ui-monospace, Consolas, monospace', fontSize: '12px', margin: 0, background: '#fff', padding: '8px', borderRadius: '4px', border: '1px solid #e5e7eb', overflow: 'auto', whiteSpace: 'pre-wrap' }}>{ hostValue.stdout ? hostValue.stdout : hostValue.output ? hostValue.output : hostValue.msg ? hostValue.msg : "" }</pre>
+                            </div>
+                          ))
+                          : null
+                      )
+                    : null
+                )
+              : <span style={{ color: '#9ca3af', fontSize: '13px' }}>No results yet.</span>}
+          </FloatingPanel>
+        )}
       </section>
+      </div>
     </>
   );
 }

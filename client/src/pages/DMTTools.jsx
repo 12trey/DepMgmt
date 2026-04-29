@@ -53,6 +53,16 @@ async function syncApp(instance) {
   return r.json();
 }
 
+async function repairApp(instance) {
+  const r = await fetch('/api/wsl/repair', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ instance }),
+  });
+  if (!r.ok) throw new Error(await r.text());
+  return r.json();
+}
+
 async function launchApp(instance) {
   const r = await fetch('/api/wsl/launch', {
     method: 'POST',
@@ -264,6 +274,8 @@ export default function DMTTools() {
   const [serviceAvailable, setServiceAvailable] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [syncMsg, setSyncMsg] = useState('');
+  const [repairing, setRepairing] = useState(false);
+  const [repairMsg, setRepairMsg] = useState('');
   const [showTerminal, setShowTerminal] = useState(false);
   const [requiresSudo, setRequiresSudo] = useState(false);
   const [krb5Config, setKrb5Config] = useState(DEFAULT_KRB5);
@@ -455,6 +467,27 @@ export default function DMTTools() {
     }
   };
 
+  const handleRepair = async () => {
+    setRepairing(true);
+    setRepairMsg('');
+    const gen = ++opGenRef.current;
+    try {
+      await repairApp(selectedInstance);
+      if (opGenRef.current !== gen) return;
+      setRepairMsg('npm install complete — launching…');
+      setError('');
+      setStage('launching');
+      await launchApp(selectedInstance);
+      if (opGenRef.current !== gen) return;
+      startPolling(selectedInstance);
+    } catch (err) {
+      if (opGenRef.current !== gen) return;
+      setRepairMsg(`Repair failed: ${err.message}`);
+    } finally {
+      if (opGenRef.current === gen) setRepairing(false);
+    }
+  };
+
   const handleSync = async () => {
     setSyncing(true);
     setSyncMsg('');
@@ -564,7 +597,8 @@ export default function DMTTools() {
 
   return (
     <div className="flex flex-col items-center justify-center min-h-64 py-8">
-      <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-6 w-full max-w-lg space-y-5">
+      <div className="w-full max-w-lg flex flex-col gap-3">
+      <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-6 w-full space-y-5">
 
         <div>
           <h2 className="text-base font-semibold text-gray-800">Ansible DMT Tools</h2>
@@ -793,6 +827,41 @@ export default function DMTTools() {
             <RefreshCw size={11} /> Cancel
           </button>
         )}
+      </div>
+
+      {/* ── Recovery toolbar — always visible once an instance is selected ── */}
+      {selectedInstance && stage !== 'select-instance' && (
+        <div className="flex items-center gap-3 px-1 flex-wrap">
+          <button
+            onClick={() => setShowTerminal(v => !v)}
+            className={`flex items-center gap-1 text-xs ${showTerminal ? 'text-green-600 hover:text-green-800' : 'text-gray-500 hover:text-gray-700'}`}
+            title="Open a WSL terminal — works even when the app is down"
+          >
+            <TerminalSquare size={13} /> Terminal
+          </button>
+          {(stage === 'error' || stage === 'launching') && (
+            <button
+              onClick={handleRepair}
+              disabled={repairing}
+              className="flex items-center gap-1 text-xs text-amber-600 hover:text-amber-800 disabled:opacity-50"
+              title="Run npm install in the WSL app directory, then relaunch"
+            >
+              <Wrench size={12} /> {repairing ? 'Repairing…' : 'Repair (npm install)'}
+            </button>
+          )}
+          {repairMsg && (
+            <span className={`text-xs italic ${repairMsg.startsWith('Repair failed') ? 'text-red-500' : 'text-gray-500'}`}>
+              {repairMsg}
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* Terminal panel — connects directly to WSL, works without the app running */}
+      {showTerminal && selectedInstance && (
+        <TerminalPanel instance={selectedInstance} onClose={() => setShowTerminal(false)} />
+      )}
+
       </div>
     </div>
   );

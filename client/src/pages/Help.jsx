@@ -421,6 +421,31 @@ export default function Help() {
             <Code>wsl --unregister MyAnsibleUbuntu</Code>
             </p>
           </Callout>
+          <h3 className="font-semibold mt-3 mb-1">Ansible templates</h3>
+          <p>
+            The ansible app yaml editor supports a basic set of snippets. You can define your own custom
+            snippets yaml file for your own frequently used code snippets. Set the path to your custom
+            snippets file in the ansible Config area.
+          </p>
+          <p className="mt-2 font-medium">Example template:</p>
+          <pre className="bg-gray-950 text-gray-100 rounded p-3 text-xs font-mono overflow-x-auto mt-1">{`
+- name: win_hosts (add)
+  desc: Adds a host record
+  snippet: |
+    - name: Add host entry with canonical name 'bar'
+      ansible.windows.win_hosts:
+        state: present
+        canonical_name: bar
+        ip_address: 127.0.0.1
+
+- name: win_hosts (remove)
+  desc: Removes a host record
+  snippet: |
+    - name: Remove hosts entries with canonical name 'bar'
+      ansible.windows.win_hosts:
+        state: absent
+        canonical_name: bar
+`}</pre>
         </Section>
 
         {/* ── Log Viewer ── */}
