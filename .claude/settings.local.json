@@ -35,7 +35,8 @@
       "Bash(cp C:/Users/trey/source/AICMTrace/public/errorCodes.js C:/Users/trey/source/aipsadt/server/logviewer/public/errorCodes.js)",
       "Bash(ls src/components/FindBar*)",
       "Bash(npm audit *)",
-      "Bash(npm ls *)"
+      "Bash(npm ls *)",
+      "PowerShell(Get-ChildItem \"C:\\\\Users\\\\trey\\\\source\\\\aipsadt\\\\vscode-ext\" -Recurse -Name | Where-Object { $_ -notmatch 'node_modules' })"
     ]
   }
 }

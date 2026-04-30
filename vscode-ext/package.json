@@ -1,0 +1,165 @@
+{
+  "name": "ansible-helper",
+  "displayName": "Ansible Helper",
+  "description": "Insert Ansible task snippets into YAML playbooks and run them in WSL with Kerberos support",
+  "version": "0.1.0",
+  "publisher": "aipsadt",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Snippets",
+    "Other"
+  ],
+  "activationEvents": [
+    "onLanguage:yaml"
+  ],
+  "main": "./extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "ansible.insertSnippet",
+        "title": "Ansible: Insert Snippet"
+      },
+      {
+        "command": "ansible.runPlaybook",
+        "title": "Ansible: Run Playbook"
+      },
+      {
+        "command": "ansible.stopPlaybook",
+        "title": "Ansible: Stop Playbook"
+      },
+      {
+        "command": "ansible.kerberosStatus",
+        "title": "Ansible: Kerberos Status"
+      },
+      {
+        "command": "ansible.kerberosInit",
+        "title": "Ansible: Kerberos Login (kinit)"
+      },
+      {
+        "command": "ansible.kerberosDestroy",
+        "title": "Ansible: Kerberos Logout (kdestroy)"
+      },
+      {
+        "command": "ansible.refreshSnippets",
+        "title": "Refresh",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "ansible.newInventory",
+        "title": "Ansible: New Inventory File"
+      },
+      {
+        "command": "ansible.newPlaybook",
+        "title": "Ansible: New Playbook"
+      },
+      {
+        "command": "ansible.editKrb5Conf",
+        "title": "Ansible: Edit krb5.conf"
+      },
+      {
+        "command": "ansible.editKrb5Conf",
+        "title": "Ansible: Edit krb5.conf (graphical)"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "ansibleExplorer",
+          "title": "Ansible",
+          "icon": "$(list-unordered)"
+        }
+      ]
+    },
+    "views": {
+      "ansibleExplorer": [
+        {
+          "id": "ansibleSnippets",
+          "name": "Snippets"
+        }
+      ]
+    },
+    "menus": {
+      "view/title": [
+        {
+          "command": "ansible.refreshSnippets",
+          "when": "view == ansibleSnippets",
+          "group": "navigation"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "ansible.runPlaybook",
+          "when": "resourceExtname == .yaml || resourceExtname == .yml",
+          "group": "ansible@1"
+        },
+        {
+          "command": "ansible.insertSnippet",
+          "when": "resourceExtname == .yaml || resourceExtname == .yml",
+          "group": "ansible@2"
+        },
+        {
+          "command": "ansible.editKrb5Conf",
+          "when": "resourceExtname == .conf",
+          "group": "ansible@3"
+        }
+      ],
+      "explorer/context": [
+        {
+          "command": "ansible.newInventory",
+          "group": "ansible@1"
+        },
+        {
+          "command": "ansible.newPlaybook",
+          "group": "ansible@2"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Ansible Helper",
+      "properties": {
+        "ansible.repoFolder": {
+          "type": "string",
+          "default": "/home/ansibleapp/repo",
+          "description": "WSL path to your Ansible repo folder"
+        },
+        "ansible.ansiblePlaybookPath": {
+          "type": "string",
+          "default": "ansible-playbook",
+          "description": "WSL path to ansible-playbook executable (e.g. /home/.ansiblevenv/bin/ansible-playbook)"
+        },
+        "ansible.defaultInventory": {
+          "type": "string",
+          "default": ".hosts.ini",
+          "description": "Default inventory file (relative to repo folder)"
+        },
+        "ansible.defaultAnsibleConfig": {
+          "type": "string",
+          "default": "",
+          "description": "WSL path to ansible.cfg (optional)"
+        },
+        "ansible.wslDistro": {
+          "type": "string",
+          "default": "",
+          "description": "WSL distro name to use (leave blank for default)"
+        },
+        "ansible.customSnippetsPath": {
+          "type": "string",
+          "default": "",
+          "description": "WSL path to a YAML file containing custom snippets"
+        },
+        "ansible.verbosity": {
+          "type": "number",
+          "default": 1,
+          "minimum": 0,
+          "maximum": 5,
+          "description": "ansible-playbook verbosity level (0-5)"
+        }
+      }
+    }
+  },
+  "dependencies": {
+    "js-yaml": "^4.1.1"
+  }
+}
