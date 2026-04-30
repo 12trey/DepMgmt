@@ -287,7 +287,7 @@ const clearBtnStyle = {
   background: 'transparent',
   border: 'none',
   cursor: 'pointer',
-  color: '#9ca3af',
+  color: 'var(--muted)',
   fontSize: '11px',
   lineHeight: 1,
   padding: '2px 4px',
@@ -298,7 +298,7 @@ const clearBtnStyle = {
 const ctxItemStyle = {
   padding: '6px 12px',
   fontSize: '13px',
-  color: '#374151',
+  color: 'var(--text)',
   cursor: 'pointer',
   userSelect: 'none',
   whiteSpace: 'nowrap',
@@ -307,20 +307,20 @@ const ctxItemStyle = {
 const ctxLabelStyle = {
   padding: '6px 12px 5px',
   fontSize: '11px',
-  color: '#6b7280',
-  borderBottom: '1px solid #e5e7eb',
+  color: 'var(--muted)',
+  borderBottom: '1px solid var(--border)',
   fontFamily: 'ui-monospace, Consolas, monospace',
   overflow: 'hidden',
   textOverflow: 'ellipsis',
   maxWidth: '220px',
-  background: '#f9fafb',
+  background: 'var(--bg)',
 };
 
 function CtxItem({ children, onClick }) {
   return (
     <div
       style={ctxItemStyle}
-      onMouseEnter={e => (e.currentTarget.style.background = '#f3f4f6')}
+      onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-hover)')}
       onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
       onClick={onClick}
     >
@@ -399,15 +399,15 @@ function FloatingPanel({ title, onDock, defaultW = 600, defaultH = 400, children
       <div
         onMouseDown={startDrag}
         style={{
-          padding: '6px 10px', background: '#f9fafb', borderBottom: '1px solid var(--border)',
+          padding: '6px 10px', background: 'var(--bg)', borderBottom: '1px solid var(--border)',
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
           cursor: 'move', flexShrink: 0, userSelect: 'none', zIndex: 2, position: 'relative',
         }}
       >
-        <span style={{ fontSize: '12px', fontWeight: 600, color: '#374151' }}>{title}</span>
+        <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text)' }}>{title}</span>
         <button
           onClick={onDock}
-          style={{ background: 'transparent', border: '1px solid #d1d5db', borderRadius: '4px', cursor: 'pointer', color: '#6b7280', fontSize: '11px', padding: '2px 8px', lineHeight: 1.4 }}
+          style={{ background: 'transparent', border: '1px solid var(--border-dark)', borderRadius: '4px', cursor: 'pointer', color: 'var(--muted)', fontSize: '11px', padding: '2px 8px', lineHeight: 1.4 }}
         >Dock</button>
       </div>
       <div style={{ flex: 1, overflow: 'auto', padding: '10px' }}>
@@ -785,8 +785,8 @@ function App() {
           onClick={e => e.stopPropagation()}
           style={{
             position: 'fixed', top: ctxMenu.y, left: ctxMenu.x,
-            zIndex: 9999, background: '#fff',
-            border: '1px solid #e5e7eb', borderRadius: '8px',
+            zIndex: 9999, background: 'var(--panel-bg)',
+            border: '1px solid var(--border)', borderRadius: '8px',
             minWidth: '170px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -1px rgba(0,0,0,0.06)',
             overflow: 'hidden', padding: '4px 0',
           }}
@@ -813,7 +813,7 @@ function App() {
               {selectedIni === fullPath(ctxMenu.item) ? 'Deselect Hosts' : 'Set as Hosts'}
             </CtxItem>
           )}
-          <div style={{ borderTop: '1px solid #e5e7eb', margin: '4px 0' }} />
+          <div style={{ borderTop: '1px solid var(--border)', margin: '4px 0' }} />
           <CtxItem onClick={() => {
             const name = ctxMenu.item.split('/').pop();
             setRenameFile({ item: ctxMenu.item, path: fullPath(ctxMenu.item), name });
@@ -836,15 +836,15 @@ function App() {
           <div onClick={() => setShowCfgPicker(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 1999 }} />
           <div style={{
             position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
-            zIndex: 2000, background: '#fff', border: '1px solid #e5e7eb', borderRadius: '10px',
+            zIndex: 2000, background: 'var(--panel-bg)', border: '1px solid var(--border)', borderRadius: '10px',
             boxShadow: '0 20px 60px rgba(0,0,0,0.3)', width: '480px', maxHeight: '480px',
             display: 'flex', flexDirection: 'column', overflow: 'hidden',
           }}>
-            <div style={{ padding: '12px 16px', borderBottom: '1px solid #e5e7eb', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
+            <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
               <span style={{ fontWeight: 600, fontSize: '14px' }}>Select ansible.cfg</span>
-              <button onClick={() => setShowCfgPicker(false)} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#6b7280', fontSize: '16px', lineHeight: 1 }}>✕</button>
+              <button onClick={() => setShowCfgPicker(false)} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--muted)', fontSize: '16px', lineHeight: 1 }}>✕</button>
             </div>
-            <div style={{ padding: '6px 16px', fontSize: '11px', color: '#6b7280', fontFamily: 'ui-monospace, Consolas, monospace', background: '#f9fafb', borderBottom: '1px solid #e5e7eb', flexShrink: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            <div style={{ padding: '6px 16px', fontSize: '11px', color: 'var(--muted)', fontFamily: 'ui-monospace, Consolas, monospace', background: 'var(--bg)', borderBottom: '1px solid var(--border)', flexShrink: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {cfgPickerCwd}
             </div>
             {cfgPickerFiles?.worldWritable && (
@@ -856,11 +856,11 @@ function App() {
               {cfgPickerFiles?.parent !== null && cfgPickerFiles?.parent !== undefined && (
                 <div
                   style={{ padding: '6px 16px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px' }}
-                  onMouseEnter={e => (e.currentTarget.style.background = '#f3f4f6')}
+                  onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-hover)')}
                   onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
                   onClick={() => getCfgFiles(cfgPickerFiles.parent)}
                 >
-                  <ChevronUp size={14} style={{ color: '#9ca3af', flexShrink: 0 }} />
+                  <ChevronUp size={14} style={{ color: 'var(--muted)', flexShrink: 0 }} />
                   <span>..</span>
                 </div>
               )}
@@ -869,7 +869,7 @@ function App() {
                 return (
                   <div key={i}
                     style={{ padding: '6px 16px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px' }}
-                    onMouseEnter={e => (e.currentTarget.style.background = '#f3f4f6')}
+                    onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-hover)')}
                     onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
                     onClick={() => getCfgFiles(fullDir)}
                   >
@@ -877,7 +877,7 @@ function App() {
                     <span>{name}</span>
                   </div>
                 );
-              }) ?? <p style={{ fontSize: '13px', color: '#9ca3af', padding: '8px 16px' }}>Loading…</p>}
+              }) ?? <p style={{ fontSize: '13px', color: 'var(--muted)', padding: '8px 16px' }}>Loading…</p>}
               {cfgPickerFiles?.files?.map((name, i) => {
                 const isCfg = name.endsWith('.cfg');
                 const selectable = isCfg && !cfgPickerFiles.worldWritable;
@@ -885,7 +885,7 @@ function App() {
                 return (
                   <div key={i}
                     style={{ padding: '6px 16px', cursor: selectable ? 'pointer' : 'default', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', opacity: selectable ? 1 : 0.35 }}
-                    onMouseEnter={e => { if (selectable) e.currentTarget.style.background = '#f5f3ff'; }}
+                    onMouseEnter={e => { if (selectable) e.currentTarget.style.background = 'var(--accent-light)'; }}
                     onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
                     onClick={() => {
                       if (!selectable) return;
@@ -893,13 +893,13 @@ function App() {
                       setShowCfgPicker(false);
                     }}
                   >
-                    <FileText size={14} style={{ color: isCfg ? '#7c3aed' : '#9ca3af', flexShrink: 0 }} />
+                    <FileText size={14} style={{ color: isCfg ? 'var(--badge-cfg-text)' : 'var(--muted)', flexShrink: 0 }} />
                     <span>{name}</span>
                   </div>
                 );
               })}
             </div>
-            <div style={{ padding: '10px 16px', borderTop: '1px solid #e5e7eb', display: 'flex', justifyContent: 'flex-end', flexShrink: 0 }}>
+            <div style={{ padding: '10px 16px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end', flexShrink: 0 }}>
               <button onClick={() => setShowCfgPicker(false)} className="btn-secondary" style={{ fontSize: '12px', padding: '4px 12px' }}>Cancel</button>
             </div>
           </div>
@@ -912,13 +912,13 @@ function App() {
       <section id="filebrowser" style={{ width: browserWidth }}>
         <div className="filebrowser">
           {/* Path breadcrumb */}
-          <div style={{ fontSize: '11px', color: '#6b7280', marginBottom: '8px', fontFamily: 'ui-monospace, Consolas, monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          <div style={{ fontSize: '11px', color: 'var(--muted)', marginBottom: '8px', fontFamily: 'ui-monospace, Consolas, monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {cwd}
           </div>
 
           {parentFolder !== cwd && (
             <div className="fileName" onClick={() => getFiles(parentFolder)} title="Go up one folder">
-              <ChevronUp size={14} style={{ marginRight: '5px', color: '#9ca3af', flexShrink: 0 }} />
+              <ChevronUp size={14} style={{ marginRight: '5px', color: 'var(--muted)', flexShrink: 0 }} />
               <span>..</span>
             </div>
           )}
@@ -928,7 +928,7 @@ function App() {
               <Folder size={14} style={{ marginRight: '6px', color: '#f59e0b', flexShrink: 0 }} />
               <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.split('/').pop()}</span>
             </div>
-          )) ?? <p style={{ fontSize: '13px', color: '#9ca3af' }}>Loading…</p>}
+          )) ?? <p style={{ fontSize: '13px', color: 'var(--muted)' }}>Loading…</p>}
 
           {files?.files?.map((item, i) => {
             const fp = fullPath(item);
@@ -977,16 +977,16 @@ function App() {
                 onClick={() => selectFile(item)}
                 onContextMenu={e => handleContextMenu(e, item)}
               >
-                <FileText size={14} style={{ marginRight: '6px', color: '#6b7280', flexShrink: 0 }} />
+                <FileText size={14} style={{ marginRight: '6px', color: 'var(--muted)', flexShrink: 0 }} />
                 <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis' }}>{name}</span>
-                {isYamlSel && <Play size={10} style={{ color: '#2563eb', flexShrink: 0, marginLeft: '4px' }} />}
+                {isYamlSel && <Play size={10} style={{ color: 'var(--accent)', flexShrink: 0, marginLeft: '4px' }} />}
                 {isIniSel  && <Server size={10} style={{ color: '#059669', flexShrink: 0, marginLeft: '4px' }} />}
               </div>
             );
           }) ?? null}
 
           {/* New file/folder controls */}
-          <div style={{ marginTop: '10px', paddingTop: '10px', borderTop: '1px solid #e5e7eb', display: 'flex', gap: '6px' }}>
+          <div style={{ marginTop: '10px', paddingTop: '10px', borderTop: '1px solid var(--border)', display: 'flex', gap: '6px' }}>
             <button
               onClick={() => { setNewFile(f => f?.type === 'yaml' ? null : { type: 'yaml', name: '' }); setNewDir(null); }}
               className="btn-secondary"
@@ -1006,7 +1006,7 @@ function App() {
 
           {newFile && (
             <div style={{ marginTop: '8px' }}>
-              <div style={{ fontSize: '11px', color: '#6b7280', marginBottom: '4px' }}>
+              <div style={{ fontSize: '11px', color: 'var(--muted)', marginBottom: '4px' }}>
                 New .{newFile.type} file in <span style={{ fontFamily: 'monospace' }}>{cwd}</span>
               </div>
               <input
@@ -1026,7 +1026,7 @@ function App() {
 
           {newDir && (
             <div style={{ marginTop: '8px' }}>
-              <div style={{ fontSize: '11px', color: '#6b7280', marginBottom: '4px' }}>
+              <div style={{ fontSize: '11px', color: 'var(--muted)', marginBottom: '4px' }}>
                 New folder in <span style={{ fontFamily: 'monospace' }}>{cwd}</span>
               </div>
               <input
@@ -1210,32 +1210,32 @@ function App() {
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '14px' }}>
             <div style={{ fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <span style={{ color: '#6b7280', width: '64px', flexShrink: 0 }}>Playbook:</span>
+              <span style={{ color: 'var(--muted)', width: '64px', flexShrink: 0 }}>Playbook:</span>
               {selectedYaml
                 ? <>
-                    <span style={{ color: '#2563eb', fontFamily: 'ui-monospace, Consolas, monospace', fontSize: '12px', background: '#eff6ff', padding: '2px 6px', borderRadius: '4px' }}>{selectedYaml}</span>
+                    <span style={{ color: 'var(--accent)', fontFamily: 'ui-monospace, Consolas, monospace', fontSize: '12px', background: 'var(--accent-light)', padding: '2px 6px', borderRadius: '4px' }}>{selectedYaml}</span>
                     <button onClick={() => setSelectedYaml('')} title="Deselect" style={clearBtnStyle}>✕</button>
                   </>
-                : <span style={{ color: '#9ca3af', fontSize: '12px' }}>none — right-click a YAML file to select</span>}
+                : <span style={{ color: 'var(--muted)', fontSize: '12px' }}>none — right-click a YAML file to select</span>}
             </div>
             <div style={{ fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <span style={{ color: '#6b7280', width: '64px', flexShrink: 0 }}>Hosts:</span>
+              <span style={{ color: 'var(--muted)', width: '64px', flexShrink: 0 }}>Hosts:</span>
               {selectedIni
                 ? <>
-                    <span style={{ color: '#059669', fontFamily: 'ui-monospace, Consolas, monospace', fontSize: '12px', background: '#f0fdf4', padding: '2px 6px', borderRadius: '4px' }}>{selectedIni}</span>
+                    <span style={{ color: 'var(--badge-hosts-text)', fontFamily: 'ui-monospace, Consolas, monospace', fontSize: '12px', background: 'var(--badge-hosts-bg)', padding: '2px 6px', borderRadius: '4px' }}>{selectedIni}</span>
                     <button onClick={() => setSelectedIni('')} title="Deselect" style={clearBtnStyle}>✕</button>
                   </>
-                : <span style={{ color: '#9ca3af', fontSize: '12px' }}>none — right-click an INI file to select</span>}
+                : <span style={{ color: 'var(--muted)', fontSize: '12px' }}>none — right-click an INI file to select</span>}
             </div>
             <div style={{ fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <span style={{ color: '#6b7280', width: '64px', flexShrink: 0 }}>Config:</span>
+              <span style={{ color: 'var(--muted)', width: '64px', flexShrink: 0 }}>Config:</span>
               {selectedAnsibleCfg
                 ? <>
-                    <span style={{ color: '#7c3aed', fontFamily: 'ui-monospace, Consolas, monospace', fontSize: '12px', background: '#f5f3ff', padding: '2px 6px', borderRadius: '4px', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '300px' }}>{selectedAnsibleCfg}</span>
+                    <span style={{ color: 'var(--badge-cfg-text)', fontFamily: 'ui-monospace, Consolas, monospace', fontSize: '12px', background: 'var(--badge-cfg-bg)', padding: '2px 6px', borderRadius: '4px', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '300px' }}>{selectedAnsibleCfg}</span>
                     <button onClick={() => setSelectedAnsibleCfg('')} title="Clear" style={clearBtnStyle}>✕</button>
                   </>
                 : <>
-                    <span style={{ color: '#9ca3af', fontSize: '12px' }}>none (optional)</span>
+                    <span style={{ color: 'var(--muted)', fontSize: '12px' }}>none (optional)</span>
                     <button
                       onClick={() => { setShowCfgPicker(true); getCfgFiles('/'); }}
                       className="btn-secondary"
@@ -1254,7 +1254,7 @@ function App() {
                 fontSize: '13px', fontWeight: 500,
                 color: playbookStatus.startsWith('✔') ? '#059669'
                      : playbookStatus.startsWith('✗') ? '#dc2626'
-                     : '#6b7280',
+                     : 'var(--muted)',
               }}>
                 {playbookStatus}
               </span>
@@ -1266,21 +1266,21 @@ function App() {
           <div className="subpanel" style={{ maxHeight: '340px' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
               <h4>Raw output</h4>
-              <button onClick={() => setRawDocked(false)} title="Undock" style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#9ca3af', padding: '2px', display: 'flex', alignItems: 'center' }}>
+              <button onClick={() => setRawDocked(false)} title="Undock" style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--muted)', padding: '2px', display: 'flex', alignItems: 'center' }}>
                 <Maximize2 size={14} />
               </button>
             </div>
-            <div id="taskoutput" style={{ fontFamily: 'ui-monospace, Consolas, monospace', fontSize: '12px', color: '#374151', overflow: 'auto', maxHeight: '260px' }}>
+            <div id="taskoutput" style={{ fontFamily: 'ui-monospace, Consolas, monospace', fontSize: '12px', color: 'var(--text)', overflow: 'auto', maxHeight: '260px' }}>
               {typeof taskResult === 'string'
-                ? <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>{taskResult || <span style={{ color: '#9ca3af' }}>No output yet.</span>}</pre>
+                ? <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>{taskResult || <span style={{ color: 'var(--muted)' }}>No output yet.</span>}</pre>
                 : JSON.stringify(taskResult)}
             </div>
           </div>
         ) : (
           <FloatingPanel title="Raw output" onDock={() => setRawDocked(true)}>
-            <div id="taskoutput" style={{ fontFamily: 'ui-monospace, Consolas, monospace', fontSize: '12px', color: '#374151' }}>
+            <div id="taskoutput" style={{ fontFamily: 'ui-monospace, Consolas, monospace', fontSize: '12px', color: 'var(--text)' }}>
               {typeof taskResult === 'string'
-                ? <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>{taskResult || <span style={{ color: '#9ca3af' }}>No output yet.</span>}</pre>
+                ? <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>{taskResult || <span style={{ color: 'var(--muted)' }}>No output yet.</span>}</pre>
                 : JSON.stringify(taskResult)}
             </div>
           </FloatingPanel>
@@ -1290,7 +1290,7 @@ function App() {
           <div className="subpanel" style={{ maxHeight: '340px' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
               <h4>Formatted output</h4>
-              <button onClick={() => setFormattedDocked(false)} title="Undock" style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#9ca3af', padding: '2px', display: 'flex', alignItems: 'center' }}>
+              <button onClick={() => setFormattedDocked(false)} title="Undock" style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--muted)', padding: '2px', display: 'flex', alignItems: 'center' }}>
                 <Maximize2 size={14} />
               </button>
             </div>
@@ -1301,21 +1301,21 @@ function App() {
                     ? Object.entries(value.tasks).map(([taskKey, taskValue]) =>
                         taskValue.hosts
                           ? Object.entries(taskValue.hosts).map(([hostKey, hostValue]) => (
-                            <div key={`${key}-${taskKey}-${hostKey}`} style={{ marginBottom: '12px', padding: '10px', background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: '6px', fontSize: '13px' }}>
+                            <div key={`${key}-${taskKey}-${hostKey}`} style={{ marginBottom: '12px', padding: '10px', background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: '6px', fontSize: '13px' }}>
                               <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '2px 10px', marginBottom: '8px' }}>
-                                <span style={{ color: '#6b7280', fontWeight: 500 }}>Task</span><span>{taskValue.task.name}</span>
-                                <span style={{ color: '#6b7280', fontWeight: 500 }}>Host</span><span>{hostKey}</span>
-                                <span style={{ color: '#6b7280', fontWeight: 500 }}>Start</span><span>{taskValue.task.duration.start}</span>
-                                <span style={{ color: '#6b7280', fontWeight: 500 }}>End</span><span>{taskValue.task.duration.end}</span>
+                                <span style={{ color: 'var(--muted)', fontWeight: 500 }}>Task</span><span>{taskValue.task.name}</span>
+                                <span style={{ color: 'var(--muted)', fontWeight: 500 }}>Host</span><span>{hostKey}</span>
+                                <span style={{ color: 'var(--muted)', fontWeight: 500 }}>Start</span><span>{taskValue.task.duration.start}</span>
+                                <span style={{ color: 'var(--muted)', fontWeight: 500 }}>End</span><span>{taskValue.task.duration.end}</span>
                               </div>
-                              <pre style={{ fontFamily: 'ui-monospace, Consolas, monospace', fontSize: '12px', margin: 0, background: '#fff', padding: '8px', borderRadius: '4px', border: '1px solid #e5e7eb', overflow: 'auto', whiteSpace: 'pre-wrap' }}>{ hostValue.stdout ? hostValue.stdout : hostValue.output ? hostValue.output : hostValue.msg ? hostValue.msg : "" }</pre>
+                              <pre style={{ fontFamily: 'ui-monospace, Consolas, monospace', fontSize: '12px', margin: 0, background: 'var(--panel-bg)', padding: '8px', borderRadius: '4px', border: '1px solid var(--border)', overflow: 'auto', whiteSpace: 'pre-wrap' }}>{ hostValue.stdout ? hostValue.stdout : hostValue.output ? hostValue.output : hostValue.msg ? hostValue.msg : "" }</pre>
                             </div>
                           ))
                           : null
                       )
                     : null
                 )
-              : <span style={{ color: '#9ca3af', fontSize: '13px' }}>No results yet.</span>}
+              : <span style={{ color: 'var(--muted)', fontSize: '13px' }}>No results yet.</span>}
           </div>
           </div>
         ) : (
@@ -1326,21 +1326,21 @@ function App() {
                     ? Object.entries(value.tasks).map(([taskKey, taskValue]) =>
                         taskValue.hosts
                           ? Object.entries(taskValue.hosts).map(([hostKey, hostValue]) => (
-                            <div key={`${key}-${taskKey}-${hostKey}`} style={{ marginBottom: '12px', padding: '10px', background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: '6px', fontSize: '13px' }}>
+                            <div key={`${key}-${taskKey}-${hostKey}`} style={{ marginBottom: '12px', padding: '10px', background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: '6px', fontSize: '13px' }}>
                               <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '2px 10px', marginBottom: '8px' }}>
-                                <span style={{ color: '#6b7280', fontWeight: 500 }}>Task</span><span>{taskValue.task.name}</span>
-                                <span style={{ color: '#6b7280', fontWeight: 500 }}>Host</span><span>{hostKey}</span>
-                                <span style={{ color: '#6b7280', fontWeight: 500 }}>Start</span><span>{taskValue.task.duration.start}</span>
-                                <span style={{ color: '#6b7280', fontWeight: 500 }}>End</span><span>{taskValue.task.duration.end}</span>
+                                <span style={{ color: 'var(--muted)', fontWeight: 500 }}>Task</span><span>{taskValue.task.name}</span>
+                                <span style={{ color: 'var(--muted)', fontWeight: 500 }}>Host</span><span>{hostKey}</span>
+                                <span style={{ color: 'var(--muted)', fontWeight: 500 }}>Start</span><span>{taskValue.task.duration.start}</span>
+                                <span style={{ color: 'var(--muted)', fontWeight: 500 }}>End</span><span>{taskValue.task.duration.end}</span>
                               </div>
-                              <pre style={{ fontFamily: 'ui-monospace, Consolas, monospace', fontSize: '12px', margin: 0, background: '#fff', padding: '8px', borderRadius: '4px', border: '1px solid #e5e7eb', overflow: 'auto', whiteSpace: 'pre-wrap' }}>{ hostValue.stdout ? hostValue.stdout : hostValue.output ? hostValue.output : hostValue.msg ? hostValue.msg : "" }</pre>
+                              <pre style={{ fontFamily: 'ui-monospace, Consolas, monospace', fontSize: '12px', margin: 0, background: 'var(--panel-bg)', padding: '8px', borderRadius: '4px', border: '1px solid var(--border)', overflow: 'auto', whiteSpace: 'pre-wrap' }}>{ hostValue.stdout ? hostValue.stdout : hostValue.output ? hostValue.output : hostValue.msg ? hostValue.msg : "" }</pre>
                             </div>
                           ))
                           : null
                       )
                     : null
                 )
-              : <span style={{ color: '#9ca3af', fontSize: '13px' }}>No results yet.</span>}
+              : <span style={{ color: 'var(--muted)', fontSize: '13px' }}>No results yet.</span>}
           </FloatingPanel>
         )}
       </section>

@@ -147,12 +147,19 @@ export default function Dashboard() {
             <p className="text-gray-500 text-sm">No executions yet.</p>
           ) : (
             <ul className="divide-y">
-              {recent.map((l) => (
-                <li key={l.id} className="py-2 flex justify-between text-sm">
-                  <span>{l.appName} v{l.version}</span>
-                  <StatusBadge status={l.status} />
-                </li>
-              ))}
+              {recent.map((l) => {
+                const label = l.type === 'wrapper'
+                  ? (l.steps?.length > 0
+                      ? `${l.steps[0].appName} +${l.steps.length - 1} more`
+                      : 'Multi-step')
+                  : `${l.appName || '?'} v${l.version || '?'}`;
+                return (
+                  <li key={l.id} className="py-2 flex justify-between text-sm">
+                    <span>{label}</span>
+                    <StatusBadge status={l.status} />
+                  </li>
+                );
+              })}
             </ul>
           )}
         </div>

@@ -5,6 +5,21 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Ansible Playbooks</title>
+    <script>
+      // Apply saved theme before React mounts to avoid flash, and register the
+      // postMessage listener synchronously so the parent's onLoad broadcast arrives
+      // before useEffect has a chance to run.
+      (function () {
+        var t = localStorage.getItem('theme') || 'light';
+        if (t === 'dark') document.documentElement.classList.add('dark');
+        window.addEventListener('message', function (e) {
+          if (e.data && e.data.type === 'theme') {
+            document.documentElement.classList.toggle('dark', e.data.theme === 'dark');
+            localStorage.setItem('theme', e.data.theme);
+          }
+        });
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

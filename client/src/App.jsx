@@ -4,7 +4,7 @@ import FindBar from './components/FindBar';
 import {
   LayoutDashboard, PackagePlus, FolderOpen, Play, GitBranch, Settings,
   Monitor, Package, Archive, UsersRound, HelpCircle, ScrollText, X, ShieldCheck, Terminal, FileCode,
-  ChevronsLeft, ChevronsRight,
+  ChevronsLeft, ChevronsRight, Moon, Sun,
 } from 'lucide-react';
 import Dashboard from './pages/Dashboard';
 import CreatePackage from './pages/CreatePackage';
@@ -157,6 +157,16 @@ export default function App() {
     return next;
   });
 
+  const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'light');
+  useEffect(() => {
+    document.documentElement.classList.toggle('dark', theme === 'dark');
+    localStorage.setItem('theme', theme);
+    document.querySelectorAll('iframe').forEach(frame => {
+      try { frame.contentWindow.postMessage({ type: 'theme', theme }, '*'); } catch {}
+    });
+  }, [theme]);
+  const toggleTheme = () => setTheme(t => t === 'light' ? 'dark' : 'light');
+
   return (
     <TabGuardContext.Provider value={registerGuard}>
     <div className="flex h-screen overflow-hidden">
@@ -193,7 +203,7 @@ export default function App() {
         )}
 
         {/* Nav items */}
-        <div className="flex-1 py-2 overflow-y-auto">
+        <div className="flex-1 py-2 overflow-y-auto min-h-0">
           {NAV_ITEMS.map((item, index) => {
             if (item.divider) {
               return <div key={`divider-${index}`} className="my-2 border-t border-gray-700" />;
@@ -232,6 +242,18 @@ export default function App() {
             );
           })}
         </div>
+
+        {/* Theme toggle */}
+        <div className={`border-t border-gray-700 shrink-0 ${navCollapsed ? 'p-2 flex justify-center' : 'px-3 py-2 flex items-center justify-between'}`}>
+          {!navCollapsed && <span className="text-xs text-gray-500"></span>}
+          <button
+            onClick={toggleTheme}
+            title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+            className="p-1.5 rounded hover:bg-gray-700 text-gray-400 hover:text-white"
+          >
+            {theme === 'dark' ? <Sun size={15} /> : <Moon size={15} />}
+          </button>
+        </div>
       </nav>
 
       {/* ── Right side: tab bar + content ── */}
@@ -249,9 +271,10 @@ export default function App() {
                 key={to}
                 ref={el => { tabEls.current[to] = el; }}
                 onClick={() => navigate(to)}
+                style={isActive ? { background: 'var(--tab-active-bg)', color: 'var(--tab-active-text)' } : {}}
                 className={`flex items-center gap-2 px-3 py-2 text-sm cursor-pointer border-r border-gray-600 shrink-0 select-none ${
                   isActive
-                    ? 'bg-gray-50 text-gray-900 border-t-2 border-t-blue-500'
+                    ? 'border-t-2 border-t-blue-500'
                     : 'text-gray-400 hover:bg-gray-700 hover:text-gray-200'
                 }`}
               >
@@ -262,7 +285,7 @@ export default function App() {
                     onClick={(e) => closeTab(to, e)}
                     className={`ml-1 rounded p-0.5 ${
                       isActive
-                        ? 'hover:bg-gray-300 text-gray-600 hover:text-gray-900'
+                        ? 'hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
                         : 'hover:bg-gray-600 text-gray-500 hover:text-gray-200'
                     }`}
                     title="Close tab"
@@ -286,8 +309,8 @@ export default function App() {
             return (
               <div
                 key={to}
-                style={{ display: isActive ? 'block' : 'none' }}
-                className={`absolute inset-0 ${isLogViewer ? '' : 'overflow-auto p-6 bg-gray-50'}`}
+                style={{ display: isActive ? 'block' : 'none', ...(isLogViewer ? {} : { background: 'var(--content-bg)' }) }}
+                className={`absolute inset-0 ${isLogViewer ? '' : 'overflow-auto p-6'}`}
               >
                 <Component />
               </div>
@@ -296,7 +319,7 @@ export default function App() {
 
           {/* Sub-route overlay: PackageDetail / EditPackage render on top when URL matches */}
           {isSubRoute && (
-            <div className="absolute inset-0 overflow-auto p-6 bg-gray-50">
+            <div className="absolute inset-0 overflow-auto p-6" style={{ background: 'var(--content-bg)' }}>
               <Routes>
                 <Route path="/packages/:appName/:version/edit" element={<EditPackage />} />
                 <Route path="/packages/:appName/:version"      element={<PackageDetail />} />
@@ -311,16 +334,17 @@ export default function App() {
     {/* Tab close confirmation modal */}
     {pendingClose && (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-        <div className="bg-white rounded-lg shadow-xl p-6 w-80 flex flex-col gap-4">
-          <p className="text-sm text-gray-800 font-medium">Close this tab?</p>
-          <p className="text-xs text-gray-500">
+        <div className="rounded-lg shadow-xl p-6 w-80 flex flex-col gap-4" style={{ background: 'var(--panel-bg)' }}>
+          <p className="text-sm font-medium" style={{ color: 'var(--text-h)' }}>Close this tab?</p>
+          <p className="text-xs" style={{ color: 'var(--muted)' }}>
             Credentials entered in this tab will be lost.
           </p>
           <div className="flex justify-end gap-2">
             <button
               autoFocus
               onClick={() => setPendingClose(null)}
-              className="px-3 py-1.5 text-sm rounded border border-gray-300 hover:bg-gray-50"
+              className="px-3 py-1.5 text-sm rounded border hover:bg-gray-100 dark:hover:bg-gray-700"
+              style={{ borderColor: 'var(--border)', color: 'var(--text)' }}
             >
               Cancel
             </button>

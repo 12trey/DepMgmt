@@ -48,14 +48,14 @@ function FileBrowser({ current, onSelect, onClose }) {
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
-      <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: '10px', padding: '20px', width: '480px', maxHeight: '70vh', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
-        <h3 style={{ margin: '0 0 12px', fontSize: '15px', color: '#111827' }}>Select Custom Snippets YAML</h3>
-        <div style={{ background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: '6px', padding: '6px 10px', fontFamily: 'ui-monospace, Consolas, monospace', fontSize: '12px', color: '#374151', marginBottom: '8px', wordBreak: 'break-all' }}>
+      <div style={{ background: 'var(--panel-bg)', border: '1px solid var(--border)', borderRadius: '10px', padding: '20px', width: '480px', maxHeight: '70vh', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
+        <h3 style={{ margin: '0 0 12px', fontSize: '15px', color: 'var(--text-h)' }}>Select Custom Snippets YAML</h3>
+        <div style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: '6px', padding: '6px 10px', fontFamily: 'ui-monospace, Consolas, monospace', fontSize: '12px', color: 'var(--text)', marginBottom: '8px', wordBreak: 'break-all' }}>
           {browsePath}
         </div>
         {error && <div style={{ color: '#dc2626', fontSize: '12px', marginBottom: '8px' }}>{error}</div>}
-        <div style={{ flex: 1, overflowY: 'auto', border: '1px solid #e5e7eb', borderRadius: '6px', minHeight: '200px' }}>
-          {loading && <div style={{ padding: '12px', color: '#9ca3af', fontSize: '13px' }}>Loading…</div>}
+        <div style={{ flex: 1, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: '6px', minHeight: '200px' }}>
+          {loading && <div style={{ padding: '12px', color: 'var(--muted)', fontSize: '13px' }}>Loading…</div>}
           {!loading && entries.parent !== null && (
             <div onClick={() => navigate(entries.parent)} style={dirRowStyle(false)}>
               <span style={{ marginRight: '6px' }}>📁</span>..
@@ -72,13 +72,13 @@ function FileBrowser({ current, onSelect, onClose }) {
           {!loading && entries.files.map(f => {
             const fp = entries.path === '/' ? `/${f}` : `${entries.path}/${f}`;
             return (
-              <div key={f} onClick={() => onSelect(fp)} style={{ ...dirRowStyle(fp === current), color: fp === current ? '#2563eb' : '#059669' }}>
+              <div key={f} onClick={() => onSelect(fp)} style={{ ...dirRowStyle(fp === current), color: fp === current ? 'var(--accent)' : '#059669' }}>
                 <span style={{ marginRight: '6px' }}>📄</span>{f}
               </div>
             );
           })}
           {!loading && entries.dirs.length === 0 && entries.files.length === 0 && (
-            <div style={{ padding: '12px', color: '#9ca3af', fontSize: '13px' }}>No subdirectories or .yaml/.yml files here</div>
+            <div style={{ padding: '12px', color: 'var(--muted)', fontSize: '13px' }}>No subdirectories or .yaml/.yml files here</div>
           )}
         </div>
         <div style={{ display: 'flex', gap: '8px', marginTop: '12px', justifyContent: 'flex-end' }}>
@@ -126,16 +126,16 @@ function FolderBrowser({ current, onSelect, onClose }) {
       display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
     }}>
       <div style={{
-        background: '#fff', border: '1px solid #e5e7eb', borderRadius: '10px',
+        background: 'var(--panel-bg)', border: '1px solid var(--border)', borderRadius: '10px',
         padding: '20px', width: '480px', maxHeight: '70vh',
         display: 'flex', flexDirection: 'column', boxShadow: '0 20px 60px rgba(0,0,0,0.2)',
       }}>
-        <h3 style={{ margin: '0 0 12px', fontSize: '15px', color: '#111827' }}>Browse WSL Filesystem</h3>
+        <h3 style={{ margin: '0 0 12px', fontSize: '15px', color: 'var(--text-h)' }}>Browse WSL Filesystem</h3>
 
         <div style={{
-          background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: '6px',
+          background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: '6px',
           padding: '6px 10px', fontFamily: 'ui-monospace, Consolas, monospace',
-          fontSize: '12px', color: '#374151', marginBottom: '8px', wordBreak: 'break-all',
+          fontSize: '12px', color: 'var(--text)', marginBottom: '8px', wordBreak: 'break-all',
         }}>
           {browsePath}
         </div>
@@ -145,11 +145,11 @@ function FolderBrowser({ current, onSelect, onClose }) {
         )}
 
         <div style={{
-          flex: 1, overflowY: 'auto', border: '1px solid #e5e7eb', borderRadius: '6px',
+          flex: 1, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: '6px',
           minHeight: '200px',
         }}>
           {loading && (
-            <div style={{ padding: '12px', color: '#9ca3af', fontSize: '13px' }}>Loading…</div>
+            <div style={{ padding: '12px', color: 'var(--muted)', fontSize: '13px' }}>Loading…</div>
           )}
           {!loading && entries.parent !== null && (
             <div onClick={() => navigate(entries.parent)} style={dirRowStyle(false)}>
@@ -165,7 +165,7 @@ function FolderBrowser({ current, onSelect, onClose }) {
             );
           })}
           {!loading && entries.dirs.length === 0 && entries.parent !== null && (
-            <div style={{ padding: '12px', color: '#9ca3af', fontSize: '13px' }}>No subdirectories</div>
+            <div style={{ padding: '12px', color: 'var(--muted)', fontSize: '13px' }}>No subdirectories</div>
           )}
         </div>
 
@@ -184,9 +184,10 @@ function dirRowStyle(selected) {
   return {
     padding: '7px 12px', cursor: 'pointer', fontSize: '13px',
     fontFamily: 'ui-monospace, Consolas, monospace',
-    background: selected ? '#eff6ff' : 'transparent',
-    color: selected ? '#2563eb' : '#374151',
-    borderBottom: '1px solid #f3f4f6', userSelect: 'none',
+    background: selected ? 'var(--accent-light)' : 'transparent',
+    color: selected ? 'var(--accent)' : 'var(--text)',
+    borderBottom: '1px solid var(--border)',
+    userSelect: 'none',
   };
 }
 
@@ -218,9 +219,9 @@ function KdcList({ servers, onChange }) {
           marginBottom: '4px',
         }}>
           <span style={{
-            flex: 1, padding: '5px 10px', background: '#f9fafb',
-            border: '1px solid #e5e7eb', borderRadius: '6px',
-            fontFamily: 'ui-monospace, Consolas, monospace', fontSize: '13px', color: '#374151',
+            flex: 1, padding: '5px 10px', background: 'var(--bg)',
+            border: '1px solid var(--border)', borderRadius: '6px',
+            fontFamily: 'ui-monospace, Consolas, monospace', fontSize: '13px', color: 'var(--text)',
           }}>{s}</span>
           <button
             onClick={() => remove(i)}
@@ -351,7 +352,7 @@ function Config() {
 
   return (
     <div style={{ padding: '20px', overflowY: 'auto', height: '100%', boxSizing: 'border-box' }}>
-      <h2 style={{ margin: '0 0 20px', fontSize: '18px', color: '#111827' }}>Configuration</h2>
+      <h2 style={{ margin: '0 0 20px', fontSize: '18px', color: 'var(--text-h)' }}>Configuration</h2>
 
       {/* ── Repository Folder ─────────────────────────────── */}
       <section style={sectionStyle}>
@@ -487,13 +488,13 @@ function StatusText({ msg }) {
 // ── Styles ─────────────────────────────────────────────────────────────────────
 
 const sectionStyle = {
-  background: '#fff', border: '1px solid #e5e7eb', borderRadius: '8px',
+  background: 'var(--panel-bg)', border: '1px solid var(--border)', borderRadius: '8px',
   padding: '16px 20px', marginBottom: '16px',
 };
 
-const sectionTitleStyle = { margin: '0 0 6px', fontSize: '15px', fontWeight: 600, color: '#111827' };
+const sectionTitleStyle = { margin: '0 0 6px', fontSize: '15px', fontWeight: 600, color: 'var(--text-h)' };
 
-const descStyle = { margin: '0 0 12px', fontSize: '13px', color: '#6b7280' };
+const descStyle = { margin: '0 0 12px', fontSize: '13px', color: 'var(--muted)' };
 
 const fieldGrid = {
   display: 'grid',
@@ -503,13 +504,14 @@ const fieldGrid = {
 };
 
 const labelStyle = {
-  fontSize: '13px', fontWeight: 500, color: '#374151',
+  fontSize: '13px', fontWeight: 500, color: 'var(--text)',
   paddingTop: '7px',
 };
 
 const inputStyle = {
-  padding: '6px 10px', border: '1px solid #d1d5db', borderRadius: '6px',
-  fontFamily: 'ui-monospace, Consolas, monospace', fontSize: '13px', color: '#111827',
+  padding: '6px 10px', border: '1px solid var(--border-dark)', borderRadius: '6px',
+  fontFamily: 'ui-monospace, Consolas, monospace', fontSize: '13px', color: 'var(--text-h)',
+  background: 'var(--panel-bg)',
   outline: 'none', width: '100%', boxSizing: 'border-box',
 };
 
@@ -519,8 +521,8 @@ function btnStyle(variant, disabled = false) {
     cursor: disabled ? 'not-allowed' : 'pointer', fontSize: '13px', fontWeight: 500,
     opacity: disabled ? 0.5 : 1, whiteSpace: 'nowrap',
   };
-  if (variant === 'primary') return { ...base, background: '#2563eb', color: '#fff' };
-  return { ...base, background: '#f3f4f6', color: '#374151', border: '1px solid #d1d5db' };
+  if (variant === 'primary') return { ...base, background: 'var(--accent)', color: '#fff' };
+  return { ...base, background: 'var(--bg-hover)', color: 'var(--text)', border: '1px solid var(--border-dark)' };
 }
 
 export default Config;
