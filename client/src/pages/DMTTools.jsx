@@ -577,6 +577,10 @@ export default function DMTTools() {
         <iframe
           ref={iframeRef}
           src={DMT_URL}
+          onLoad={() => {
+            const theme = localStorage.getItem('theme') || 'light';
+            try { iframeRef.current?.contentWindow?.postMessage({ type: 'theme', theme }, '*'); } catch {}
+          }}
           className="w-full flex-1 border-0 min-h-0"
           title="DMT Tools"
           allow="clipboard-read *; clipboard-write *;"

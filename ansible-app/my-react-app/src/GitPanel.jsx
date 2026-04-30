@@ -46,13 +46,13 @@ function PushConfirmModal({ branch, onConfirm, onCancel }) {
       display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
     }}>
       <div style={{
-        background: '#fff', border: '1px solid #e5e7eb', borderRadius: '10px',
+        background: 'var(--panel-bg)', border: '1px solid var(--border)', borderRadius: '10px',
         padding: '24px', width: '360px', boxShadow: '0 20px 60px rgba(0,0,0,0.2)',
       }}>
-        <h3 style={{ margin: '0 0 12px', fontSize: '16px', color: '#111827' }}>Confirm Push</h3>
-        <p style={{ fontSize: '13px', color: '#6b7280', margin: '0 0 20px' }}>
+        <h3 style={{ margin: '0 0 12px', fontSize: '16px', color: 'var(--text-h)' }}>Confirm Push</h3>
+        <p style={{ fontSize: '13px', color: 'var(--muted)', margin: '0 0 20px' }}>
           Push committed changes to remote on branch{' '}
-          <strong style={{ color: '#2563eb', fontFamily: 'ui-monospace, Consolas, monospace' }}>{branch}</strong>?
+          <strong style={{ color: 'var(--accent)', fontFamily: 'ui-monospace, Consolas, monospace' }}>{branch}</strong>?
           This action cannot be undone.
         </p>
         <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
@@ -264,17 +264,17 @@ export default function GitPanel() {
             {urlSaving ? 'Saving…' : 'Save'}
           </button>
         </div>
-        <div style={{ fontSize: '11px', color: '#9ca3af', marginTop: '6px' }}>
-          We advise using a personal access token for better security. Credentials are encrypted and 
+        <div style={{ fontSize: '11px', color: 'var(--muted)', marginTop: '6px' }}>
+          We advise using a personal access token for better security. Credentials are encrypted and
           persisted to the WSL disk using the WSL installation's machine-id. Alternatively, you
-          can use the terminal to access the repo at <code style={{ color: '#787878' }}>{repoPath}</code> and push/pull from the command line.
+          can use the terminal to access the repo at <code style={{ color: 'var(--muted)' }}>{repoPath}</code> and push/pull from the command line.
         </div>
-        <div style={{ fontSize: '11px', color: '#9ca3af', marginTop: '6px' }}>
+        <div style={{ fontSize: '11px', color: 'var(--muted)', marginTop: '6px' }}>
           Credentials are used for clone and push. Leave blank for public repos or SSH remotes.
         </div>
         {savedUrl && (
-          <div style={{ fontSize: '12px', color: '#6b7280', marginTop: '4px' }}>
-            Saved: <span style={{ color: '#2563eb', fontFamily: 'ui-monospace, Consolas, monospace' }}>{savedUrl}</span>
+          <div style={{ fontSize: '12px', color: 'var(--muted)', marginTop: '4px' }}>
+            Saved: <span style={{ color: 'var(--accent)', fontFamily: 'ui-monospace, Consolas, monospace' }}>{savedUrl}</span>
           </div>
         )}
         <div style={{ display: 'flex', gap: '8px', marginTop: '12px', alignItems: 'center' }}>
@@ -304,13 +304,13 @@ export default function GitPanel() {
 
         {status && (
           <>
-            <div style={{ fontSize: '12px', color: '#6b7280', marginBottom: '10px' }}>
-              Branch: <strong style={{ color: '#2563eb', fontFamily: 'ui-monospace, Consolas, monospace' }}>{status.branch}</strong>
+            <div style={{ fontSize: '12px', color: 'var(--muted)', marginBottom: '10px' }}>
+              Branch: <strong style={{ color: 'var(--accent)', fontFamily: 'ui-monospace, Consolas, monospace' }}>{status.branch}</strong>
             </div>
             {status.files.length === 0 ? (
-              <div style={{ fontSize: '13px', color: '#6b7280' }}>Nothing to commit — working tree clean.</div>
+              <div style={{ fontSize: '13px', color: 'var(--muted)' }}>Nothing to commit — working tree clean.</div>
             ) : (
-              <div style={{ marginBottom: '10px', background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: '6px', padding: '8px 10px' }}>
+              <div style={{ marginBottom: '10px', background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: '6px', padding: '8px 10px' }}>
                 {status.files.map((f, i) => (
                   <div key={i} style={{ fontFamily: 'ui-monospace, Consolas, monospace', fontSize: '12px', color: statusColor(f.status), padding: '1px 0' }}>
                     <span style={{ marginRight: '8px', opacity: 0.7 }}>{f.status.trim()}</span>{f.file}
@@ -373,18 +373,18 @@ export default function GitPanel() {
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
 function statusColor(s) {
-  if (!s) return '#374151';
+  if (!s) return 'var(--text)';
   const c = s.trim()[0] || ' ';
   if (c === 'M') return '#d97706'; // amber
   if (c === 'A') return '#16a34a'; // green
   if (c === 'D') return '#dc2626'; // red
-  if (c === '?') return '#6b7280'; // gray
-  return '#374151';
+  if (c === '?') return 'var(--muted)';
+  return 'var(--text)';
 }
 
 const sectionStyle = {
-  background: '#fff',
-  border: '1px solid #e5e7eb',
+  background: 'var(--panel-bg)',
+  border: '1px solid var(--border)',
   borderRadius: '8px',
   padding: '16px',
   marginBottom: '14px',
@@ -395,16 +395,16 @@ const headingStyle = {
   margin: '0 0 10px',
   fontSize: '14px',
   fontWeight: '600',
-  color: '#111827',
+  color: 'var(--text-h)',
 };
 
 const inputStyle = {
   flex: 1,
-  background: '#fff',
-  border: '1px solid #d1d5db',
+  background: 'var(--panel-bg)',
+  border: '1px solid var(--border-dark)',
   borderRadius: '6px',
   padding: '6px 10px',
-  color: '#111827',
+  color: 'var(--text-h)',
   fontSize: '13px',
   outline: 'none',
   width: '100%',
@@ -421,7 +421,7 @@ function btnStyle(variant, disabled = false) {
     whiteSpace: 'nowrap',
     transition: 'background 0.15s',
   };
-  if (variant === 'primary')   return { ...base, background: '#2563eb', color: '#fff' };
+  if (variant === 'primary')   return { ...base, background: 'var(--accent)', color: '#fff' };
   if (variant === 'danger')    return { ...base, background: '#dc2626', color: '#fff' };
-  return { ...base, background: '#fff', color: '#374151', border: '1px solid #d1d5db' };
+  return { ...base, background: 'var(--panel-bg)', color: 'var(--text)', border: '1px solid var(--border-dark)' };
 }

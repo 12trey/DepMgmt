@@ -73,21 +73,21 @@ export default function KerberosBar() {
 
   if (status === null) {
     return (
-      <div style={barStyle('#f9fafb', '#e5e7eb')}>
-        <span style={{ color: '#6b7280', fontSize: '12px' }}>Checking Kerberos…</span>
+      <div style={barStyle('var(--bg)', 'var(--border)')}>
+        <span style={{ color: 'var(--muted)', fontSize: '12px' }}>Checking Kerberos…</span>
       </div>
     );
   }
 
   if (status.valid) {
     return (
-      <div style={barStyle('#f0fdf4', '#bbf7d0')}>
-        <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#16a34a', display: 'inline-block', flexShrink: 0 }} />
-        <span style={{ color: '#15803d', fontSize: '12px', fontWeight: 500 }}>
+      <div style={barStyle('var(--status-ok-bg)', 'var(--status-ok-border)')}>
+        <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: 'var(--status-ok-dot)', display: 'inline-block', flexShrink: 0 }} />
+        <span style={{ color: 'var(--status-ok-text)', fontSize: '12px', fontWeight: 500 }}>
           {status.principal}
         </span>
         {status.expires && (
-          <span style={{ color: '#6b7280', fontSize: '11px' }}>
+          <span style={{ color: 'var(--muted)', fontSize: '11px' }}>
             expires {status.expires}
           </span>
         )}
@@ -115,11 +115,11 @@ export default function KerberosBar() {
 
   // No valid ticket — show status + inline credential form
   return (
-    <div style={{ borderBottom: '1px solid #fecaca', background: '#fff5f5' }}>
+    <div style={{ borderBottom: '1px solid var(--status-err-border)', background: 'var(--status-err-outer)' }}>
       {/* Status row */}
-      <div style={{ ...barStyle('#fef2f2', '#fecaca'), borderBottom: showForm ? '1px solid #fecaca' : 'none' }}>
-        <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#dc2626', display: 'inline-block', flexShrink: 0 }} />
-        <span style={{ color: '#b91c1c', fontSize: '12px' }}>No valid Kerberos ticket</span>
+      <div style={{ ...barStyle('var(--status-err-bg)', 'var(--status-err-border)'), borderBottom: showForm ? '1px solid var(--status-err-border)' : 'none' }}>
+        <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: 'var(--status-err-dot)', display: 'inline-block', flexShrink: 0 }} />
+        <span style={{ color: 'var(--status-err-text)', fontSize: '12px' }}>No valid Kerberos ticket</span>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: '8px' }}>
           <button
             onClick={() => { setShowForm(v => !v); setAuthError(''); }}
@@ -134,8 +134,8 @@ export default function KerberosBar() {
       {showForm && (
         <form onSubmit={authenticate} style={{
           display: 'flex', alignItems: 'center', gap: '8px',
-          padding: '8px 12px', background: '#fff', flexWrap: 'wrap',
-          borderTop: '1px solid #e5e7eb',
+          padding: '8px 12px', background: 'var(--panel-bg)', flexWrap: 'wrap',
+          borderTop: '1px solid var(--border)',
         }}>
           <input
             type="text"
@@ -157,7 +157,7 @@ export default function KerberosBar() {
             type="submit"
             disabled={authenticating}
             style={{
-              background: authenticating ? '#93c5fd' : '#2563eb',
+              background: authenticating ? '#93c5fd' : 'var(--accent)',
               color: '#fff', border: 'none', borderRadius: '5px',
               padding: '5px 14px', fontSize: '12px', fontWeight: 500,
               cursor: authenticating ? 'not-allowed' : 'pointer',
@@ -189,16 +189,16 @@ function barStyle(bg, border) {
   };
 }
 
-function smallBtn(bg = '#f3f4f6', color = '#374151', hoverBg = '#e5e7eb') {
+function smallBtn(bg = 'var(--bg-hover)', color = 'var(--text)', hoverBg = 'var(--bg-hover)') {
   return {
-    background: bg, color, border: '1px solid #d1d5db',
+    background: bg, color, border: '1px solid var(--border-dark)',
     borderRadius: '4px', padding: '3px 10px',
     fontSize: '11px', cursor: 'pointer', fontWeight: 500,
   };
 }
 
 const inputStyle = {
-  background: '#fff', border: '1px solid #d1d5db', borderRadius: '5px',
-  padding: '4px 8px', color: '#111827', fontSize: '12px', outline: 'none',
+  background: 'var(--panel-bg)', border: '1px solid var(--border-dark)', borderRadius: '5px',
+  padding: '4px 8px', color: 'var(--text-h)', fontSize: '12px', outline: 'none',
   width: '200px',
 };

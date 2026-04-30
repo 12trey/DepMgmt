@@ -71,7 +71,7 @@
   transition: background 0.1s, border-color 0.1s;
 }
 .fileName:hover {
-  background: #f3f4f6;
+  background: var(--bg-hover);
   border-color: var(--border);
 }
 .fileName.selected {
@@ -103,8 +103,8 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  background: #fff;
-  color: #374151;
+  background: var(--panel-bg);
+  color: var(--text);
   border: 1px solid var(--border-dark);
   border-radius: 6px;
   padding: 5px 12px;
@@ -113,7 +113,7 @@
   cursor: pointer;
   transition: background 0.15s;
 }
-.btn-secondary:hover:not(:disabled) { background: #f9fafb; }
+.btn-secondary:hover:not(:disabled) { background: var(--bg); }
 .btn-secondary:disabled { opacity: 0.5; cursor: not-allowed; }
 
 /* Run playbook button (kept as .counter for compatibility) */
@@ -139,7 +139,7 @@
 .app-input {
   width: 100%;
   box-sizing: border-box;
-  background: #fff;
+  background: var(--panel-bg);
   border: 1px solid var(--border-dark);
   border-radius: 6px;
   padding: 5px 8px;
