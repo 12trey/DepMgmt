@@ -16,6 +16,7 @@ export default function RemoteDesktop() {
   const [status, setStatus] = useState('');
   const [connecting, setConnecting] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const displayRef = useRef(null);
   const clientRef = useRef(null);
   const keyboardRef = useRef(null);
@@ -55,6 +56,31 @@ export default function RemoteDesktop() {
       observer.disconnect();
     };
   }, [view]); // or whatever indicates session is active
+
+  useEffect(() => {
+    window.addEventListener('resize', scaleDisplay);
+    scaleDisplay();
+
+    return () => window.removeEventListener('resize', scaleDisplay);
+  }, []);
+
+  function scaleDisplay() {
+    const container = displayRef.current;
+    if (!container) return;
+
+    const display = container.querySelector('.guac-display');
+    if (!display) return;
+
+    const canvas = display.querySelector('canvas');
+    if (!canvas) return;
+
+    const scaleX = container.clientWidth / canvas.width;
+    const scaleY = container.clientHeight / canvas.height;
+    const scale = Math.min(scaleX, scaleY);
+
+    display.style.transform = `scale(${scale})`;
+    display.style.transformOrigin = 'top left';
+  }
 
   async function loadConnections() {
     try {
@@ -190,9 +216,40 @@ export default function RemoteDesktop() {
     };
 
     // Keyboard capture
+    const CTRL_K  = new Set([65507, 65508]);
+    const ALT_K   = new Set([65513, 65514]);
+    const SHIFT_K = new Set([65505, 65506]);
+    const mods = { ctrl: false, alt: false, shift: false };
+    const forwarded = new Set();
+
+    function isInputActive() {
+      const tag = document.activeElement?.tagName?.toLowerCase();
+      return tag === 'input' || tag === 'textarea' || tag === 'select';
+    }
+
     const keyboard = new Guacamole.Keyboard(document);
-    keyboard.onkeydown = k => client.sendKeyEvent(1, k);
-    keyboard.onkeyup = k => client.sendKeyEvent(0, k);
+    keyboard.onkeydown = k => {
+      if (CTRL_K.has(k))  mods.ctrl  = true;
+      if (ALT_K.has(k))   mods.alt   = true;
+      if (SHIFT_K.has(k)) mods.shift = true;
+      if (mods.ctrl && mods.alt && mods.shift) {
+        const toRelease = [...forwarded].filter(fk => CTRL_K.has(fk) || ALT_K.has(fk) || SHIFT_K.has(fk));
+        for (const fk of toRelease) { client.sendKeyEvent(0, fk); forwarded.delete(fk); }
+        mods.ctrl = mods.alt = mods.shift = false;
+        setSidebarOpen(v => !v);
+        return;
+      }
+      if (isInputActive()) return;
+      forwarded.add(k);
+      client.sendKeyEvent(1, k);
+    };
+    keyboard.onkeyup = k => {
+      if (CTRL_K.has(k))  mods.ctrl  = false;
+      if (ALT_K.has(k))   mods.alt   = false;
+      if (SHIFT_K.has(k)) mods.shift = false;
+      if (isInputActive()) { forwarded.delete(k); return; }
+      if (forwarded.has(k)) { forwarded.delete(k); client.sendKeyEvent(0, k); }
+    };
     keyboardRef.current = keyboard;
 
     // Mouse
@@ -255,6 +312,13 @@ export default function RemoteDesktop() {
               </span>
             )}
             <button
+              onClick={() => setSidebarOpen(v => !v)}
+              title="Menu (Ctrl+Alt+Shift)"
+              style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)', fontSize: '16px', padding: '2px 6px', lineHeight: 1 }}
+            >
+              ☰
+            </button>
+            <button
               onClick={handleDisconnect}
               className="btn-secondary"
               style={{ fontSize: '12px', padding: '3px 12px', color: '#dc2626', borderColor: '#fca5a5' }}
@@ -263,16 +327,27 @@ export default function RemoteDesktop() {
             </button>
           </div>
         </div>
-        <div
-          ref={displayRef}
-          tabIndex={0}
-          style={{ flex: 1, overflow: 'hidden', background: '#000', outline: 'none', cursor: 'crosshair' }}
-        />
+        <div id="somecontainer" style={{ position: 'relative', flex: 1, display: 'flex' }}>
+          <div
+            id="guacdisplay"
+            ref={displayRef}
+            tabIndex={0}
+            style={{ flex: 1, overflow: 'hidden', background: '#000', outline: 'none', cursor: 'crosshair' }}
+          />
+          {sidebarOpen && (
+            <GuacSidebar
+              clientRef={clientRef}
+              onClose={() => setSidebarOpen(false)}
+              onDisconnect={handleDisconnect}
+            />
+          )}
+        </div>
       </div>
     );
   }
 
   // ── Manager view ─────────────────────────────────────────────────────────────
+
 
   const grouped = connections.reduce((acc, c) => { (acc[c.type] ||= []).push(c); return acc; }, {});
   const hasConnections = connections.length > 0;
@@ -479,6 +554,92 @@ export default function RemoteDesktop() {
             })}
           </div>
         ))}
+      </div>
+    </div>
+  );
+}
+
+// ── Guacamole sidebar menu ────────────────────────────────────────────────────
+
+function GuacSidebar({ clientRef, onClose, onDisconnect }) {
+  const [clipText, setClipText] = useState('');
+
+  function sendClipboard() {
+    const client = clientRef.current;
+    if (!client || !clipText) return;
+    const stream = client.createClipboardStream('text/plain');
+    const writer = new Guacamole.StringWriter(stream);
+    writer.sendText(clipText);
+    writer.sendEnd();
+    setClipText('');
+  }
+
+  function sendCombo(...keysyms) {
+    const client = clientRef.current;
+    if (!client) return;
+    for (const k of keysyms) client.sendKeyEvent(1, k);
+    for (const k of [...keysyms].reverse()) client.sendKeyEvent(0, k);
+  }
+
+  const row = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' };
+  const btn = {
+    padding: '6px 4px', fontSize: '11px', background: '#374151', color: '#e5e7eb',
+    border: 'none', borderRadius: '4px', cursor: 'pointer',
+  };
+  const label = {
+    fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em',
+    color: '#6b7280', marginBottom: '6px',
+  };
+
+  return (
+    <div style={{
+      position: 'absolute', left: 0, top: 0, bottom: 0, width: '240px',
+      display: 'flex', flexDirection: 'column', zIndex: 50,
+      background: 'rgba(17,24,39,0.96)', borderRight: '1px solid rgba(255,255,255,0.1)',
+      boxShadow: '4px 0 24px rgba(0,0,0,0.5)',
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', borderBottom: '1px solid rgba(255,255,255,0.1)', flexShrink: 0 }}>
+        <span style={{ fontSize: '12px', fontWeight: 600, color: '#e5e7eb' }}>Remote Menu</span>
+        <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af', fontSize: '16px', lineHeight: 1 }}>✕</button>
+      </div>
+
+      <div style={{ flex: 1, overflowY: 'auto', padding: '12px' }}>
+        <div style={{ marginBottom: '16px' }}>
+          <div style={label}>Clipboard</div>
+          <textarea
+            style={{ width: '100%', height: '72px', background: '#1f2937', color: '#f3f4f6', fontSize: '11px', border: '1px solid #4b5563', borderRadius: '4px', padding: '6px', resize: 'none', outline: 'none', boxSizing: 'border-box' }}
+            placeholder="Paste text here to send to remote…"
+            value={clipText}
+            onChange={e => setClipText(e.target.value)}
+          />
+          <button
+            onClick={sendClipboard}
+            disabled={!clipText}
+            style={{ marginTop: '6px', width: '100%', padding: '6px', fontSize: '11px', fontWeight: 600, background: '#2563eb', color: '#fff', border: 'none', borderRadius: '4px', cursor: clipText ? 'pointer' : 'not-allowed', opacity: clipText ? 1 : 0.4 }}
+          >
+            Send to Remote
+          </button>
+        </div>
+
+        <div style={{ marginBottom: '16px' }}>
+          <div style={label}>Special Keys</div>
+          <div style={row}>
+            <button style={btn} onClick={() => sendCombo(65507, 65513, 65535)}>Ctrl+Alt+Del</button>
+            <button style={btn} onClick={() => sendCombo(65515)}>Win key</button>
+            <button style={btn} onClick={() => sendCombo(65377)}>Print Screen</button>
+            <button style={btn} onClick={() => sendCombo(65299)}>Pause/Break</button>
+          </div>
+        </div>
+      </div>
+
+      <div style={{ padding: '10px 12px', borderTop: '1px solid rgba(255,255,255,0.1)', flexShrink: 0 }}>
+        <button
+          onClick={onDisconnect}
+          style={{ width: '100%', padding: '7px', fontSize: '11px', fontWeight: 600, background: '#b91c1c', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', marginBottom: '6px' }}
+        >
+          Disconnect
+        </button>
+        <p style={{ textAlign: 'center', fontSize: '10px', color: '#4b5563', margin: 0 }}>Ctrl+Alt+Shift to toggle</p>
       </div>
     </div>
   );

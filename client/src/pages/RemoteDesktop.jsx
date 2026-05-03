@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import Guacamole from 'guacamole-common-js';
-import { MonitorPlay, ChevronRight, ChevronLeft, X, Plug, PlugZap, Loader2 } from 'lucide-react';
+import { MonitorPlay, ChevronRight, ChevronLeft, X, Plug, PlugZap, Loader2, Menu } from 'lucide-react';
 
 const DMT_BASE = 'http://localhost:7000';
 const CONN_TYPES = ['rdp', 'vnc', 'ssh'];
@@ -47,6 +47,7 @@ export default function RemoteDesktop() {
   const [retryCount, setRetryCount] = useState(0);
   const [connections, setConnections] = useState([]);
   const [panelOpen, setPanelOpen] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
   const [editingId, setEditingId] = useState(null);
   const [sessionActive, setSessionActive] = useState(false);
@@ -215,6 +216,7 @@ export default function RemoteDesktop() {
   }
 
   async function handleConnectSaved(conn) {
+    handleDisconnect();
     if (!conn.hasPassword) {
       selectConnection(conn);
       setStatus('No password saved — enter one below and click Connect.');
@@ -280,9 +282,26 @@ export default function RemoteDesktop() {
     });
     ro.observe(displayRef.current);
 
+    // Capture-phase listener on document so the combo works even when the canvas
+    // isn't focused (e.g. after clicking the ☰ button in the header).
+    const forwarded = new Set();
+    const handleSidebarToggle = e => {
+      if (!e.ctrlKey || !e.altKey || !e.shiftKey) return;
+      e.preventDefault();
+      e.stopPropagation(); // prevents Guacamole keyboard from also seeing this keydown
+      // Release any modifier keys that were already forwarded to the remote
+      for (const k of [65507, 65508, 65513, 65514, 65505, 65506]) {
+        if (forwarded.has(k)) { client.sendKeyEvent(0, k); forwarded.delete(k); }
+      }
+      setSidebarOpen(v => !v);
+    };
+    document.addEventListener('keydown', handleSidebarToggle, { capture: true });
+
     const keyboard = new Guacamole.Keyboard(displayRef.current);
-    keyboard.onkeydown = k => client.sendKeyEvent(1, k);
-    keyboard.onkeyup = k => client.sendKeyEvent(0, k);
+    keyboard.onkeydown = k => { forwarded.add(k); client.sendKeyEvent(1, k); };
+    keyboard.onkeyup = k => {
+      if (forwarded.has(k)) { forwarded.delete(k); client.sendKeyEvent(0, k); }
+    };
     keyboardRef.current = keyboard;
 
     const mouse = new Guacamole.Mouse(displayEl);
@@ -324,7 +343,11 @@ export default function RemoteDesktop() {
     client.connect();
     displayRef.current.focus();
 
-    return () => { ro.disconnect(); clearTimeout(resizeTimer); };
+    return () => {
+      ro.disconnect();
+      clearTimeout(resizeTimer);
+      document.removeEventListener('keydown', handleSidebarToggle, { capture: true });
+    };
   }, [sessionActive]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function openSession(token, name, type) {
@@ -514,6 +537,13 @@ export default function RemoteDesktop() {
           )}
           <div className="flex-1" />
           <button
+            onClick={() => setSidebarOpen(v => !v)}
+            className="text-xs text-gray-400 hover:text-gray-200 p-1 rounded"
+            title="Menu (Ctrl+Alt+Shift)"
+          >
+            <Menu size={14} />
+          </button>
+          <button
             onClick={() => setPanelOpen(v => !v)}
             className="text-xs text-gray-400 hover:text-gray-200 flex items-center gap-1"
           >
@@ -522,14 +552,22 @@ export default function RemoteDesktop() {
           </button>
         </div>
 
-        <div className="flex flex-1 overflow-hidden">
+        <div className="flex flex-1 overflow-hidden relative">
           {/* Canvas */}
           <div
             ref={displayRef}
             tabIndex={0}
-            className="flex-1 overflow-hidden outline-none cursor-crosshair"
+            className="flex-1 overflow-hidden outline-none cursor-none"
             style={{ background: '#000' }}
           />
+
+          {sidebarOpen && (
+            <GuacSidebar
+              clientRef={clientRef}
+              onClose={() => setSidebarOpen(false)}
+              onDisconnect={handleDisconnect}
+            />
+          )}
 
           {/* Connections panel */}
           {panelOpen && (
@@ -753,6 +791,102 @@ export default function RemoteDesktop() {
           onDelete={handleDelete}
         />
       )}
+    </div>
+  );
+}
+
+// ── Guacamole sidebar menu ────────────────────────────────────────────────────
+
+function GuacSidebar({ clientRef, onClose, onDisconnect }) {
+  const [clipText, setClipText] = useState('');
+
+  function sendClipboard() {
+    const client = clientRef.current;
+    if (!client || !clipText) return;
+    const stream = client.createClipboardStream('text/plain');
+    const writer = new Guacamole.StringWriter(stream);
+    writer.sendText(clipText);
+    writer.sendEnd();
+    setClipText('');
+  }
+
+  function sendCombo(...keysyms) {
+    const client = clientRef.current;
+    if (!client) return;
+    for (const k of keysyms) client.sendKeyEvent(1, k);
+    for (const k of [...keysyms].reverse()) client.sendKeyEvent(0, k);
+  }
+
+  return (
+    <div
+      className="absolute left-0 top-0 bottom-0 w-64 flex flex-col z-50 shadow-2xl"
+      style={{ background: 'rgba(17,24,39,0.96)', borderRight: '1px solid rgba(255,255,255,0.1)' }}
+    >
+      <div className="flex items-center justify-between px-3 py-2.5 border-b border-white/10 shrink-0">
+        <span className="text-xs font-semibold text-gray-200">Remote Menu</span>
+        <button onClick={onClose} className="text-gray-400 hover:text-white p-0.5 rounded">
+          <X size={13} />
+        </button>
+      </div>
+
+      <div className="flex-1 overflow-y-auto p-3 space-y-4">
+        <div>
+          <div className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Clipboard</div>
+          <textarea
+            className="w-full h-20 bg-gray-800 text-gray-100 text-xs rounded border border-gray-600 p-2 resize-none focus:outline-none focus:ring-1 focus:ring-blue-500"
+            placeholder="Paste text here to send to remote…"
+            value={clipText}
+            onChange={e => setClipText(e.target.value)}
+          />
+          <button
+            onClick={sendClipboard}
+            disabled={!clipText}
+            className="mt-1.5 w-full py-1.5 text-xs font-medium bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white rounded"
+          >
+            Send to Remote
+          </button>
+        </div>
+
+        <div>
+          <div className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Special Keys</div>
+          <div className="grid grid-cols-2 gap-1.5">
+            <button
+              onClick={() => sendCombo(65507, 65513, 65535)}
+              className="py-1.5 text-xs bg-gray-700 hover:bg-gray-600 text-gray-200 rounded"
+            >
+              Ctrl+Alt+Del
+            </button>
+            <button
+              onClick={() => sendCombo(65515)}
+              className="py-1.5 text-xs bg-gray-700 hover:bg-gray-600 text-gray-200 rounded"
+            >
+              Win key
+            </button>
+            <button
+              onClick={() => sendCombo(65377)}
+              className="py-1.5 text-xs bg-gray-700 hover:bg-gray-600 text-gray-200 rounded"
+            >
+              Print Screen
+            </button>
+            <button
+              onClick={() => sendCombo(65299)}
+              className="py-1.5 text-xs bg-gray-700 hover:bg-gray-600 text-gray-200 rounded"
+            >
+              Pause/Break
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div className="px-3 py-3 border-t border-white/10 space-y-2 shrink-0">
+        <button
+          onClick={onDisconnect}
+          className="w-full py-1.5 text-xs font-medium bg-red-700 hover:bg-red-600 text-white rounded flex items-center justify-center gap-1.5"
+        >
+          <PlugZap size={11} /> Disconnect
+        </button>
+        <p className="text-center text-[10px] text-gray-600">Ctrl+Alt+Shift to toggle</p>
+      </div>
     </div>
   );
 }

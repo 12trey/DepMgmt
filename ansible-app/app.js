@@ -897,7 +897,7 @@ new GuacamoleLite(
   }
 );
 
-httpServer.listen(port, '0.0.0.0', () => {
+httpServer.listen(port, '127.0.0.1', () => {
   console.log(`🌐 dmttools listening on http://localhost:${port} 🌐`);
   console.log('Press Ctrl+C to stop the server.');
 });
