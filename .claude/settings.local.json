@@ -36,7 +36,11 @@
       "Bash(ls src/components/FindBar*)",
       "Bash(npm audit *)",
       "Bash(npm ls *)",
-      "PowerShell(Get-ChildItem \"C:\\\\Users\\\\trey\\\\source\\\\aipsadt\\\\vscode-ext\" -Recurse -Name | Where-Object { $_ -notmatch 'node_modules' })"
+      "PowerShell(Get-ChildItem \"C:\\\\Users\\\\trey\\\\source\\\\aipsadt\\\\vscode-ext\" -Recurse -Name | Where-Object { $_ -notmatch 'node_modules' })",
+      "PowerShell(Get-ChildItem -Path \"C:\\\\Users\\\\trey\\\\source\\\\aipsadt\\\\ansible-app\" -Recurse -File | Select-Object -ExpandProperty FullName | ForEach-Object { $_.Replace\\(\"C:\\\\Users\\\\trey\\\\source\\\\aipsadt\\\\\", \"\"\\) })",
+      "WebFetch(domain:unpkg.com)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebFetch(domain:cdn.jsdelivr.net)"
     ]
   }
 }

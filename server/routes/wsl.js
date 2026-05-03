@@ -44,6 +44,18 @@ function wslExec(instance, command) {
   });
 }
 
+// GET /api/wsl/guacd-status?instance=NAME — check if guacd is running in the WSL instance
+router.get('/guacd-status', async (req, res) => {
+  const { instance } = req.query;
+  if (!instance) return res.status(400).json({ error: 'instance query param required' });
+  try {
+    await wslExec(instance, 'pgrep guacd');
+    res.json({ running: true });
+  } catch {
+    res.json({ running: false });
+  }
+});
+
 // GET /api/wsl/instances — list available WSL distros
 router.get('/instances', async (_req, res) => {
   try {
@@ -272,6 +284,9 @@ chmod 755 /usr/share/ansible/collections
 "$VENV_BIN/ansible-galaxy" collection install ansible.windows --ignore-certs --force -p /usr/share/ansible/collections || echo "==> Failed to install ansible.windows collection, but continuing anyway…"
 "$VENV_BIN/ansible-galaxy" collection install ansible.posix --ignore-certs --force -p /usr/share/ansible/collections || echo "==> Failed to install ansible.posix collection, but continuing anyway…"
 
+echo "==> Installing guacd for Remote Desktop support..."
+sudo apt-get install -y --no-install-recommends guacd libguac-client-rdp0 libguac-client-vnc0 libguac-client-ssh0 2>/dev/null || echo "==> [WARN] guacd install failed — Remote Desktop will not be available."
+
 echo "==> Checking for Node.js..."
 if ! command -v node > /dev/null 2>&1; then
   echo "==> Setting up NodeSource LTS repository..."
@@ -366,8 +381,10 @@ router.post('/launch', async (req, res) => {
     await wslExec(instance, `
 cat > /tmp/dmt-launch.sh << 'EOLAUNCH'
 #!/bin/bash -l
-# Activate the Python venv so ansible-playbook is on PATH for child processes
 [ -f "/opt/.ansiblevenv/bin/activate" ] && . "/opt/.ansiblevenv/bin/activate"
+if command -v guacd > /dev/null 2>&1 && ! pgrep guacd > /dev/null 2>&1; then
+  guacd -b 127.0.0.1 -l 4822 > /tmp/guacd.log 2>&1 &
+fi
 cd ${APP_PATH}
 exec node ${APP_ENTRY} >> /tmp/dmt-app.log 2>&1
 EOLAUNCH
@@ -422,17 +439,20 @@ rsync -av --delete \
     // 2. Install backend npm dependencies (picks up any newly added packages)
     await wslExec(instance, `cd "${APP_PATH}" && npm install`);
 
-    // 3. Rebuild the embedded React app
-    await wslExec(instance, `cd "${APP_PATH}/my-react-app" && npm run build`);
+    // 3. Install frontend deps (picks up any newly added packages) then rebuild
+    await wslExec(instance, `cd "${APP_PATH}/my-react-app" && npm install && npm run build`);
 
-    // 3. Kill the existing app.js process (ignore error if it wasn't running)
+    // 4. Kill the existing app.js process (ignore error if it wasn't running)
     await wslExec(instance, `pkill -f "node ${APP_ENTRY}" || true`).catch(() => {});
 
-    // 4. Relaunch app.js (same mechanism as /launch)
+    // 5. Relaunch app.js (same mechanism as /launch)
     await wslExec(instance, `
 cat > /tmp/dmt-launch.sh << 'EOLAUNCH'
 #!/bin/bash -l
 [ -f "/opt/.ansiblevenv/bin/activate" ] && . "/opt/.ansiblevenv/bin/activate"
+if command -v guacd > /dev/null 2>&1 && ! pgrep guacd > /dev/null 2>&1; then
+  guacd -b 127.0.0.1 -l 4822 > /tmp/guacd.log 2>&1 &
+fi
 cd ${APP_PATH}
 exec node ${APP_ENTRY} >> /tmp/dmt-app.log 2>&1
 EOLAUNCH

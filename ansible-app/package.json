@@ -13,6 +13,7 @@
   "dependencies": {
     "cors": "^2.8.6",
     "express": "^5.2.1",
+    "guacamole-lite": ">=1.0.0",
     "js-yaml": "^4.1.1"
   }
 }

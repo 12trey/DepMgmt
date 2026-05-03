@@ -1,10 +1,9 @@
 {
   "name": "ansible-helper",
   "displayName": "Ansible Helper",
-  "description": "Insert Ansible task snippets into YAML playbooks and run them in WSL with Kerberos support.",
+  "description": "Insert Ansible task snippets into YAML playbooks and run them in WSL with Kerberos support",
   "version": "0.1.0",
-  "icon": "media/icon.png",
-  "publisher": "Trey",
+  "publisher": "aipsadt",
   "engines": {
     "vscode": "^1.85.0"
   },
@@ -116,6 +115,11 @@
           "group": "ansible@1"
         },
         {
+          "command": "ansible.runPlaybook",
+          "when": "resourceExtname == .yaml || resourceExtname == .yml",
+          "group": "ansible@2"
+        },
+        {
           "command": "ansible.insertSnippet",
           "when": "resourceExtname == .yaml || resourceExtname == .yml",
           "group": "ansible@3"
@@ -136,6 +140,11 @@
           "command": "ansible.setHosts",
           "when": "resourceExtname == .ini",
           "group": "ansible@1"
+        },
+        {
+          "command": "ansible.runPlaybook",
+          "when": "resourceExtname == .yaml || resourceExtname == .yml",
+          "group": "ansible@2"
         },
         {
           "command": "ansible.newInventory",

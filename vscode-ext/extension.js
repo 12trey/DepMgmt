@@ -1,22 +1,50 @@
 const vscode = require('vscode');
+const path = require('path');
 const WIN_TASKS = require('./src/winTasks');
 const SnippetTreeProvider = require('./src/snippetTreeProvider');
 const playbookRunner = require('./src/playbookRunner');
 const kerberos = require('./src/kerberosService');
 const { newInventory, newPlaybook } = require('./src/fileScaffolder');
 const krb5Editor = require('./src/krb5Editor');
+const ansiblePanel = require('./src/ansiblePanel');
 
 let outputChannel;
-let statusBarItem;
+let statusBarItem;       // Kerberos
+let playbookBarItem;     // shows selected playbook, click to clear
+let hostsBarItem;        // shows selected hosts, click to clear
+let playBarItem;         // run button, shown when both are set
 let treeProvider;
+
+let activePlaybook = null; // { wslPath, name }
+let activeHosts = null;    // { wslPath, name }
 
 async function activate(context) {
   outputChannel = vscode.window.createOutputChannel('Ansible');
+  ansiblePanel.init(context);
 
+  // Kerberos status bar (priority 10)
   statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 10);
   statusBarItem.command = 'ansible.kerberosStatus';
   statusBarItem.tooltip = 'Kerberos ticket status — click for details';
   context.subscriptions.push(statusBarItem);
+
+  // Playbook indicator (priority 14) — click to clear
+  playbookBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 14);
+  playbookBarItem.command = 'ansible.clearPlaybook';
+  playbookBarItem.tooltip = 'Active playbook — click to clear';
+  context.subscriptions.push(playbookBarItem);
+
+  // Hosts indicator (priority 13) — click to clear
+  hostsBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 13);
+  hostsBarItem.command = 'ansible.clearHosts';
+  hostsBarItem.tooltip = 'Active hosts file — click to clear';
+  context.subscriptions.push(hostsBarItem);
+
+  // Play button (priority 12) — shown only when both are set
+  playBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 12);
+  playBarItem.command = 'ansible.runSelected';
+  playBarItem.text = '$(play) Run Ansible';
+  context.subscriptions.push(playBarItem);
 
   treeProvider = new SnippetTreeProvider();
   context.subscriptions.push(
@@ -33,12 +61,114 @@ async function activate(context) {
 
   context.subscriptions.push(
     vscode.commands.registerCommand('ansible.insertSnippet', async (snippetContent) => {
-      // Called from TreeView click (snippetContent provided) or command palette (show QuickPick)
       if (!snippetContent) {
         snippetContent = await pickSnippet();
         if (!snippetContent) return;
       }
       insertSnippetAtCursor(snippetContent);
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('ansible.setPlaybook', async (uri) => {
+      const winPath = uri ? uri.fsPath : vscode.window.activeTextEditor?.document.fileName;
+      if (!winPath) {
+        vscode.window.showWarningMessage('No YAML file selected.');
+        return;
+      }
+      activePlaybook = { wslPath: winToWslPath(winPath), name: path.basename(winPath) };
+      vscode.window.showInformationMessage(`Ansible playbook set: ${activePlaybook.name}`);
+      updateRunnerUI();
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('ansible.setHosts', async (uri) => {
+      let winPath = uri ? uri.fsPath : null;
+      if (!winPath) {
+        const picked = await vscode.window.showOpenDialog({
+          canSelectMany: false,
+          filters: { 'Inventory files': ['ini', 'cfg', 'txt'], 'All files': ['*'] },
+          title: 'Select Ansible Hosts / Inventory File',
+        });
+        if (!picked || picked.length === 0) return;
+        winPath = picked[0].fsPath;
+      }
+      activeHosts = { wslPath: winToWslPath(winPath), name: path.basename(winPath) };
+      vscode.window.showInformationMessage(`Ansible hosts set: ${activeHosts.name}`);
+      updateRunnerUI();
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('ansible.clearPlaybook', () => {
+      activePlaybook = null;
+      updateRunnerUI();
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('ansible.clearHosts', () => {
+      activeHosts = null;
+      updateRunnerUI();
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('ansible.clearRunner', () => {
+      activePlaybook = null;
+      activeHosts = null;
+      updateRunnerUI();
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('ansible.runSelected', async () => {
+      if (!activePlaybook || !activeHosts) {
+        vscode.window.showWarningMessage(
+          'Set both a playbook (right-click YAML) and a hosts file (right-click .ini) first.'
+        );
+        return;
+      }
+
+      if (playbookRunner.isRunning()) {
+        const choice = await vscode.window.showWarningMessage(
+          'A playbook is already running.',
+          'Stop and Re-run',
+          'Cancel'
+        );
+        if (choice !== 'Stop and Re-run') return;
+        playbookRunner.stop();
+      }
+
+      const cfg = vscode.workspace.getConfiguration('ansible');
+      // Snapshot paths before clearing them
+      const playbookPath = activePlaybook.wslPath;
+      const inventoryPath = activeHosts.wslPath;
+
+      ansiblePanel.show();
+      ansiblePanel.clear();
+
+      playbookRunner.run(
+        {
+          playbookPath,
+          inventoryPath,
+          ansibleConfig: cfg.get('defaultAnsibleConfig') || '',
+          repoFolder: cfg.get('repoFolder'),
+          ansibleBin: cfg.get('ansiblePlaybookPath'),
+          distro: cfg.get('wslDistro') || '',
+          verbosity: cfg.get('verbosity'),
+        },
+        outputChannel,
+        {
+          onData: ansiblePanel.append,
+          onFinish: () => {
+            activePlaybook = null;
+            activeHosts = null;
+            updateRunnerUI();
+          },
+        }
+      );
     })
   );
 
@@ -60,7 +190,6 @@ async function activate(context) {
       const distro = cfg.get('wslDistro') || '';
       const verbosity = cfg.get('verbosity');
 
-      // Resolve playbook path
       let playbookPath = getActiveYamlPath();
       if (!playbookPath) {
         playbookPath = await vscode.window.showInputBox({
@@ -70,18 +199,27 @@ async function activate(context) {
         if (!playbookPath) return;
       }
 
-      // Resolve inventory path
       const inventoryPath = await vscode.window.showInputBox({
         prompt: 'Inventory file path (relative to repo folder or absolute WSL path)',
         value: cfg.get('defaultInventory') || '.hosts.ini',
       });
       if (!inventoryPath) return;
 
-      const ansibleConfig = cfg.get('defaultAnsibleConfig') || '';
+      ansiblePanel.show();
+      ansiblePanel.clear();
 
       playbookRunner.run(
-        { playbookPath, inventoryPath, ansibleConfig, repoFolder, ansibleBin, distro, verbosity },
-        outputChannel
+        {
+          playbookPath,
+          inventoryPath,
+          ansibleConfig: cfg.get('defaultAnsibleConfig') || '',
+          repoFolder,
+          ansibleBin,
+          distro,
+          verbosity,
+        },
+        outputChannel,
+        { onData: ansiblePanel.append }
       );
     })
   );
@@ -184,7 +322,6 @@ async function activate(context) {
     })
   );
 
-
   // ── Init ────────────────────────────────────────────────────────────────────
 
   await treeProvider.refresh();
@@ -197,21 +334,50 @@ function deactivate() {
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
+function winToWslPath(winPath) {
+  return winPath
+    .replace(/\\/g, '/')
+    .replace(/^([A-Za-z]):/, (_, d) => `/mnt/${d.toLowerCase()}`);
+}
+
+function updateRunnerUI() {
+  if (activePlaybook) {
+    playbookBarItem.text = `$(file-code) ${activePlaybook.name}`;
+    playbookBarItem.show();
+  } else {
+    playbookBarItem.hide();
+  }
+
+  if (activeHosts) {
+    hostsBarItem.text = `$(list-tree) ${activeHosts.name}`;
+    hostsBarItem.show();
+  } else {
+    hostsBarItem.hide();
+  }
+
+  if (activePlaybook && activeHosts) {
+    playBarItem.tooltip = `Playbook: ${activePlaybook.name}\nHosts: ${activeHosts.name}\nClick to run`;
+    playBarItem.show();
+  } else {
+    playBarItem.hide();
+  }
+}
+
 function insertSnippetAtCursor(content) {
   const editor = vscode.window.activeTextEditor;
   if (!editor) {
     vscode.window.showWarningMessage('Open a YAML file to insert a snippet.');
     return;
   }
-  // Normalize: trim leading/trailing blank lines, ensure trailing newline
   const lines = content.split('\n');
-  const trimmed = lines
-    .slice(
-      lines.findIndex(l => l.trim() !== ''),
-      lines.length - [...lines].reverse().findIndex(l => l.trim() !== '')
-    )
-    .join('\n');
-  editor.insertSnippet(new vscode.SnippetString(trimmed + '\n'));
+  const trimmed = lines.slice(
+    lines.findIndex(l => l.trim() !== ''),
+    lines.length - [...lines].reverse().findIndex(l => l.trim() !== '')
+  );
+
+  const indented = trimmed.map(line => '    ' + line).join('\n');
+  const escaped = indented.replace(/\$/g, '\\$');
+  editor.insertSnippet(new vscode.SnippetString('\n' + escaped + '\n'));
 }
 
 async function pickSnippet() {
@@ -249,12 +415,7 @@ function getActiveYamlPath() {
   if (!editor) return null;
   const ext = editor.document.fileName.split('.').pop().toLowerCase();
   if (ext !== 'yaml' && ext !== 'yml') return null;
-  // Convert Windows path to WSL path
-  const winPath = editor.document.fileName;
-  const wslPath = winPath
-    .replace(/\\/g, '/')
-    .replace(/^([A-Za-z]):/, (_, d) => `/mnt/${d.toLowerCase()}`);
-  return wslPath;
+  return winToWslPath(editor.document.fileName);
 }
 
 function updateStatusBar(s) {

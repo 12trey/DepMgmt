@@ -3,7 +3,7 @@ import { Routes, Route, useLocation, useNavigate } from 'react-router-dom';
 import FindBar from './components/FindBar';
 import {
   LayoutDashboard, PackagePlus, FolderOpen, Play, GitBranch, Settings,
-  Monitor, Package, Archive, UsersRound, HelpCircle, ScrollText, X, ShieldCheck, Terminal, FileCode,
+  Monitor, MonitorPlay, Package, Archive, UsersRound, HelpCircle, ScrollText, X, ShieldCheck, Terminal, FileCode,
   ChevronsLeft, ChevronsRight, Moon, Sun,
 } from 'lucide-react';
 import Dashboard from './pages/Dashboard';
@@ -15,6 +15,7 @@ import Execution from './pages/Execution';
 import GitPanel from './pages/GitPanel';
 import Config from './pages/Config';
 import DMTTools from './pages/DMTTools';
+import RemoteDesktop from './pages/RemoteDesktop';
 import MsiBuilder from './pages/MsiBuilder';
 import CodeSigning from './pages/CodeSigning';
 import IntuneWin from './pages/IntuneWin';
@@ -40,8 +41,9 @@ const NAV_ITEMS = [
   { to: '/config',        icon: Settings,        label: 'Settings' },
   { to: '/templates',     icon: FileCode,        label: 'Template Editor' },
   { divider: true },
-  { to: '/dmt-tools',    icon: Monitor,          label: 'DMT Tools' },
-  { to: '/log-viewer',   icon: ScrollText,       label: 'Log Viewer' },
+  { to: '/dmt-tools',       icon: Monitor,      label: 'DMT Tools' },
+  { to: '/remote-desktop',  icon: MonitorPlay,  label: 'Remote Desktop' },
+  { to: '/log-viewer',      icon: ScrollText,   label: 'Log Viewer' },
   { divider: true },
   { to: '/help',         icon: HelpCircle,       label: 'Help' },
 ];
@@ -59,8 +61,9 @@ const PAGE_COMPONENTS = {
   '/templates':     TemplateEditor,
   '/git':           GitPanel,
   '/config':        Config,
-  '/dmt-tools':     DMTTools,
-  '/log-viewer':    LogViewer,
+  '/dmt-tools':        DMTTools,
+  '/remote-desktop':   RemoteDesktop,
+  '/log-viewer':       LogViewer,
   '/help':          Help,
 };
 
@@ -305,12 +308,12 @@ export default function App() {
           {openTabs.map(to => {
             const Component = PAGE_COMPONENTS[to];
             const isActive    = activeTo === to && !isSubRoute;
-            const isLogViewer = to === '/log-viewer';
+            const isFullBleed = to === '/log-viewer' || to === '/remote-desktop';
             return (
               <div
                 key={to}
-                style={{ display: isActive ? 'block' : 'none', ...(isLogViewer ? {} : { background: 'var(--content-bg)' }) }}
-                className={`absolute inset-0 ${isLogViewer ? '' : 'overflow-auto p-6'}`}
+                style={{ display: isActive ? 'block' : 'none', ...(!isFullBleed ? { background: 'var(--content-bg)' } : {}) }}
+                className={`absolute inset-0 ${isFullBleed ? '' : 'overflow-auto p-6'}`}
               >
                 <Component />
               </div>

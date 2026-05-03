@@ -1,5 +1,6 @@
 const express = require('express');
 const cors = require('cors');
+const http = require('http');
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
@@ -8,6 +9,7 @@ const { exec, spawn } = require('child_process');
 const { promisify } = require('util');
 const { cwd } = require('process');
 const yaml = require('js-yaml');
+const GuacamoleLite = require('guacamole-lite');
 
 const execPromise = promisify(exec);
 
@@ -17,6 +19,7 @@ const DEFAULT_REPO_FOLDER = '/home/ansibleapp/repo';
 // Config lives in the user's home dir so it survives a "Sync to WSL" that
 // overwrites the ansible-app directory. Migrate from the legacy location once.
 const configPath = path.join(process.env.HOME || '/root', '.dmttools-config.json');
+const connectionsPath = path.join(process.env.HOME || '/root', '.dmttools-connections.json');
 const legacyConfigPath = path.join(__dirname, 'appconfig.json');
 if (!fs.existsSync(configPath) && fs.existsSync(legacyConfigPath)) {
   try { fs.copyFileSync(legacyConfigPath, configPath); } catch { /* ignore */ }
@@ -32,6 +35,56 @@ function getRepoFolder() {
 }
 
 const port = 7000;
+
+// ── Guacamole token encryption ─────────────────────────────────────────────────
+// Token format expected by guacamole-lite 1.x:
+//   base64( JSON.stringify({ iv: base64(iv), value: base64(ciphertext) }) )
+// Key: 32 ASCII hex chars (32 bytes for AES-256-CBC). Using hex avoids UTF-8/latin1
+// ambiguity since Node.js crypto treats string keys as binary (latin1).
+
+let _guacKey = null;
+function getGuacKey() {
+  if (!_guacKey) {
+    // Hex-encode the first 16 bytes → 32 ASCII chars.
+    // Node.js crypto treats string keys as latin1/binary, so 32 ASCII chars = 32 bytes = AES-256 key.
+    // Using hex avoids any UTF-8 vs latin1 ambiguity for bytes > 127.
+    _guacKey = getMachineKey().slice(0, 16).toString('hex'); // 32 hex chars = 32 bytes
+  }
+  return _guacKey;
+}
+
+function generateGuacToken(type, settings) {
+  const payload = JSON.stringify({ connection: { type, settings } });
+  const iv = crypto.randomBytes(16);
+  const cipher = crypto.createCipheriv('aes-256-cbc', getGuacKey(), iv);
+  let value = cipher.update(payload, 'utf8', 'binary');
+  value += cipher.final('binary');
+  // guacamole-lite 1.x expects: base64( JSON({ iv: base64(iv), value: base64(ciphertext) }) )
+  const inner = JSON.stringify({
+    iv:    Buffer.from(iv).toString('base64'),
+    value: Buffer.from(value, 'binary').toString('base64'),
+  });
+  return Buffer.from(inner).toString('base64');
+}
+
+function defaultGuacPort(type) {
+  return type === 'rdp' ? '3389' : type === 'vnc' ? '5900' : '22';
+}
+
+// ── Remote connections storage ────────────────────────────────────────────────
+
+function readConnections() {
+  try {
+    const data = JSON.parse(fs.readFileSync(connectionsPath, 'utf-8'));
+    return Array.isArray(data.connections) ? data.connections : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeConnections(connections) {
+  fs.writeFileSync(connectionsPath, JSON.stringify({ connections }, null, 2), 'utf-8');
+}
 
 const app = express();
 app.use(express.json());
@@ -632,13 +685,219 @@ app.get('/config/krb5', (req, res) => {
   }
 });
 
+// ── Remote Desktop connection manager ─────────────────────────────────────────
+
+app.get('/guacd-status', async (req, res) => {
+  try {
+    await execPromise('pgrep guacd', { shell: '/bin/bash' });
+    res.json({ running: true });
+  } catch {
+    res.json({ running: false });
+  }
+});
+
+// Diagnostic endpoint — tests crypto round-trip and guacd reachability
+app.get('/test-guac', async (req, res) => {
+  const result = { keyLength: getGuacKey().length, guacdRunning: false, cryptoOk: false, error: null };
+
+  try {
+    await execPromise('pgrep guacd', { shell: '/bin/bash' });
+    result.guacdRunning = true;
+  } catch { /* not running */ }
+
+  try {
+    const token = generateGuacToken('rdp', { hostname: '127.0.0.1', port: '3389' });
+    const tokenData = JSON.parse(Buffer.from(token, 'base64').toString());
+    const decipher = crypto.createDecipheriv('aes-256-cbc', getGuacKey(), Buffer.from(tokenData.iv, 'base64'));
+    let dec = decipher.update(Buffer.from(tokenData.value, 'base64'), null, 'utf8');
+    dec += decipher.final('utf8');
+    const parsed = JSON.parse(dec);
+    result.cryptoOk = true;
+    result.decryptedType = parsed?.connection?.type;
+  } catch (err) {
+    result.error = err.message;
+  }
+
+  // Check guacd version and installed plugins
+  try {
+    const { stdout: ver } = await execPromise(
+      'dpkg -l guacd 2>/dev/null | grep "^ii" | awk \'{print $3}\'',
+      { shell: '/bin/bash' }
+    );
+    result.guacdVersion = ver.trim() || 'unknown';
+  } catch { result.guacdVersion = 'unknown'; }
+  try {
+    const { stdout: rdp } = await execPromise(
+      'find /usr/lib -name "libguac-client-rdp.so*" 2>/dev/null | head -1',
+      { shell: '/bin/bash' }
+    );
+    result.rdpPlugin = rdp.trim() || 'not found';
+  } catch { result.rdpPlugin = 'unknown'; }
+
+  res.json(result);
+});
+
+// Last N lines of guacd debug log
+app.get('/guac-logs', async (req, res) => {
+  try {
+    const { stdout } = await execPromise('tail -60 /tmp/guacd.log 2>/dev/null || echo "(log empty — restart DMT Tools to begin capturing)"', { shell: '/bin/bash' });
+    res.type('text/plain').send(stdout);
+  } catch {
+    res.type('text/plain').send('(log not available)');
+  }
+});
+
+// TCP reachability test — lets the UI confirm a host:port is reachable from inside WSL
+app.post('/test-connectivity', (req, res) => {
+  const { host, port } = req.body;
+  if (!host || !port) return res.status(400).json({ error: 'host and port required' });
+  const net = require('net');
+  const socket = net.createConnection({ host, port: parseInt(port, 10), timeout: 3000 });
+  socket.once('connect', () => { socket.destroy(); res.json({ reachable: true }); });
+  socket.once('timeout', () => { socket.destroy(); res.json({ reachable: false, reason: 'Timed out — host unreachable or port filtered' }); });
+  socket.once('error', err => res.json({ reachable: false, reason: err.message }));
+});
+
+app.get('/remote-connections', (req, res) => {
+  const connections = readConnections();
+  res.json(connections.map(c => ({ ...c, hasPassword: !!c.password, password: undefined })));
+});
+
+app.post('/remote-connections', (req, res) => {
+  const { id, name, type, host, port: connPort, username, password, domain, width, height, security } = req.body;
+  if (!name || !type || !host) return res.status(400).json({ error: 'name, type, and host are required' });
+
+  const connections = readConnections();
+  const encPassword = password ? encryptToken(password) : undefined;
+  const resolvedPort = connPort || defaultGuacPort(type);
+
+  if (id) {
+    const idx = connections.findIndex(c => c.id === id);
+    if (idx === -1) return res.status(404).json({ error: 'Connection not found' });
+    connections[idx] = {
+      ...connections[idx],
+      name, type, host,
+      port: resolvedPort,
+      username: username || '',
+      ...(domain !== undefined ? { domain } : {}),
+      ...(encPassword !== undefined ? { password: encPassword } : {}),
+      width: width || '1920',
+      height: height || '1080',
+      security: security || 'any',
+    };
+  } else {
+    connections.push({
+      id: crypto.randomUUID(),
+      name, type, host,
+      port: resolvedPort,
+      username: username || '',
+      ...(domain ? { domain } : {}),
+      ...(encPassword ? { password: encPassword } : {}),
+      width: width || '1920',
+      height: height || '1080',
+      security: security || 'any',
+    });
+  }
+
+  writeConnections(connections);
+  res.json({ ok: true });
+});
+
+app.delete('/remote-connections/:id', (req, res) => {
+  const updated = readConnections().filter(c => c.id !== req.params.id);
+  writeConnections(updated);
+  res.json({ ok: true });
+});
+
+app.post('/remote-connect', (req, res) => {
+  const { id, host, type, port: connPort, username, password, domain, width, height, security } = req.body;
+
+  let connType, settings;
+
+  if (id) {
+    const conn = readConnections().find(c => c.id === id);
+    if (!conn) return res.status(404).json({ error: 'Connection not found' });
+    connType = conn.type;
+    const storedPass = conn.password ? decryptToken(conn.password) : '';
+    settings = buildGuacSettings(conn.type, {
+      host: conn.host, port: conn.port,
+      username: conn.username || '', password: password || storedPass,
+      domain: conn.domain || '',
+      width: width || conn.width || '1920',
+      height: height || conn.height || '1080',
+      security: conn.security || 'any',      
+    });
+  } else {
+    if (!host || !type) return res.status(400).json({ error: 'host and type are required' });
+    connType = type;
+    settings = buildGuacSettings(type, {
+      host, port: connPort || defaultGuacPort(type),
+      username: username || '', password: password || '',
+      domain: domain || '', width: width || '1920', height: height || '1080',
+      security: security || 'any',
+    });
+  }
+
+  res.json({ token: generateGuacToken(connType, settings) });
+});
+
+function buildGuacSettings(type, { host, port, username, password, domain, width, height, security }) {
+  const base = { hostname: host, port: String(port || defaultGuacPort(type)) };
+  if (type === 'rdp') {
+    return {
+      ...base,
+      username, password,
+      ...(domain ? { domain } : {}),
+      width: String(width || '1920'),
+      height: String(height || '1080'),
+      'color-depth': '32',
+      'ignore-cert': 'true',
+      security: security || 'any',
+      'resize-method': 'display-update',
+    };
+  }
+  if (type === 'vnc') {
+    return {
+      ...base,
+      password,
+      width: String(width || '1920'),
+      height: String(height || '1080'),
+      'color-depth': '24',
+      encodings: 'tight zrle ultra copyrect hextile zlib corre rre raw',
+    };
+  }
+  // ssh
+  return {
+    ...base,
+    username, password,
+    'terminal-type': 'xterm-256color',
+    'color-scheme': 'white-black',
+    'font-name': 'monospace',
+    'font-size': '14',
+  };
+}
+
 // ── Catch-all ──────────────────────────────────────────────────────────────────
 
 app.get('/*name', (req, res) => {
   // SPA fallback handled by static middleware above
 });
 
-app.listen(port, '0.0.0.0', () => {
+const httpServer = http.createServer(app);
+
+new GuacamoleLite(
+  { server: httpServer },
+  { host: '127.0.0.1', port: 4822 },
+  {
+    crypt: {
+      cypher: 'AES-256-CBC',
+      key: getGuacKey(), // 32 ASCII hex chars; Node.js crypto uses binary/latin1 for strings = 32 bytes = AES-256 key
+    },
+    log: { level: 'VERBOSE' },
+  }
+);
+
+httpServer.listen(port, '0.0.0.0', () => {
   console.log(`🌐 dmttools listening on http://localhost:${port} 🌐`);
   console.log('Press Ctrl+C to stop the server.');
 });
