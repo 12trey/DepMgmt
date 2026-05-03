@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import Guacamole from 'guacamole-common-js';
-import { MonitorPlay, ChevronRight, ChevronLeft, X, Plug, PlugZap, Loader2, Menu } from 'lucide-react';
+import { MonitorPlay, ChevronRight, ChevronLeft, X, Plug, PlugZap, Loader2, Menu, Plus } from 'lucide-react';
 
 const DMT_BASE = 'http://localhost:7000';
 const CONN_TYPES = ['rdp', 'vnc', 'ssh'];
@@ -15,8 +15,9 @@ function getInitialResolution() {
   const navCollapsed = localStorage.getItem('navCollapsed') === 'true';
   const sidebarW = navCollapsed ? 56 : 224;  // matches App.jsx w-14 / w-56
   const w = window.innerWidth  - sidebarW;
-  const h = window.innerHeight - 38          // tab bar
-                               - 37;         // session header (Disconnect bar)
+  const h = window.innerHeight - 38          // app tab bar
+                               - 28          // session tab bar
+                               - 34;         // session toolbar
   return { width: String(Math.max(800, w)), height: String(Math.max(600, h)) };
 }
 
@@ -50,8 +51,9 @@ export default function RemoteDesktop() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
   const [editingId, setEditingId] = useState(null);
-  const [sessionActive, setSessionActive] = useState(false);
-  const [sessionName, setSessionName] = useState('');
+  // Multi-tab session state
+  const [sessionTabs, setSessionTabs] = useState([]); // [{ id, name }]
+  const [activeId, setActiveId] = useState(null);
   const [status, setStatus] = useState('');
   const [connecting, setConnecting] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -62,14 +64,20 @@ export default function RemoteDesktop() {
   const [wslInstances, setWslInstances] = useState([]);
   const [wslInstance, setWslInstance] = useState(() => localStorage.getItem(WSL_INSTANCE_KEY) || '');
 
-  const displayRef = useRef(null);
-  const clientRef = useRef(null);
-  const keyboardRef = useRef(null);
-  const pendingTokenRef = useRef(null);
+  const displayRef    = useRef(null);
+  const clientRef     = useRef(null); // always points to the active session's client
+  const keyboardRef   = useRef(null);
   const displayScaleRef = useRef(1);
   const autoLaunchedRef = useRef(false);
+  // id → { client, tunnel, displayEl, mouse, displayScale }
+  const sessionsRef   = useRef(new Map());
+  const activeIdRef   = useRef(null);   // sync copy of activeId for use inside closures
+  const forwardedRef  = useRef(new Set()); // keys forwarded to current remote
 
-  // Check if DMT Tools is reachable and load connections
+  // Keep activeIdRef in sync with React state
+  useEffect(() => { activeIdRef.current = activeId; }, [activeId]);
+
+  // Check DMT Tools and load saved connections
   useEffect(() => {
     setDmtReady(null);
     fetch(`${DMT_BASE}/guacd-status`, { signal: AbortSignal.timeout(2000) })
@@ -82,7 +90,12 @@ export default function RemoteDesktop() {
       .catch(() => setDmtReady(false));
   }, [retryCount]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  useEffect(() => () => disconnectClient(), []);
+  // Disconnect all sessions on unmount
+  useEffect(() => () => {
+    for (const { client } of sessionsRef.current.values()) {
+      try { client.disconnect(); } catch {}
+    }
+  }, []);
 
   // Auto-launch DMT Tools the moment we detect it isn't running
   useEffect(() => {
@@ -90,6 +103,86 @@ export default function RemoteDesktop() {
     autoLaunchedRef.current = true;
     kickAutoLaunch(localStorage.getItem(WSL_INSTANCE_KEY) || '');
   }, [dmtReady]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Set up keyboard + ResizeObserver once when the first session opens;
+  // tear down when the last session closes.
+  const hasSession = sessionTabs.length > 0;
+  useEffect(() => {
+    if (!hasSession || !displayRef.current) return;
+
+    const sendCurrentSize = () => {
+      const el = displayRef.current;
+      const client = clientRef.current;
+      if (!el || !client) return;
+      const { clientWidth: w, clientHeight: h } = el;
+      if (w && h) client.sendSize(w, h);
+    };
+
+    let resizeTimer = null;
+    const ro = new ResizeObserver(() => {
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(sendCurrentSize, 120);
+    });
+    ro.observe(displayRef.current);
+
+    const forwarded = forwardedRef.current;
+    const handleSidebarToggle = e => {
+      if (!e.ctrlKey || !e.altKey || !e.shiftKey) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const client = clientRef.current;
+      if (client) {
+        for (const k of [65507, 65508, 65513, 65514, 65505, 65506]) {
+          if (forwarded.has(k)) { client.sendKeyEvent(0, k); forwarded.delete(k); }
+        }
+      }
+      setSidebarOpen(v => !v);
+    };
+    document.addEventListener('keydown', handleSidebarToggle, { capture: true });
+
+    const keyboard = new Guacamole.Keyboard(displayRef.current);
+    keyboard.onkeydown = k => {
+      const client = clientRef.current;
+      if (!client) return;
+      forwarded.add(k);
+      client.sendKeyEvent(1, k);
+    };
+    keyboard.onkeyup = k => {
+      const client = clientRef.current;
+      if (!client) return;
+      if (forwarded.has(k)) { forwarded.delete(k); client.sendKeyEvent(0, k); }
+    };
+    keyboardRef.current = keyboard;
+
+    return () => {
+      ro.disconnect();
+      clearTimeout(resizeTimer);
+      document.removeEventListener('keydown', handleSidebarToggle, { capture: true });
+      if (keyboardRef.current) {
+        keyboardRef.current.onkeydown = null;
+        keyboardRef.current.onkeyup = null;
+        keyboardRef.current = null;
+      }
+    };
+  }, [hasSession]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Swap display element into the container whenever the active tab changes
+  useEffect(() => {
+    if (!activeId || !displayRef.current) return;
+    const session = sessionsRef.current.get(activeId);
+    if (!session) return;
+
+    displayRef.current.innerHTML = '';
+    displayRef.current.appendChild(session.displayEl);
+    clientRef.current = session.client;
+    displayScaleRef.current = session.displayScale;
+    forwardedRef.current.clear();
+
+    const { clientWidth: w, clientHeight: h } = displayRef.current;
+    if (w && h) session.client.sendSize(w, h);
+
+    displayRef.current.focus();
+  }, [activeId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function kickAutoLaunch(instance) {
     if (!instance) {
@@ -216,7 +309,6 @@ export default function RemoteDesktop() {
   }
 
   async function handleConnectSaved(conn) {
-    handleDisconnect();
     if (!conn.hasPassword) {
       selectConnection(conn);
       setStatus('No password saved — enter one below and click Connect.');
@@ -240,73 +332,27 @@ export default function RemoteDesktop() {
     }
   }
 
-  // After sessionActive flips true, the display div is in the DOM — attach guacamole here
-  useEffect(() => {
-    if (!sessionActive || !pendingTokenRef.current) return;
-    const token = pendingTokenRef.current;
-    pendingTokenRef.current = null;
-    if (!displayRef.current) return;
+  function openSession(token, name, type) {
+    const id = crypto.randomUUID();
+    const tabName = `${name} (${type.toUpperCase()})`;
 
     const tunnel = new Guacamole.WebSocketTunnel(`ws://localhost:7000/?token=${encodeURIComponent(token)}`);
     const client = new Guacamole.Client(tunnel);
-    clientRef.current = client;
-
     const displayEl = client.getDisplay().getElement();
-    displayRef.current.innerHTML = '';
-    displayRef.current.appendChild(displayEl);
 
-    // When remote reports a resize, scale to fill the container
     client.getDisplay().onresize = (w, h) => {
-      if (!displayRef.current || !w || !h) return;
-      const scale = Math.min(
-        displayRef.current.clientWidth / w,
-        displayRef.current.clientHeight / h,
-        1
-      );
-      displayScaleRef.current = scale;
+      const sess = sessionsRef.current.get(id);
+      if (!sess || !displayRef.current || !w || !h) return;
+      const scale = Math.min(displayRef.current.clientWidth / w, displayRef.current.clientHeight / h, 1);
+      sess.displayScale = scale;
       client.getDisplay().scale(scale);
+      if (activeIdRef.current === id) displayScaleRef.current = scale;
     };
-
-    // Send the container's actual pixel size to the remote
-    const sendCurrentSize = () => {
-      if (!displayRef.current) return;
-      const { clientWidth: w, clientHeight: h } = displayRef.current;
-      if (w && h) client.sendSize(w, h);
-    };
-
-    // Debounced ResizeObserver — fires whenever the container changes size
-    let resizeTimer = null;
-    const ro = new ResizeObserver(() => {
-      clearTimeout(resizeTimer);
-      resizeTimer = setTimeout(sendCurrentSize, 120);
-    });
-    ro.observe(displayRef.current);
-
-    // Capture-phase listener on document so the combo works even when the canvas
-    // isn't focused (e.g. after clicking the ☰ button in the header).
-    const forwarded = new Set();
-    const handleSidebarToggle = e => {
-      if (!e.ctrlKey || !e.altKey || !e.shiftKey) return;
-      e.preventDefault();
-      e.stopPropagation(); // prevents Guacamole keyboard from also seeing this keydown
-      // Release any modifier keys that were already forwarded to the remote
-      for (const k of [65507, 65508, 65513, 65514, 65505, 65506]) {
-        if (forwarded.has(k)) { client.sendKeyEvent(0, k); forwarded.delete(k); }
-      }
-      setSidebarOpen(v => !v);
-    };
-    document.addEventListener('keydown', handleSidebarToggle, { capture: true });
-
-    const keyboard = new Guacamole.Keyboard(displayRef.current);
-    keyboard.onkeydown = k => { forwarded.add(k); client.sendKeyEvent(1, k); };
-    keyboard.onkeyup = k => {
-      if (forwarded.has(k)) { forwarded.delete(k); client.sendKeyEvent(0, k); }
-    };
-    keyboardRef.current = keyboard;
 
     const mouse = new Guacamole.Mouse(displayEl);
     const sendMouse = state => {
-      const s = displayScaleRef.current;
+      const sess = sessionsRef.current.get(id);
+      const s = sess?.displayScale ?? 1;
       if (s === 1 || s === 0) { client.sendMouseState(state); return; }
       client.sendMouseState(new Guacamole.Mouse.State(
         Math.round(state.x / s), Math.round(state.y / s),
@@ -314,71 +360,73 @@ export default function RemoteDesktop() {
       ));
     };
     mouse.onmousedown = sendMouse;
-    mouse.onmouseup = sendMouse;
+    mouse.onmouseup  = sendMouse;
     mouse.onmousemove = sendMouse;
-    mouse.onmouseout = sendMouse;
+    mouse.onmouseout  = sendMouse;
 
     let wasOpen = false;
     tunnel.onstatechange = state => {
       if (state === Guacamole.Tunnel.State.OPEN) {
         wasOpen = true;
-        sendCurrentSize(); // snap to actual container size as soon as the channel is live
+        // Send size once the channel is live (works for both active and background tabs)
+        if (displayRef.current && activeIdRef.current === id) {
+          const { clientWidth: w, clientHeight: h } = displayRef.current;
+          if (w && h) client.sendSize(w, h);
+        }
       } else if (state === Guacamole.Tunnel.State.CLOSED) {
-        // Only show generic close if a specific error hasn't already been set
-        setStatus(prev => (prev && prev !== 'Connecting…' && prev !== '') ? prev
-          : wasOpen ? 'Disconnected.' : 'Connection refused — check guacd and target host.');
+        if (activeIdRef.current === id) {
+          setStatus(prev => (prev && prev !== 'Connecting…' && prev !== '') ? prev
+            : wasOpen ? 'Disconnected.' : 'Connection refused — check guacd and target host.');
+        }
       }
     };
-    tunnel.onerror = status => {
-      const code = status?.code ?? '';
+    tunnel.onerror = s => {
+      if (activeIdRef.current !== id) return;
+      const code = s?.code ?? '';
       const CODES = { 0x0202: 'upstream timeout', 0x0203: 'upstream error', 0x0207: 'upstream not found (host unreachable, RDP disabled, or security mismatch)', 0x0208: 'upstream unavailable' };
-      const label = CODES[code] || (status?.message && typeof status.message === 'string' ? status.message : `code ${code}`);
+      const label = CODES[code] || (s?.message && typeof s.message === 'string' ? s.message : `code ${code}`);
       setStatus(`Connection error: ${label}`);
     };
     client.onerror = err => {
+      if (activeIdRef.current !== id) return;
       const code = err?.code ? ` [${err.code}]` : '';
       setStatus(`Remote error${code}: ${err?.message || String(err)}`);
     };
 
-    client.connect();
-    displayRef.current.focus();
-
-    return () => {
-      ro.disconnect();
-      clearTimeout(resizeTimer);
-      document.removeEventListener('keydown', handleSidebarToggle, { capture: true });
-    };
-  }, [sessionActive]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  function openSession(token, name, type) {
-    disconnectClient();
-    pendingTokenRef.current = token;
-    setSessionActive(true);
-    setSessionName(`${name} (${type.toUpperCase()})`);
+    sessionsRef.current.set(id, { client, tunnel, displayEl, mouse, displayScale: 1 });
+    setSessionTabs(prev => [...prev, { id, name: tabName }]);
+    setActiveId(id);
     setPanelOpen(false);
     setConnecting(false);
     setStatus('');
+
+    client.connect();
   }
 
-  function disconnectClient() {
-    if (keyboardRef.current) {
-      keyboardRef.current.onkeydown = null;
-      keyboardRef.current.onkeyup = null;
-      try { keyboardRef.current.reset(); } catch {}
-      keyboardRef.current = null;
+  function disconnectSession(id) {
+    const session = sessionsRef.current.get(id);
+    if (session) {
+      try { session.client.disconnect(); } catch {}
+      sessionsRef.current.delete(id);
     }
-    if (clientRef.current) {
-      try { clientRef.current.disconnect(); } catch {}
-      clientRef.current = null;
+
+    const remaining = sessionTabs.filter(t => t.id !== id);
+    setSessionTabs(remaining);
+
+    if (activeIdRef.current === id) {
+      const newActive = remaining.length > 0 ? remaining[remaining.length - 1].id : null;
+      setActiveId(newActive);
+      setStatus('');
+      setSidebarOpen(false);
+      if (newActive === null) setPanelOpen(true);
     }
   }
 
-  function handleDisconnect() {
-    disconnectClient();
-    setSessionActive(false);
-    setSessionName('');
+  function switchTab(id) {
+    if (id === activeId) return;
+    setActiveId(id);
     setStatus('');
-    setConnecting(false);
+    setSidebarOpen(false);
   }
 
   async function handleDelete(e, id) {
@@ -398,7 +446,6 @@ export default function RemoteDesktop() {
       if (!r.ok) throw new Error(`Server returned ${r.status} — sync to WSL first`);
       const result = await r.json();
 
-      // If a host is filled in, also test TCP reachability from inside WSL
       if (form.host.trim()) {
         try {
           const cr = await fetch(`${DMT_BASE}/test-connectivity`, {
@@ -415,7 +462,6 @@ export default function RemoteDesktop() {
 
       setDiagResult(result);
 
-      // Also fetch guacd logs
       try {
         const lr = await fetch(`${DMT_BASE}/guac-logs`, { signal: AbortSignal.timeout(4000) });
         setGuacLogs(await lr.text());
@@ -449,7 +495,6 @@ export default function RemoteDesktop() {
           ? <Loader2 size={36} className="text-blue-400 animate-spin" />
           : <MonitorPlay size={36} className="text-gray-300" />
         }
-
         {autoPhase === 'launching' && (
           <p className="text-sm text-gray-600 dark:text-gray-300">
             Starting DMT Tools{wslInstance ? ` in ${wslInstance}` : ''}…
@@ -518,23 +563,48 @@ export default function RemoteDesktop() {
     return acc;
   }, {});
 
-  // ── Session view ─────────────────────────────────────────────────────────────
+  // ── Session view (one or more active tabs) ────────────────────────────────────
 
-  if (sessionActive) {
+  if (hasSession) {
+    const activeTab = sessionTabs.find(t => t.id === activeId);
     return (
       <div className="flex flex-col h-full" style={{ background: '#000' }}>
-        {/* Session header */}
-        <div className="flex items-center gap-3 px-3 py-1.5 bg-gray-900 border-b border-gray-700 shrink-0">
+
+        {/* Tab bar */}
+        <div className="flex items-center bg-gray-800 border-b border-gray-700 shrink-0 overflow-x-auto">
+          {sessionTabs.map(tab => (
+            <div
+              key={tab.id}
+              onClick={() => switchTab(tab.id)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs shrink-0 cursor-pointer border-r border-gray-700 select-none ${
+                tab.id === activeId
+                  ? 'bg-gray-900 text-gray-100'
+                  : 'text-gray-400 hover:bg-gray-700 hover:text-gray-200'
+              }`}
+            >
+              <span className="max-w-[140px] truncate">{tab.name}</span>
+              <button
+                onClick={e => { e.stopPropagation(); disconnectSession(tab.id); }}
+                className="shrink-0 text-gray-500 hover:text-red-400 rounded p-0.5"
+                title="Disconnect"
+              >
+                <X size={10} />
+              </button>
+            </div>
+          ))}
           <button
-            onClick={handleDisconnect}
-            className="flex items-center gap-1.5 px-3 py-1 text-xs font-medium bg-red-600 hover:bg-red-700 text-white rounded"
+            onClick={() => setPanelOpen(v => !v)}
+            className="flex items-center gap-1 px-3 py-1.5 text-xs text-gray-400 hover:text-gray-200 hover:bg-gray-700 shrink-0"
+            title="Open a new connection"
           >
-            <PlugZap size={12} /> Disconnect
+            <Plus size={11} /> New
           </button>
-          <span className="text-xs text-gray-300">{sessionName}</span>
-          {status && (
-            <span className="text-xs text-yellow-400 ml-2">{status}</span>
-          )}
+        </div>
+
+        {/* Toolbar */}
+        <div className="flex items-center gap-3 px-3 py-1.5 bg-gray-900 border-b border-gray-700 shrink-0">
+          <span className="text-xs text-gray-400 truncate max-w-xs">{activeTab?.name ?? ''}</span>
+          {status && <span className="text-xs text-yellow-400 truncate">{status}</span>}
           <div className="flex-1" />
           <button
             onClick={() => setSidebarOpen(v => !v)}
@@ -552,8 +622,8 @@ export default function RemoteDesktop() {
           </button>
         </div>
 
+        {/* Canvas + overlays */}
         <div className="flex flex-1 overflow-hidden relative">
-          {/* Canvas */}
           <div
             ref={displayRef}
             tabIndex={0}
@@ -565,11 +635,10 @@ export default function RemoteDesktop() {
             <GuacSidebar
               clientRef={clientRef}
               onClose={() => setSidebarOpen(false)}
-              onDisconnect={handleDisconnect}
+              onDisconnect={() => disconnectSession(activeId)}
             />
           )}
 
-          {/* Connections panel */}
           {panelOpen && (
             <ConnectionsPanel
               grouped={grouped}
