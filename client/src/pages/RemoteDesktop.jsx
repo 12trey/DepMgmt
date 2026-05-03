@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import Guacamole from 'guacamole-common-js';
-import { MonitorPlay, ChevronRight, ChevronLeft, X, Plug, PlugZap, Loader2, Menu, Plus } from 'lucide-react';
+import { MonitorPlay, ChevronRight, ChevronLeft, X, Plug, PlugZap, Loader2, Menu, Plus, Maximize2, Minimize2 } from 'lucide-react';
 
 const DMT_BASE = 'http://localhost:7000';
 const CONN_TYPES = ['rdp', 'vnc', 'ssh'];
@@ -49,6 +49,8 @@ export default function RemoteDesktop() {
   const [connections, setConnections] = useState([]);
   const [panelOpen, setPanelOpen] = useState(true);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [fullscreen, setFullscreen] = useState(false);
+  const [hudVisible, setHudVisible] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
   const [editingId, setEditingId] = useState(null);
   // Multi-tab session state
@@ -73,9 +75,49 @@ export default function RemoteDesktop() {
   const sessionsRef   = useRef(new Map());
   const activeIdRef   = useRef(null);   // sync copy of activeId for use inside closures
   const forwardedRef  = useRef(new Set()); // keys forwarded to current remote
+  const sessionViewRef    = useRef(null);
+  const hudTimerRef       = useRef(null);
+  const inTriggerZoneRef  = useRef(false);
 
   // Keep activeIdRef in sync with React state
   useEffect(() => { activeIdRef.current = activeId; }, [activeId]);
+
+  // Sync React fullscreen state with Electron native fullscreen (F11 or external trigger)
+  useEffect(() => {
+    if (!window.electronAPI?.onFullscreenChanged) return;
+    window.electronAPI.onFullscreenChanged(flag => {
+      setFullscreen(flag);
+      if (!flag) { setHudVisible(false); clearTimeout(hudTimerRef.current); }
+    });
+  }, []);
+
+  // Close fullscreen on Escape
+  useEffect(() => {
+    const onKey = e => {
+      if (e.key === 'Escape' && fullscreen) {
+        setFullscreen(false);
+        setHudVisible(false);
+        clearTimeout(hudTimerRef.current);
+        window.electronAPI?.setFullscreen(false);
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [fullscreen]);
+
+  // Reveal HUD when mouse is near the top of the screen in fullscreen.
+  // Capture phase bypasses Guacamole.Mouse's stopPropagation on mouse events.
+  useEffect(() => {
+    if (!fullscreen) { inTriggerZoneRef.current = false; return; }
+    const handler = e => {
+      const inZone = e.clientY < 2;
+      if (inZone) { setHudVisible(true); clearTimeout(hudTimerRef.current); }
+      else if (inTriggerZoneRef.current) { hudTimerRef.current = setTimeout(() => setHudVisible(false), 2500); }
+      inTriggerZoneRef.current = inZone;
+    };
+    document.addEventListener('mousemove', handler, { capture: true, passive: true });
+    return () => { document.removeEventListener('mousemove', handler, { capture: true }); inTriggerZoneRef.current = false; };
+  }, [fullscreen]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Check DMT Tools and load saved connections
   useEffect(() => {
@@ -115,7 +157,17 @@ export default function RemoteDesktop() {
       const client = clientRef.current;
       if (!el || !client) return;
       const { clientWidth: w, clientHeight: h } = el;
-      if (w && h) client.sendSize(w, h);
+      if (!w || !h) return;
+      client.sendSize(w, h);
+      // CSS-scale to fill container for servers that ignore resize (e.g. most VNC)
+      const dw = client.getDisplay().getWidth();
+      const dh = client.getDisplay().getHeight();
+      if (dw && dh) {
+        const scale = Math.min(w / dw, h / dh);
+        client.getDisplay().scale(scale);
+        const sess = sessionsRef.current.get(activeIdRef.current);
+        if (sess) { sess.displayScale = scale; displayScaleRef.current = scale; }
+      }
     };
 
     let resizeTimer = null;
@@ -180,6 +232,16 @@ export default function RemoteDesktop() {
 
     const { clientWidth: w, clientHeight: h } = displayRef.current;
     if (w && h) session.client.sendSize(w, h);
+
+    // Re-apply CSS scale (ensures VNC sessions fill the container on tab switch)
+    const dw = session.client.getDisplay().getWidth();
+    const dh = session.client.getDisplay().getHeight();
+    if (dw && dh && w && h) {
+      const scale = Math.min(w / dw, h / dh);
+      session.client.getDisplay().scale(scale);
+      session.displayScale = scale;
+      displayScaleRef.current = scale;
+    }
 
     displayRef.current.focus();
   }, [activeId]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -343,7 +405,7 @@ export default function RemoteDesktop() {
     client.getDisplay().onresize = (w, h) => {
       const sess = sessionsRef.current.get(id);
       if (!sess || !displayRef.current || !w || !h) return;
-      const scale = Math.min(displayRef.current.clientWidth / w, displayRef.current.clientHeight / h, 1);
+      const scale = Math.min(displayRef.current.clientWidth / w, displayRef.current.clientHeight / h);
       sess.displayScale = scale;
       client.getDisplay().scale(scale);
       if (activeIdRef.current === id) displayScaleRef.current = scale;
@@ -429,6 +491,23 @@ export default function RemoteDesktop() {
     setSidebarOpen(false);
   }
 
+  function enterFullscreen() {
+    setFullscreen(true);
+    window.electronAPI?.setFullscreen(true);
+  }
+  function exitFullscreen() {
+    setFullscreen(false);
+    setHudVisible(false);
+    clearTimeout(hudTimerRef.current);
+    window.electronAPI?.setFullscreen(false);
+  }
+  function showHud() {
+    setHudVisible(true);
+    clearTimeout(hudTimerRef.current);
+  }
+  function scheduleHideHud() {
+    hudTimerRef.current = setTimeout(() => setHudVisible(false), 2500);
+  }
   async function handleDelete(e, id) {
     e.stopPropagation();
     try {
@@ -568,59 +647,74 @@ export default function RemoteDesktop() {
   if (hasSession) {
     const activeTab = sessionTabs.find(t => t.id === activeId);
     return (
-      <div className="flex flex-col h-full" style={{ background: '#000' }}>
+      <div
+        ref={sessionViewRef}
+        className={`flex flex-col ${fullscreen ? '' : 'h-full'}`}
+        style={{ background: '#000', ...(fullscreen ? { position: 'fixed', inset: 0, zIndex: 50 } : {}) }}
+      >
 
-        {/* Tab bar */}
-        <div className="flex items-center bg-gray-800 border-b border-gray-700 shrink-0 overflow-x-auto">
-          {sessionTabs.map(tab => (
-            <div
-              key={tab.id}
-              onClick={() => switchTab(tab.id)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs shrink-0 cursor-pointer border-r border-gray-700 select-none ${
-                tab.id === activeId
-                  ? 'bg-gray-900 text-gray-100'
-                  : 'text-gray-400 hover:bg-gray-700 hover:text-gray-200'
-              }`}
-            >
-              <span className="max-w-[140px] truncate">{tab.name}</span>
-              <button
-                onClick={e => { e.stopPropagation(); disconnectSession(tab.id); }}
-                className="shrink-0 text-gray-500 hover:text-red-400 rounded p-0.5"
-                title="Disconnect"
+        {/* Tab bar — hidden in fullscreen */}
+        {!fullscreen && (
+          <div className="flex items-center bg-gray-800 border-b border-gray-700 shrink-0 overflow-x-auto">
+            {sessionTabs.map(tab => (
+              <div
+                key={tab.id}
+                onClick={() => switchTab(tab.id)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 text-xs shrink-0 cursor-pointer border-r border-gray-700 select-none ${
+                  tab.id === activeId
+                    ? 'bg-gray-900 text-gray-100'
+                    : 'text-gray-400 hover:bg-gray-700 hover:text-gray-200'
+                }`}
               >
-                <X size={10} />
-              </button>
-            </div>
-          ))}
-          <button
-            onClick={() => setPanelOpen(v => !v)}
-            className="flex items-center gap-1 px-3 py-1.5 text-xs text-gray-400 hover:text-gray-200 hover:bg-gray-700 shrink-0"
-            title="Open a new connection"
-          >
-            <Plus size={11} /> New
-          </button>
-        </div>
+                <span className="max-w-[140px] truncate">{tab.name}</span>
+                <button
+                  onClick={e => { e.stopPropagation(); disconnectSession(tab.id); }}
+                  className="shrink-0 text-gray-500 hover:text-red-400 rounded p-0.5"
+                  title="Disconnect"
+                >
+                  <X size={10} />
+                </button>
+              </div>
+            ))}
+            <button
+              onClick={() => setPanelOpen(v => !v)}
+              className="flex items-center gap-1 px-3 py-1.5 text-xs text-gray-400 hover:text-gray-200 hover:bg-gray-700 shrink-0"
+              title="Open a new connection"
+            >
+              <Plus size={11} /> New
+            </button>
+          </div>
+        )}
 
-        {/* Toolbar */}
-        <div className="flex items-center gap-3 px-3 py-1.5 bg-gray-900 border-b border-gray-700 shrink-0">
-          <span className="text-xs text-gray-400 truncate max-w-xs">{activeTab?.name ?? ''}</span>
-          {status && <span className="text-xs text-yellow-400 truncate">{status}</span>}
-          <div className="flex-1" />
-          <button
-            onClick={() => setSidebarOpen(v => !v)}
-            className="text-xs text-gray-400 hover:text-gray-200 p-1 rounded"
-            title="Menu (Ctrl+Alt+Shift)"
-          >
-            <Menu size={14} />
-          </button>
-          <button
-            onClick={() => setPanelOpen(v => !v)}
-            className="text-xs text-gray-400 hover:text-gray-200 flex items-center gap-1"
-          >
-            {panelOpen ? <ChevronRight size={13} /> : <ChevronLeft size={13} />}
-            Connections
-          </button>
-        </div>
+        {/* Toolbar — hidden in fullscreen */}
+        {!fullscreen && (
+          <div className="flex items-center gap-3 px-3 py-1.5 bg-gray-900 border-b border-gray-700 shrink-0">
+            <span className="text-xs text-gray-400 truncate max-w-xs">{activeTab?.name ?? ''}</span>
+            {status && <span className="text-xs text-yellow-400 truncate">{status}</span>}
+            <div className="flex-1" />
+            <button
+              onClick={() => setSidebarOpen(v => !v)}
+              className="text-xs text-gray-400 hover:text-gray-200 p-1 rounded"
+              title="Menu (Ctrl+Alt+Shift)"
+            >
+              <Menu size={14} />
+            </button>
+            <button
+              onClick={enterFullscreen}
+              className="text-xs text-gray-400 hover:text-gray-200 p-1 rounded"
+              title="Fullscreen"
+            >
+              <Maximize2 size={13} />
+            </button>
+            <button
+              onClick={() => setPanelOpen(v => !v)}
+              className="text-xs text-gray-400 hover:text-gray-200 flex items-center gap-1"
+            >
+              {panelOpen ? <ChevronRight size={13} /> : <ChevronLeft size={13} />}
+              Connections
+            </button>
+          </div>
+        )}
 
         {/* Canvas + overlays */}
         <div className="flex flex-1 overflow-hidden relative">
@@ -639,7 +733,7 @@ export default function RemoteDesktop() {
             />
           )}
 
-          {panelOpen && (
+          {panelOpen && !fullscreen && (
             <ConnectionsPanel
               grouped={grouped}
               editingId={editingId}
@@ -648,6 +742,51 @@ export default function RemoteDesktop() {
               onSelect={selectConnection}
               onDelete={handleDelete}
             />
+          )}
+
+          {/* Fullscreen HUD — slides down from top-center on mouse proximity */}
+          {fullscreen && (
+            <div
+              onMouseEnter={showHud}
+              onMouseLeave={scheduleHideHud}
+              style={{
+                position: 'fixed',
+                top: 0,
+                left: '50%',
+                transform: `translateX(-50%) translateY(${hudVisible ? '0' : '-100%'})`,
+                transition: 'transform 0.2s ease-out',
+                zIndex: 99,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 14,
+                padding: '8px 20px',
+                background: 'rgba(17,24,39,0.92)',
+                backdropFilter: 'blur(10px)',
+                borderRadius: '0 0 10px 10px',
+                border: '1px solid rgba(255,255,255,0.12)',
+                borderTop: 'none',
+                cursor: 'default',
+                whiteSpace: 'nowrap',
+                boxShadow: '0 4px 24px rgba(0,0,0,0.6)',
+              }}
+            >
+              <span style={{ fontSize: 12, color: '#d1d5db' }}>{activeTab?.name ?? ''}</span>
+              {status && <span style={{ fontSize: 11, color: '#facc15' }}>{status}</span>}
+              <span style={{ fontSize: 10, color: '#4b5563' }}>Ctrl+Alt+Shift for menu</span>
+              <button
+                onClick={exitFullscreen}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 5,
+                  fontSize: 11, color: '#9ca3af', background: 'none',
+                  border: '1px solid rgba(255,255,255,0.1)', borderRadius: 5,
+                  padding: '3px 10px', cursor: 'pointer',
+                }}
+                onMouseEnter={e => e.currentTarget.style.color = '#fff'}
+                onMouseLeave={e => e.currentTarget.style.color = '#9ca3af'}
+              >
+                <Minimize2 size={11} /> Exit Fullscreen
+              </button>
+            </div>
           )}
         </div>
       </div>
