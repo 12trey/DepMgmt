@@ -43,6 +43,6 @@
     ]
   },
   "dmt": {
-    "skipEnvCheck": true
+    "skipEnvCheck": false
   }
 }

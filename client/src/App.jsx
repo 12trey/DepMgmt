@@ -4,7 +4,7 @@ import FindBar from './components/FindBar';
 import {
   LayoutDashboard, PackagePlus, FolderOpen, Play, GitBranch, Settings,
   Monitor, MonitorPlay, Package, Archive, UsersRound, HelpCircle, ScrollText, X, ShieldCheck, Terminal, FileCode,
-  ChevronsLeft, ChevronsRight, Moon, Sun,
+  ChevronsLeft, ChevronsRight, Moon, Sun, NotebookTabs,
 } from 'lucide-react';
 import Dashboard from './pages/Dashboard';
 import CreatePackage from './pages/CreatePackage';
@@ -168,7 +168,12 @@ export default function App() {
       try { frame.contentWindow.postMessage({ type: 'theme', theme }, '*'); } catch {}
     });
   }, [theme]);
-  const toggleTheme = () => setTheme(t => t === 'light' ? 'dark' : 'light');
+
+  const toggleTheme = () => {
+    setTheme(t => t === 'light' ? 'dark' : 'light');
+  }
+
+  const [tabStrip, setTabStrip] = useState(true);
 
   return (
     <TabGuardContext.Provider value={registerGuard}>
@@ -247,15 +252,25 @@ export default function App() {
         </div>
 
         {/* Theme toggle */}
-        <div className={`border-t border-gray-700 shrink-0 ${navCollapsed ? 'p-2 flex justify-center' : 'px-3 py-2 flex items-center justify-between'}`}>
-          {!navCollapsed && <span className="text-xs text-gray-500"></span>}
-          <button
-            onClick={toggleTheme}
-            title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
-            className="p-1.5 rounded hover:bg-gray-700 text-gray-400 hover:text-white"
-          >
-            {theme === 'dark' ? <Sun size={15} /> : <Moon size={15} />}
-          </button>
+        <div>
+          <div className={`border-t border-gray-700 shrink-0 ${navCollapsed ? 'p-3 px-4 flex-col justify-end' : 'px-3 py-2 flex items-end justify-end'}`}>
+            {!navCollapsed && <span className="text-xs text-gray-500"></span>}
+            <button
+              onClick={toggleTheme}
+              title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+              className="p-1.5 rounded hover:bg-gray-700 text-gray-400 hover:text-white"
+            >
+              {theme === 'dark' ? <Sun size={15} /> : <Moon size={15} />}
+            </button>
+
+            <button
+              onClick={(e)=>setTabStrip(s=>!s)}
+              title={tabStrip ? 'Toggle tab strip' : 'Toggle tab strip'}
+              className="p-1.5 rounded hover:bg-gray-700 text-gray-400 hover:text-white"
+            >
+              {tabStrip ? <NotebookTabs size={15} style={{ rotate: '-90deg' }} /> : <NotebookTabs size={15} style={{ rotate: '-90deg', color: '#333333' }} />}
+            </button>
+          </div>
         </div>
       </nav>
 
@@ -263,7 +278,7 @@ export default function App() {
       <div className="flex-1 flex flex-col overflow-hidden">
 
         {/* Tab bar */}
-        <div ref={tabBarRef} className="flex bg-gray-800 border-b border-gray-600 overflow-x-auto shrink-0">
+        <div ref={tabBarRef} className={`flex bg-gray-800 border-b border-gray-600 overflow-x-auto shrink-0 ${!tabStrip ? 'hidden' : ''}`}>
           {openTabs.map(to => {
             const item = getNavItem(to);
             if (!item) return null;
