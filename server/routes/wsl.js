@@ -442,8 +442,12 @@ rsync -av --delete \
     // 3. Install frontend deps (picks up any newly added packages) then rebuild
     await wslExec(instance, `cd "${APP_PATH}/my-react-app" && npm install && npm run build`);
 
-    // 4. Kill the existing app.js process (ignore error if it wasn't running)
-    await wslExec(instance, `pkill -f "node ${APP_ENTRY}" || true`).catch(() => {});
+    // 4. Kill the existing app.js process
+    // - important to use -2 for SIGINT so app.js will close guac cleanly.
+    // (ignore error if it wasn't running)
+    await wslExec(instance, `pkill -2 -f "node ${APP_ENTRY}" || true`).catch(() => {});
+
+    //await new Promise((resolve) => setTimeout(resolve, 15000));
 
     // 5. Relaunch app.js (same mechanism as /launch)
     await wslExec(instance, `

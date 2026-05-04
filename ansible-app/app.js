@@ -13,11 +13,33 @@ const GuacamoleLite = require('guacamole-lite');
 
 const execPromise = promisify(exec);
 
+// We need to save a ref to the guac server
+// so our SIGINT clean up will work.
+var guacServer = null;
+
 process.on('uncaughtException', err => {
   console.error('[DMT] Uncaught exception (kept alive):', err.message);
 });
 process.on('unhandledRejection', reason => {
   console.error('[DMT] Unhandled rejection (kept alive):', reason);
+});
+
+process.on('SIGINT', () => {
+  console.log('Shutting down...');
+
+  if (guacServer) {
+    try {
+      guacServer.close();
+    } catch (e) {
+      console.error('Error closing guacServer:', e);
+    }
+  }
+
+  httpServer.close(() => {
+    console.log('HTTP server closed');
+    // ✅ NOW it's safe to exit
+    process.exit(0);
+  });
 });
 
 const ansiblePlaybookPath = '/home/.ansiblevenv/bin/ansible-playbook';
@@ -896,7 +918,7 @@ app.get('/*name', (req, res) => {
 
 const httpServer = http.createServer(app);
 
-new GuacamoleLite(
+guacServer = new GuacamoleLite(
   { server: httpServer },
   { host: '127.0.0.1', port: 4822 },
   {

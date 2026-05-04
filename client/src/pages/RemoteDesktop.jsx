@@ -1,11 +1,11 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import Guacamole from 'guacamole-common-js';
-import { MonitorPlay, ChevronRight, ChevronLeft, X, Plug, PlugZap, Loader2, Menu, Plus, Maximize2, Minimize2 } from 'lucide-react';
+import { MonitorPlay, ChevronRight, ChevronLeft, X, Plug, PlugZap, Loader2, Menu, Maximize2, Minimize2 } from 'lucide-react';
 
 const DMT_BASE = 'http://localhost:7000';
 const CONN_TYPES = ['rdp', 'vnc', 'ssh'];
 const DEFAULT_PORTS = { rdp: '3389', vnc: '5900', ssh: '22' };
-const EMPTY_FORM = { name: '', type: 'rdp', host: '', port: '3389', username: '', password: '', domain: '', dpi: '96', security: 'nla' };
+const EMPTY_FORM = { name: '', type: 'rdp', host: '', port: '3389', username: '', password: '', domain: '', security: 'nla' };
 const WSL_INSTANCE_KEY = 'dmt-wsl-instance';
 
 // Estimate the pixel area the remote session canvas will actually occupy.
@@ -80,6 +80,7 @@ export default function RemoteDesktop() {
   const sessionViewRef    = useRef(null);
   const hudTimerRef       = useRef(null);
   const inTriggerZoneRef  = useRef(false);
+  const hudRef            = useRef(null);
 
   // Keep activeIdRef in sync with React state
   useEffect(() => { activeIdRef.current = activeId; }, [activeId]);
@@ -112,7 +113,9 @@ export default function RemoteDesktop() {
   useEffect(() => {
     if (!fullscreen) { inTriggerZoneRef.current = false; return; }
     const handler = e => {
-      const inZone = e.clientY < 1;
+      const hudW = hudRef.current?.offsetWidth ?? 0;
+      const hudLeft = (window.innerWidth - hudW) / 2;
+      const inZone = e.clientY < 1 && e.clientX >= hudLeft && e.clientX <= hudLeft + hudW;
       if (inZone) { setHudVisible(true); clearTimeout(hudTimerRef.current); }
       else if (inTriggerZoneRef.current) { hudTimerRef.current = setTimeout(() => setHudVisible(false), 2500); }
       inTriggerZoneRef.current = inZone;
@@ -328,8 +331,7 @@ export default function RemoteDesktop() {
       username: conn.username || '',
       password: '',
       domain: conn.domain || '',
-      dpi: conn.dpi || '96',
-      security: conn.security || 'any',
+      security: conn.security || 'nla',
     });
     if (!conn.hasPassword) setStatus('No password saved — enter one to connect.');
     else setStatus('');
@@ -374,7 +376,6 @@ export default function RemoteDesktop() {
           host: form.host, type: form.type, port: form.port,
           username: form.username, password: form.password,
           domain: form.domain, security: form.security,
-          dpi: form.dpi,
           ...getInitialResolution(),
         }),
       });
@@ -456,6 +457,10 @@ export default function RemoteDesktop() {
         if (activeIdRef.current === id) {
           setStatus(prev => (prev && prev !== 'Connecting…' && prev !== '') ? prev
             : wasOpen ? 'Disconnected.' : 'Connection refused — check guacd and target host.');
+
+          //if(status==='Disconnected') {
+            disconnectSession(id);
+          //}
         }
       }
     };
@@ -497,6 +502,7 @@ export default function RemoteDesktop() {
       setActiveId(newActive);
       setStatus('');
       setSidebarOpen(false);
+      setNewConnect(false);
       if (newActive === null) setPanelOpen(true);
     }
   }
@@ -506,6 +512,7 @@ export default function RemoteDesktop() {
     setActiveId(id);
     setStatus('');
     setSidebarOpen(false);
+    setNewConnect(false);
   }
 
   function enterFullscreen() {
@@ -736,21 +743,6 @@ export default function RemoteDesktop() {
                 </>
               )}
 
-              {form.type === 'rdp' && (
-                <Field label={<span>DPI <span className="text-[10px] font-normal text-gray-400 dark:text-gray-500">(Linux only)</span></span>} half>
-                  <select
-                    className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-2.5 py-1.5 text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    value={form.dpi}
-                    onChange={e => setField('dpi', e.target.value)}
-                  >
-                    <option value="96">96 — 100%</option>
-                    <option value="120">120 — 125%</option>
-                    <option value="144">144 — 150%</option>
-                    <option value="192">192 — 200%</option>
-                  </select>
-                </Field>
-              )}
-
               <Field label="Connection name (to save)" half={false}>
                 <Input
                   placeholder="e.g. Dev Server"
@@ -907,11 +899,10 @@ export default function RemoteDesktop() {
               </div>
             ))}
             <button
-              onClick={() => {setPanelOpen(v => !v);setNewConnect(n=>!n);}}
+              onClick={() => { if (!newConnect) clearForm(); setNewConnect(n => !n); }}
               className="ml-auto flex items-center gap-1 px-3 py-1.5 text-xs text-gray-400 hover:text-gray-200 hover:bg-gray-700 shrink-0"
               title="Open a new connection"
             >
-              {/* {!newConnect && <Plus size={11} />} */}
               {newConnect ? 'Cancel' : 'New'}
             </button>
           </div>
@@ -952,7 +943,7 @@ export default function RemoteDesktop() {
           <div
             ref={displayRef}
             tabIndex={0}
-            className="flex-1 overflow-hidden outline-none cursor-none"
+            className="flex-1 overflow-hidden outline-none cursor-none flex items-center justify-center"
             style={{ background: '#000', ...newConnect ? { display: 'none' } : {} }}
           />          
           
@@ -978,6 +969,7 @@ export default function RemoteDesktop() {
           {/* Fullscreen HUD — slides down from top-center on mouse proximity */}
           {fullscreen && (
             <div
+              ref={hudRef}
               onMouseEnter={showHud}
               onMouseLeave={scheduleHideHud}
               style={{
@@ -1021,7 +1013,7 @@ export default function RemoteDesktop() {
           )}
         </div>
 
-        { newConnect ? ShowManager() : '' }
+        {newConnect && ShowManager()}
       </div>
     );
   }
