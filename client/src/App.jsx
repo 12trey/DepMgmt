@@ -211,7 +211,7 @@ export default function App() {
         )}
 
         {/* Nav items */}
-        <div className="flex-1 py-2 overflow-y-auto min-h-0">
+        <div className="flex-1 py-2 overflow-y-auto min-h-0 navscrollback">
           {NAV_ITEMS.map((item, index) => {
             if (item.divider) {
               return <div key={`divider-${index}`} className="my-2 border-t border-gray-700" />;
@@ -330,6 +330,9 @@ export default function App() {
                 style={{ display: isActive ? 'block' : 'none', ...(!isFullBleed ? { background: 'var(--content-bg)' } : {}) }}
                 className={`absolute inset-0 ${isFullBleed ? '' : 'overflow-auto p-6'}`}
               >
+                {/* <div style={{ display: tabStrip || openTabs.length==1 ? 'none' : 'block' }} className='flex items-end justify-items-end my-1'>
+                  <X onClick={(e) => closeTab(to, e)} />
+                </div> */}
                 <Component />
               </div>
             );

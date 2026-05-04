@@ -114,6 +114,10 @@
 ::-webkit-scrollbar-thumb { background: var(--border-dark); border-radius: 4px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--muted); }
 
+.navscrollback::-webkit-scrollbar-track {
+  background: #111827;
+}
+
 @layer components {
   .input {
     @apply w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500;

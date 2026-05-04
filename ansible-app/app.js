@@ -856,6 +856,7 @@ app.post('/remote-connect', (req, res) => {
       domain: conn.domain || '',
       width: width || '1920', height: height || '1080',
       //dpi: dpi || conn.dpi || '',
+      dpi: '96',
       security: conn.security || 'any',
     });
   } else {
@@ -866,6 +867,7 @@ app.post('/remote-connect', (req, res) => {
       username: username || '', password: password || '',
       domain: domain || '', width: width || '1920', height: height || '1080',
       //dpi: dpi || '',
+      dpi: '96',
       security: security || 'any',
     });
   }
