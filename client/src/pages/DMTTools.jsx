@@ -296,6 +296,13 @@ export default function DMTTools() {
         const saved = localStorage.getItem(STORAGE_KEY);
         if (saved && list.includes(saved)) {
           handleInstanceSelect(saved);
+        } else if (saved && !list.includes(saved)) {
+          // Saved instance no longer exists (e.g. was deleted and recreated under a new name).
+          // Clear the stale selection so the page shows the instance picker instead of
+          // spinning forever on a non-existent instance.
+          localStorage.removeItem(STORAGE_KEY);
+          setSelectedInstance('');
+          setStage('select-instance');
         }
       })
       .catch(err => { setError(err.message); setStage('error'); });

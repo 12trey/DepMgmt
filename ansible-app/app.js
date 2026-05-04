@@ -13,6 +13,13 @@ const GuacamoleLite = require('guacamole-lite');
 
 const execPromise = promisify(exec);
 
+process.on('uncaughtException', err => {
+  console.error('[DMT] Uncaught exception (kept alive):', err.message);
+});
+process.on('unhandledRejection', reason => {
+  console.error('[DMT] Unhandled rejection (kept alive):', reason);
+});
+
 const ansiblePlaybookPath = '/home/.ansiblevenv/bin/ansible-playbook';
 const DEFAULT_REPO_FOLDER = '/home/ansibleapp/repo';
 
@@ -37,29 +44,29 @@ function getRepoFolder() {
 const port = 7000;
 
 // ── Guacamole token encryption ─────────────────────────────────────────────────
-// Token format expected by guacamole-lite 1.x:
-//   base64( JSON.stringify({ iv: base64(iv), value: base64(ciphertext) }) )
-// Key: 32 ASCII hex chars (32 bytes for AES-256-CBC). Using hex avoids UTF-8/latin1
-// ambiguity since Node.js crypto treats string keys as binary (latin1).
+// guacamole-lite's Crypt.decrypt decodes the IV with Buffer.from(b64,'base64').toString('ascii'),
+// which strips bit 7 from any byte >= 128.  We must pre-strip the IV before encrypting
+// so the ASCII round-trip inside Crypt.decrypt is lossless and the IV matches.
+// NOTE: do NOT use Crypt.encrypt — its encrypt() stores the raw unstripped IV but
+// decrypt() strips it, so the two methods are internally inconsistent.
 
 let _guacKey = null;
 function getGuacKey() {
   if (!_guacKey) {
-    // Hex-encode the first 16 bytes → 32 ASCII chars.
-    // Node.js crypto treats string keys as latin1/binary, so 32 ASCII chars = 32 bytes = AES-256 key.
-    // Using hex avoids any UTF-8 vs latin1 ambiguity for bytes > 127.
-    _guacKey = getMachineKey().slice(0, 16).toString('hex'); // 32 hex chars = 32 bytes
+    // Hex-encode first 16 bytes → 32 ASCII hex chars (0-9/a-f).
+    // All chars are < 128, so guacamole-lite's ASCII round-trip is lossless for the key.
+    _guacKey = getMachineKey().slice(0, 16).toString('hex');
   }
   return _guacKey;
 }
 
 function generateGuacToken(type, settings) {
   const payload = JSON.stringify({ connection: { type, settings } });
-  const iv = crypto.randomBytes(16);
+  // Strip bit 7 from each IV byte so the value survives Crypt.decrypt's .toString('ascii').
+  const iv = Buffer.from(crypto.randomBytes(16).map(b => b & 0x7f));
   const cipher = crypto.createCipheriv('aes-256-cbc', getGuacKey(), iv);
   let value = cipher.update(payload, 'utf8', 'binary');
   value += cipher.final('binary');
-  // guacamole-lite 1.x expects: base64( JSON({ iv: base64(iv), value: base64(ciphertext) }) )
   const inner = JSON.stringify({
     iv:    Buffer.from(iv).toString('base64'),
     value: Buffer.from(value, 'binary').toString('base64'),
@@ -707,10 +714,14 @@ app.get('/test-guac', async (req, res) => {
 
   try {
     const token = generateGuacToken('rdp', { hostname: '127.0.0.1', port: '3389' });
-    const tokenData = JSON.parse(Buffer.from(token, 'base64').toString());
-    const decipher = crypto.createDecipheriv('aes-256-cbc', getGuacKey(), Buffer.from(tokenData.iv, 'base64'));
-    let dec = decipher.update(Buffer.from(tokenData.value, 'base64'), null, 'utf8');
-    dec += decipher.final('utf8');
+    // Simulate exactly what ClientConnection.decryptToken does:
+    // base64decode outer → parse JSON → base64decode iv with 'ascii' → decrypt
+    const tokenData = JSON.parse(Buffer.from(token, 'base64').toString('ascii'));
+    const ivStr = Buffer.from(tokenData.iv, 'base64').toString('ascii');
+    const valBuf = Buffer.from(tokenData.value, 'base64');
+    const decipher = crypto.createDecipheriv('aes-256-cbc', getGuacKey(), ivStr);
+    let dec = decipher.update(valBuf.toString('binary'), 'binary', 'ascii');
+    dec += decipher.final('ascii');
     const parsed = JSON.parse(dec);
     result.cryptoOk = true;
     result.decryptedType = parsed?.connection?.type;
@@ -764,7 +775,7 @@ app.get('/remote-connections', (req, res) => {
 });
 
 app.post('/remote-connections', (req, res) => {
-  const { id, name, type, host, port: connPort, username, password, domain, width, height, security } = req.body;
+  const { id, name, type, host, port: connPort, username, password, domain, dpi, security } = req.body;
   if (!name || !type || !host) return res.status(400).json({ error: 'name, type, and host are required' });
 
   const connections = readConnections();
@@ -781,8 +792,7 @@ app.post('/remote-connections', (req, res) => {
       username: username || '',
       ...(domain !== undefined ? { domain } : {}),
       ...(encPassword !== undefined ? { password: encPassword } : {}),
-      width: width || '1920',
-      height: height || '1080',
+      //...(dpi ? { dpi } : {}),
       security: security || 'any',
     };
   } else {
@@ -793,8 +803,7 @@ app.post('/remote-connections', (req, res) => {
       username: username || '',
       ...(domain ? { domain } : {}),
       ...(encPassword ? { password: encPassword } : {}),
-      width: width || '1920',
-      height: height || '1080',
+      //...(dpi ? { dpi } : {}),
       security: security || 'any',
     });
   }
@@ -810,7 +819,7 @@ app.delete('/remote-connections/:id', (req, res) => {
 });
 
 app.post('/remote-connect', (req, res) => {
-  const { id, host, type, port: connPort, username, password, domain, width, height, security } = req.body;
+  const { id, host, type, port: connPort, username, password, domain, width, height, dpi, security } = req.body;
 
   let connType, settings;
 
@@ -823,9 +832,9 @@ app.post('/remote-connect', (req, res) => {
       host: conn.host, port: conn.port,
       username: conn.username || '', password: password || storedPass,
       domain: conn.domain || '',
-      width: width || conn.width || '1920',
-      height: height || conn.height || '1080',
-      security: conn.security || 'any',      
+      width: width || '1920', height: height || '1080',
+      //dpi: dpi || conn.dpi || '',
+      security: conn.security || 'any',
     });
   } else {
     if (!host || !type) return res.status(400).json({ error: 'host and type are required' });
@@ -834,6 +843,7 @@ app.post('/remote-connect', (req, res) => {
       host, port: connPort || defaultGuacPort(type),
       username: username || '', password: password || '',
       domain: domain || '', width: width || '1920', height: height || '1080',
+      //dpi: dpi || '',
       security: security || 'any',
     });
   }
@@ -841,7 +851,7 @@ app.post('/remote-connect', (req, res) => {
   res.json({ token: generateGuacToken(connType, settings) });
 });
 
-function buildGuacSettings(type, { host, port, username, password, domain, width, height, security }) {
+function buildGuacSettings(type, { host, port, username, password, domain, width, height, dpi, security }) {
   const base = { hostname: host, port: String(port || defaultGuacPort(type)) };
   if (type === 'rdp') {
     return {
@@ -850,6 +860,7 @@ function buildGuacSettings(type, { host, port, username, password, domain, width
       ...(domain ? { domain } : {}),
       width: String(width || '1920'),
       height: String(height || '1080'),
+      //...(dpi ? { dpi: String(dpi) } : {}),
       'color-depth': '32',
       'ignore-cert': 'true',
       security: security || 'any',

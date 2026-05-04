@@ -5,7 +5,7 @@ import { MonitorPlay, ChevronRight, ChevronLeft, X, Plug, PlugZap, Loader2, Menu
 const DMT_BASE = 'http://localhost:7000';
 const CONN_TYPES = ['rdp', 'vnc', 'ssh'];
 const DEFAULT_PORTS = { rdp: '3389', vnc: '5900', ssh: '22' };
-const EMPTY_FORM = { name: '', type: 'rdp', host: '', port: '3389', username: '', password: '', domain: '', width: '1920', height: '1080', security: 'nla' };
+const EMPTY_FORM = { name: '', type: 'rdp', host: '', port: '3389', username: '', password: '', domain: '', dpi: '96', security: 'nla' };
 const WSL_INSTANCE_KEY = 'dmt-wsl-instance';
 
 // Estimate the pixel area the remote session canvas will actually occupy.
@@ -66,6 +66,8 @@ export default function RemoteDesktop() {
   const [wslInstances, setWslInstances] = useState([]);
   const [wslInstance, setWslInstance] = useState(() => localStorage.getItem(WSL_INSTANCE_KEY) || '');
 
+  const [newConnect, setNewConnect] = useState(false);
+
   const displayRef    = useRef(null);
   const clientRef     = useRef(null); // always points to the active session's client
   const keyboardRef   = useRef(null);
@@ -110,7 +112,7 @@ export default function RemoteDesktop() {
   useEffect(() => {
     if (!fullscreen) { inTriggerZoneRef.current = false; return; }
     const handler = e => {
-      const inZone = e.clientY < 2;
+      const inZone = e.clientY < 1;
       if (inZone) { setHudVisible(true); clearTimeout(hudTimerRef.current); }
       else if (inTriggerZoneRef.current) { hudTimerRef.current = setTimeout(() => setHudVisible(false), 2500); }
       inTriggerZoneRef.current = inZone;
@@ -206,10 +208,24 @@ export default function RemoteDesktop() {
     };
     keyboardRef.current = keyboard;
 
+    // When a focused element (HUD button, sidebar button, etc.) is removed from the DOM,
+    // the browser moves focus to document.body. Detect that and restore focus to the
+    // display so keyboard input keeps working without the user having to click.
+    const onDocFocusOut = () => {
+      setTimeout(() => {
+        const a = document.activeElement;
+        if (!a || a === document.body || a === document.documentElement) {
+          displayRef.current?.focus();
+        }
+      }, 0);
+    };
+    document.addEventListener('focusout', onDocFocusOut);
+
     return () => {
       ro.disconnect();
       clearTimeout(resizeTimer);
       document.removeEventListener('keydown', handleSidebarToggle, { capture: true });
+      document.removeEventListener('focusout', onDocFocusOut);
       if (keyboardRef.current) {
         keyboardRef.current.onkeydown = null;
         keyboardRef.current.onkeyup = null;
@@ -312,8 +328,7 @@ export default function RemoteDesktop() {
       username: conn.username || '',
       password: '',
       domain: conn.domain || '',
-      width: conn.width || '1920',
-      height: conn.height || '1080',
+      dpi: conn.dpi || '96',
       security: conn.security || 'any',
     });
     if (!conn.hasPassword) setStatus('No password saved — enter one to connect.');
@@ -347,6 +362,7 @@ export default function RemoteDesktop() {
 
   async function handleConnect() {
     if (!form.host.trim()) { setStatus('Host is required.'); return; }
+    setNewConnect(false);
     setConnecting(true);
     setStatus('Connecting…');
     try {
@@ -358,6 +374,7 @@ export default function RemoteDesktop() {
           host: form.host, type: form.type, port: form.port,
           username: form.username, password: form.password,
           domain: form.domain, security: form.security,
+          dpi: form.dpi,
           ...getInitialResolution(),
         }),
       });
@@ -644,6 +661,219 @@ export default function RemoteDesktop() {
 
   // ── Session view (one or more active tabs) ────────────────────────────────────
 
+  function ShowManager() {
+    return (
+      <div className="flex h-full overflow-hidden" style={{ background: 'var(--content-bg)' }}>
+
+        {/* Left — connection form */}
+        <div className="flex-1 overflow-auto p-6 min-w-0">
+          <div className="max-w-lg">
+            <h2 className="text-base font-semibold mb-4" style={{ color: 'var(--text-h)' }}>
+              {editingId ? 'Edit Connection' : 'Connect'}
+            </h2>
+
+            {/* Type selector */}
+            <div className="flex gap-1 mb-4">
+              {CONN_TYPES.map(t => (
+                <button
+                  key={t}
+                  onClick={() => handleTypeChange(t)}
+                  className={`px-4 py-1.5 text-xs font-semibold rounded-md border transition-colors ${
+                    form.type === t
+                      ? 'bg-blue-600 text-white border-blue-600'
+                      : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:border-blue-400'
+                  }`}
+                >
+                  {t.toUpperCase()}
+                </button>
+              ))}
+            </div>
+
+            {/* Form grid */}
+            <div className="grid grid-cols-2 gap-3 mb-4">
+              <Field label="Host / IP" half={false}>
+                <div className="grid grid-cols-[1fr_100px] gap-2">
+                  <Input placeholder="192.168.1.100" value={form.host} onChange={e => setField('host', e.target.value)} />
+                  <Input placeholder="Port" value={form.port} onChange={e => setField('port', e.target.value)} />
+                </div>
+              </Field>
+
+              <Field label="Username" half>
+                <Input
+                  placeholder={form.type === 'vnc' ? 'Username (optional)' : 'Username'}
+                  value={form.username}
+                  onChange={e => setField('username', e.target.value)}
+                />
+              </Field>
+              <Field label="Password" half>
+                <Input
+                  type="password"
+                  placeholder={editingId ? 'Leave blank to keep saved' : 'Password'}
+                  value={form.password}
+                  onChange={e => setField('password', e.target.value)}
+                />
+              </Field>
+
+              {form.type === 'rdp' && (
+                <>
+                  <Field label="Domain (optional)" half>
+                    <Input placeholder="CORP" value={form.domain} onChange={e => setField('domain', e.target.value)} />
+                  </Field>
+                  <Field label="Security" half>
+                    <select
+                      className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-2.5 py-1.5 text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      value={form.security}
+                      onChange={e => setField('security', e.target.value)}
+                    >
+                      <option value="any">Any (auto)</option>
+                      <option value="nla">NLA (recommended)</option>
+                      <option value="nla-ext">NLA extended</option>
+                      <option value="tls">TLS</option>
+                      <option value="rdp">RDP (legacy)</option>
+                      <option value="vmconnect">Hyper-V</option>
+                    </select>
+                  </Field>
+                </>
+              )}
+
+              {form.type === 'rdp' && (
+                <Field label={<span>DPI <span className="text-[10px] font-normal text-gray-400 dark:text-gray-500">(Linux only)</span></span>} half>
+                  <select
+                    className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-2.5 py-1.5 text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    value={form.dpi}
+                    onChange={e => setField('dpi', e.target.value)}
+                  >
+                    <option value="96">96 — 100%</option>
+                    <option value="120">120 — 125%</option>
+                    <option value="144">144 — 150%</option>
+                    <option value="192">192 — 200%</option>
+                  </select>
+                </Field>
+              )}
+
+              <Field label="Connection name (to save)" half={false}>
+                <Input
+                  placeholder="e.g. Dev Server"
+                  value={form.name}
+                  onChange={e => setField('name', e.target.value)}
+                />
+              </Field>
+            </div>
+
+            {/* Action buttons */}
+            <div className="flex items-center gap-2 flex-wrap">
+              <button
+                onClick={handleConnect}
+                disabled={!form.host.trim() || connecting}
+                className="flex items-center gap-1.5 px-4 py-2 text-sm font-semibold bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-md"
+              >
+                <Plug size={13} />
+                {connecting ? 'Connecting…' : 'Connect'}
+              </button>
+              <button
+                onClick={handleSave}
+                disabled={!form.name.trim() || !form.host.trim() || saving}
+                className="px-4 py-2 text-sm font-medium border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50"
+                style={{ color: 'var(--text)' }}
+              >
+                {saving ? 'Saving…' : editingId ? 'Update' : 'Save'}
+              </button>
+              {editingId && (
+                <button
+                  onClick={clearForm}
+                  className="px-3 py-2 text-sm text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+                >
+                  + New
+                </button>
+              )}
+            </div>
+
+            {status && (
+              <p className={`mt-3 text-xs ${
+                status.includes('failed') || status.includes('Failed') || status.includes('required') || status.includes('Error') || status.includes('refused')
+                  ? 'text-red-500' : 'text-green-600 dark:text-green-400'
+              }`}>
+                {status}
+              </p>
+            )}
+
+            {/* Diagnose button */}
+            <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+              <button
+                onClick={handleDiagnose}
+                disabled={diagLoading}
+                className="px-3 py-1.5 text-xs border border-gray-300 dark:border-gray-600 rounded hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50"
+                style={{ color: 'var(--muted)' }}
+              >
+                {diagLoading ? 'Checking…' : 'Diagnose'}
+              </button>
+              {diagResult && (
+                <div className="mt-2 text-xs space-y-0.5 font-mono">
+                  {diagResult.error && !diagResult.guacdRunning && !diagResult.cryptoOk ? (
+                    <div className="text-red-500">{diagResult.error}</div>
+                  ) : (<>
+                    <div className={diagResult.guacdRunning ? 'text-green-600 dark:text-green-400' : 'text-red-500'}>
+                      guacd: {diagResult.guacdRunning ? 'running' : 'NOT running — run Setup in DMT Tools'}
+                      {diagResult.guacdVersion ? ` (${diagResult.guacdVersion})` : ''}
+                    </div>
+                    <div className={diagResult.rdpPlugin && diagResult.rdpPlugin !== 'not found' ? 'text-green-600 dark:text-green-400' : 'text-red-500'}>
+                      rdp plugin: {diagResult.rdpPlugin || '…'}
+                      {diagResult.rdpPlugin === 'not found' ? ' — run Setup in DMT Tools to install' : ''}
+                    </div>
+                    <div className={diagResult.cryptoOk ? 'text-green-600 dark:text-green-400' : 'text-red-500'}>
+                      crypto: {diagResult.cryptoOk ? `ok (keyLen=${diagResult.keyLength})` : `FAILED — ${diagResult.error}`}
+                    </div>
+                    {diagResult.connectivity && (
+                      <>
+                        <div className={diagResult.connectivity.reachable ? 'text-green-600 dark:text-green-400' : 'text-red-500'}>
+                          {form.host}:{form.port} → {diagResult.connectivity.reachable
+                            ? 'reachable from WSL'
+                            : `NOT reachable from WSL — ${diagResult.connectivity.reason}`}
+                        </div>
+                        {!diagResult.connectivity.reachable && (
+                          <div className="text-yellow-600 dark:text-yellow-400 whitespace-normal leading-relaxed pt-1" style={{ fontFamily: 'inherit' }}>
+                            Tip: guacd runs inside WSL2 which uses a virtual network. Add <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">networkingMode=mirrored</code> to <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">%USERPROFILE%\.wslconfig</code> then run <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">wsl --shutdown</code>.
+                          </div>
+                        )}
+                      </>
+                    )}
+                    {guacLogs && (
+                      <details className="mt-2">
+                        <summary className="cursor-pointer text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 select-none">guacd log ▸</summary>
+                        <pre className="mt-1 text-[10px] leading-tight overflow-auto max-h-48 p-2 rounded bg-gray-100 dark:bg-gray-800 whitespace-pre-wrap break-all" style={{ color: 'var(--text)' }}>{guacLogs}</pre>
+                      </details>
+                    )}
+                  </>)}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Toggle button (always visible) */}
+        <button
+          onClick={() => setPanelOpen(v => !v)}
+          className="shrink-0 flex items-center self-stretch px-1 border-l border-gray-200 dark:border-gray-700 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"
+          title={panelOpen ? 'Hide connections' : 'Show saved connections'}
+        >
+          {panelOpen ? <ChevronRight size={15} /> : <ChevronLeft size={15} />}
+        </button>
+
+        {/* Right — saved connections panel */}
+        {panelOpen && (
+          <ConnectionsPanel
+            grouped={grouped}
+            editingId={editingId}
+            connecting={connecting}
+            onConnect={handleConnectSaved}
+            onSelect={selectConnection}
+            onDelete={handleDelete}
+          />
+        )}
+      </div>
+    );
+  }
+
   if (hasSession) {
     const activeTab = sessionTabs.find(t => t.id === activeId);
     return (
@@ -677,11 +907,12 @@ export default function RemoteDesktop() {
               </div>
             ))}
             <button
-              onClick={() => setPanelOpen(v => !v)}
-              className="flex items-center gap-1 px-3 py-1.5 text-xs text-gray-400 hover:text-gray-200 hover:bg-gray-700 shrink-0"
+              onClick={() => {setPanelOpen(v => !v);setNewConnect(n=>!n);}}
+              className="ml-auto flex items-center gap-1 px-3 py-1.5 text-xs text-gray-400 hover:text-gray-200 hover:bg-gray-700 shrink-0"
               title="Open a new connection"
             >
-              <Plus size={11} /> New
+              {/* {!newConnect && <Plus size={11} />} */}
+              {newConnect ? 'Cancel' : 'New'}
             </button>
           </div>
         )}
@@ -722,10 +953,10 @@ export default function RemoteDesktop() {
             ref={displayRef}
             tabIndex={0}
             className="flex-1 overflow-hidden outline-none cursor-none"
-            style={{ background: '#000' }}
-          />
-
-          {sidebarOpen && (
+            style={{ background: '#000', ...newConnect ? { display: 'none' } : {} }}
+          />          
+          
+          {sidebarOpen && !newConnect && (
             <GuacSidebar
               clientRef={clientRef}
               onClose={() => setSidebarOpen(false)}
@@ -733,7 +964,7 @@ export default function RemoteDesktop() {
             />
           )}
 
-          {panelOpen && !fullscreen && (
+          {panelOpen && !fullscreen && !newConnect && (
             <ConnectionsPanel
               grouped={grouped}
               editingId={editingId}
@@ -789,218 +1020,14 @@ export default function RemoteDesktop() {
             </div>
           )}
         </div>
+
+        { newConnect ? ShowManager() : '' }
       </div>
     );
   }
 
   // ── Manager view ─────────────────────────────────────────────────────────────
-
-  return (
-    <div className="flex h-full overflow-hidden" style={{ background: 'var(--content-bg)' }}>
-
-      {/* Left — connection form */}
-      <div className="flex-1 overflow-auto p-6 min-w-0">
-        <div className="max-w-lg">
-          <h2 className="text-base font-semibold mb-4" style={{ color: 'var(--text-h)' }}>
-            {editingId ? 'Edit Connection' : 'Connect'}
-          </h2>
-
-          {/* Type selector */}
-          <div className="flex gap-1 mb-4">
-            {CONN_TYPES.map(t => (
-              <button
-                key={t}
-                onClick={() => handleTypeChange(t)}
-                className={`px-4 py-1.5 text-xs font-semibold rounded-md border transition-colors ${
-                  form.type === t
-                    ? 'bg-blue-600 text-white border-blue-600'
-                    : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:border-blue-400'
-                }`}
-              >
-                {t.toUpperCase()}
-              </button>
-            ))}
-          </div>
-
-          {/* Form grid */}
-          <div className="grid grid-cols-2 gap-3 mb-4">
-            <Field label="Host / IP" half={false}>
-              <div className="grid grid-cols-[1fr_100px] gap-2">
-                <Input placeholder="192.168.1.100" value={form.host} onChange={e => setField('host', e.target.value)} />
-                <Input placeholder="Port" value={form.port} onChange={e => setField('port', e.target.value)} />
-              </div>
-            </Field>
-
-            <Field label="Username" half>
-              <Input
-                placeholder={form.type === 'vnc' ? 'Username (optional)' : 'Username'}
-                value={form.username}
-                onChange={e => setField('username', e.target.value)}
-              />
-            </Field>
-            <Field label="Password" half>
-              <Input
-                type="password"
-                placeholder={editingId ? 'Leave blank to keep saved' : 'Password'}
-                value={form.password}
-                onChange={e => setField('password', e.target.value)}
-              />
-            </Field>
-
-            {form.type === 'rdp' && (
-              <>
-                <Field label="Domain (optional)" half>
-                  <Input placeholder="CORP" value={form.domain} onChange={e => setField('domain', e.target.value)} />
-                </Field>
-                <Field label="Security" half>
-                  <select
-                    className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-2.5 py-1.5 text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    value={form.security}
-                    onChange={e => setField('security', e.target.value)}
-                  >
-                    <option value="any">Any (auto)</option>
-                    <option value="nla">NLA (recommended)</option>
-                    <option value="nla-ext">NLA extended</option>
-                    <option value="tls">TLS</option>
-                    <option value="rdp">RDP (legacy)</option>
-                    <option value="vmconnect">Hyper-V</option>
-                  </select>
-                </Field>
-              </>
-            )}
-
-            {form.type !== 'ssh' && (
-              <>
-                <Field label="Width (px)" half>
-                  <Input placeholder="1920" value={form.width} onChange={e => setField('width', e.target.value)} />
-                </Field>
-                <Field label="Height (px)" half>
-                  <Input placeholder="1080" value={form.height} onChange={e => setField('height', e.target.value)} />
-                </Field>
-              </>
-            )}
-
-            <Field label="Connection name (to save)" half={false}>
-              <Input
-                placeholder="e.g. Dev Server"
-                value={form.name}
-                onChange={e => setField('name', e.target.value)}
-              />
-            </Field>
-          </div>
-
-          {/* Action buttons */}
-          <div className="flex items-center gap-2 flex-wrap">
-            <button
-              onClick={handleConnect}
-              disabled={!form.host.trim() || connecting}
-              className="flex items-center gap-1.5 px-4 py-2 text-sm font-semibold bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-md"
-            >
-              <Plug size={13} />
-              {connecting ? 'Connecting…' : 'Connect'}
-            </button>
-            <button
-              onClick={handleSave}
-              disabled={!form.name.trim() || !form.host.trim() || saving}
-              className="px-4 py-2 text-sm font-medium border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50"
-              style={{ color: 'var(--text)' }}
-            >
-              {saving ? 'Saving…' : editingId ? 'Update' : 'Save'}
-            </button>
-            {editingId && (
-              <button
-                onClick={clearForm}
-                className="px-3 py-2 text-sm text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
-              >
-                + New
-              </button>
-            )}
-          </div>
-
-          {status && (
-            <p className={`mt-3 text-xs ${
-              status.includes('failed') || status.includes('Failed') || status.includes('required') || status.includes('Error') || status.includes('refused')
-                ? 'text-red-500' : 'text-green-600 dark:text-green-400'
-            }`}>
-              {status}
-            </p>
-          )}
-
-          {/* Diagnose button */}
-          <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
-            <button
-              onClick={handleDiagnose}
-              disabled={diagLoading}
-              className="px-3 py-1.5 text-xs border border-gray-300 dark:border-gray-600 rounded hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50"
-              style={{ color: 'var(--muted)' }}
-            >
-              {diagLoading ? 'Checking…' : 'Diagnose'}
-            </button>
-            {diagResult && (
-              <div className="mt-2 text-xs space-y-0.5 font-mono">
-                {diagResult.error && !diagResult.guacdRunning && !diagResult.cryptoOk ? (
-                  <div className="text-red-500">{diagResult.error}</div>
-                ) : (<>
-                  <div className={diagResult.guacdRunning ? 'text-green-600 dark:text-green-400' : 'text-red-500'}>
-                    guacd: {diagResult.guacdRunning ? 'running' : 'NOT running — run Setup in DMT Tools'}
-                    {diagResult.guacdVersion ? ` (${diagResult.guacdVersion})` : ''}
-                  </div>
-                  <div className={diagResult.rdpPlugin && diagResult.rdpPlugin !== 'not found' ? 'text-green-600 dark:text-green-400' : 'text-red-500'}>
-                    rdp plugin: {diagResult.rdpPlugin || '…'}
-                    {diagResult.rdpPlugin === 'not found' ? ' — run Setup in DMT Tools to install' : ''}
-                  </div>
-                  <div className={diagResult.cryptoOk ? 'text-green-600 dark:text-green-400' : 'text-red-500'}>
-                    crypto: {diagResult.cryptoOk ? `ok (keyLen=${diagResult.keyLength})` : `FAILED — ${diagResult.error}`}
-                  </div>
-                  {diagResult.connectivity && (
-                    <>
-                      <div className={diagResult.connectivity.reachable ? 'text-green-600 dark:text-green-400' : 'text-red-500'}>
-                        {form.host}:{form.port} → {diagResult.connectivity.reachable
-                          ? 'reachable from WSL'
-                          : `NOT reachable from WSL — ${diagResult.connectivity.reason}`}
-                      </div>
-                      {!diagResult.connectivity.reachable && (
-                        <div className="text-yellow-600 dark:text-yellow-400 whitespace-normal leading-relaxed pt-1" style={{ fontFamily: 'inherit' }}>
-                          Tip: guacd runs inside WSL2 which uses a virtual network. Add <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">networkingMode=mirrored</code> to <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">%USERPROFILE%\.wslconfig</code> then run <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">wsl --shutdown</code>.
-                        </div>
-                      )}
-                    </>
-                  )}
-                  {guacLogs && (
-                    <details className="mt-2">
-                      <summary className="cursor-pointer text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 select-none">guacd log ▸</summary>
-                      <pre className="mt-1 text-[10px] leading-tight overflow-auto max-h-48 p-2 rounded bg-gray-100 dark:bg-gray-800 whitespace-pre-wrap break-all" style={{ color: 'var(--text)' }}>{guacLogs}</pre>
-                    </details>
-                  )}
-                </>)}
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Toggle button (always visible) */}
-      <button
-        onClick={() => setPanelOpen(v => !v)}
-        className="shrink-0 flex items-center self-stretch px-1 border-l border-gray-200 dark:border-gray-700 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"
-        title={panelOpen ? 'Hide connections' : 'Show saved connections'}
-      >
-        {panelOpen ? <ChevronRight size={15} /> : <ChevronLeft size={15} />}
-      </button>
-
-      {/* Right — saved connections panel */}
-      {panelOpen && (
-        <ConnectionsPanel
-          grouped={grouped}
-          editingId={editingId}
-          connecting={connecting}
-          onConnect={handleConnectSaved}
-          onSelect={selectConnection}
-          onDelete={handleDelete}
-        />
-      )}
-    </div>
-  );
+  return ShowManager();
 }
 
 // ── Guacamole sidebar menu ────────────────────────────────────────────────────

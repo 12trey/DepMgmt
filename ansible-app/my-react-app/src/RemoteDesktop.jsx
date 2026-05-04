@@ -5,7 +5,11 @@ const BASE = 'http://localhost:7000';
 const DEFAULT_PORTS = { rdp: '3389', vnc: '5900', ssh: '22' };
 const CONN_TYPES = ['rdp', 'vnc', 'ssh'];
 
-const EMPTY_FORM = { name: '', type: 'rdp', host: '', port: '3389', username: '', password: '', domain: '', width: '1920', height: '1080' };
+const EMPTY_FORM = { name: '', type: 'rdp', host: '', port: '3389', username: '', password: '', domain: '', dpi: '96', security: 'any' };
+
+function getInitialResolution() {
+  return { width: String(Math.max(800, window.innerWidth)), height: String(Math.max(600, window.innerHeight - 40)) };
+}
 
 export default function RemoteDesktop() {
   const [connections, setConnections] = useState([]);
@@ -109,8 +113,8 @@ export default function RemoteDesktop() {
       username: conn.username || '',
       password: '',
       domain: conn.domain || '',
-      width: conn.width || '1920',
-      height: conn.height || '1080',
+      dpi: conn.dpi || '96',
+      security: conn.security || 'any',
     });
     setStatus(conn.hasPassword ? '' : 'No password saved — enter one to connect.');
   }
@@ -153,7 +157,9 @@ export default function RemoteDesktop() {
           id: editingId || undefined,
           host: form.host, type: form.type, port: form.port,
           username: form.username, password: form.password,
-          domain: form.domain, width: form.width, height: form.height,
+          domain: form.domain, dpi: form.dpi,
+          security: form.security,
+          ...getInitialResolution(),
         }),
       });
       if (!r.ok) throw new Error((await r.json()).error);
@@ -418,32 +424,37 @@ export default function RemoteDesktop() {
           />
         </div>
 
-        {/* Domain (RDP only) */}
+        {/* RDP-only options */}
         {form.type === 'rdp' && (
-          <input
-            className="app-input"
-            placeholder="Domain (optional)"
-            value={form.domain}
-            onChange={e => setField('domain', e.target.value)}
-            style={{ marginBottom: '8px', width: '100%' }}
-          />
-        )}
-
-        {/* Resolution (RDP / VNC only) */}
-        {form.type !== 'ssh' && (
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '8px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px', marginBottom: '8px' }}>
             <input
               className="app-input"
-              placeholder="Width (px)"
-              value={form.width}
-              onChange={e => setField('width', e.target.value)}
+              placeholder="Domain (optional)"
+              value={form.domain}
+              onChange={e => setField('domain', e.target.value)}
             />
-            <input
+            <select
               className="app-input"
-              placeholder="Height (px)"
-              value={form.height}
-              onChange={e => setField('height', e.target.value)}
-            />
+              value={form.security}
+              onChange={e => setField('security', e.target.value)}
+            >
+              <option value="any">Security: Auto</option>
+              <option value="nla">NLA</option>
+              <option value="nla-ext">NLA extended</option>
+              <option value="tls">TLS</option>
+              <option value="rdp">RDP (legacy)</option>
+              <option value="vmconnect">Hyper-V</option>
+            </select>
+            <select
+              className="app-input"
+              value={form.dpi}
+              onChange={e => setField('dpi', e.target.value)}
+            >
+              <option value="96">DPI: 96 (100%)</option>
+              <option value="120">DPI: 120 (125%)</option>
+              <option value="144">DPI: 144 (150%)</option>
+              <option value="192">DPI: 192 (200%)</option>
+            </select>
           </div>
         )}
 
