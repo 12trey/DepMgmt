@@ -36,8 +36,8 @@ export default function Execution() {
   const wrapperTargetFileRef = useRef();
 
   useEffect(() => {
-    listLogs().then(setLogs).catch(() => {});
-    listPackages().then(setPackages).catch(() => {});
+    listLogs().then(setLogs).catch(() => { });
+    listPackages().then(setPackages).catch(() => { });
   }, []);
 
   useEffect(() => {
@@ -91,6 +91,60 @@ export default function Execution() {
     e.target.value = '';
   };
 
+  function formatXml2(xml, tab = '  ') {
+    let formatted = '';
+    let indent = '';
+
+    // Split the XML by tags
+    xml.split(/>\s*</).forEach(function (node) {
+      if (node.match(/^\/\w/)) {
+        // Decrease indent for closing tags
+        indent = indent.substring(tab.length);
+      }
+
+      formatted += indent + '<' + node + '>\r\n';
+
+      if (node.match(/^<?\w[^>]*[^\/]$/)) {
+        // Increase indent for opening tags (excluding self-closing)
+        indent += tab;
+      }
+    });
+
+    // Trim extra characters from the final string
+    return formatted.substring(1, formatted.length - 3);
+  }
+
+  function decodeClixmlEscapes(str) {
+    return str.replace(/_x([0-9A-Fa-f]{4})_/g, (_, hex) =>
+      String.fromCharCode(parseInt(hex, 16))
+    );
+  }
+  function stripAnsi(str) {
+    return str.replace(/\x1B\[[0-9;]*m/g, '');
+  }
+  function extractXml(str) {
+    const start = str.indexOf('<Objs');
+    return start !== -1 ? str.slice(start) : str;
+  }
+  function formatXml(xml) {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(xml, 'application/xml');
+
+    const serializer = new XMLSerializer();
+    const raw = serializer.serializeToString(doc);
+
+    // crude pretty print
+    return raw.replace(/(>)(<)(\/*)/g, '$1\n$2$3');
+  }
+  function clixmlToPrettyText(input) {
+    let s = input;
+
+    s = decodeClixmlEscapes(s);
+    s = stripAnsi(s);
+    s = extractXml(s);
+
+    return formatXml2(s);
+  }
   return (
     <div>
       <h1 className="text-2xl font-bold mb-6">Execution & Logs</h1>
@@ -320,12 +374,12 @@ export default function Execution() {
       {/* Log viewer modal */}
       {selectedLog && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setSelectedLog(null)}>
-          <div className="bg-white rounded-lg shadow-xl w-full max-w-3xl max-h-[80vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-3xl max-h-[80vh] min-h-[50vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
             <div className="p-4 border-b flex justify-between items-center">
               <h3 className="font-semibold">{selectedLog.appName} — Log</h3>
               <button onClick={() => setSelectedLog(null)} className="text-gray-400 hover:text-gray-600">Close</button>
             </div>
-            <pre className="p-4 overflow-auto flex-1 bg-gray-900 text-green-300 text-xs font-mono">{logContent}</pre>
+            <pre className="p-4 overflow-auto flex-1 bg-gray-900 text-green-300 text-xs font-mono whitespace-pre-wrap">{clixmlToPrettyText(logContent)}</pre>
           </div>
         </div>
       )}

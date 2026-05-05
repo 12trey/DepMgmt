@@ -2,10 +2,10 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ── CSS variables — used by App.jsx shell and inline styles in pages ── */
+/* ── CSS variables — used by App.jsx shell and inline styles in pages f9fafb ── */
 :root {
-  --content-bg:      #f9fafb;  /* page content area */
-  --panel-bg:        #ffffff;  /* cards, modals, inputs */
+  --content-bg:      #f8f8f8;  /* page content area */
+  --panel-bg:        #f1f1f1;  /* cards, modals, inputs */
   --border:          #e5e7eb;
   --border-dark:     #d1d5db;
   --text:            #374151;
@@ -30,9 +30,12 @@
   --tab-active-bg:   #374151;
   --tab-active-text: #f3f4f6;
 }
-
+.bg-white {
+  background-color: var(--panel-bg);
+  box-shadow: 0px 0px 10px -1px #a6bcce;
+}
 /* ── Global dark overrides for Tailwind utility classes used in page components ── */
-.dark .bg-white      { background-color: var(--panel-bg); }
+.dark .bg-white      { background-color: var(--panel-bg); box-shadow: 0px 0px 10px -1px #0a0c0d; }
 .dark .bg-gray-50    { background-color: var(--content-bg); }
 .dark .bg-gray-100   { background-color: #1e293b; }
 .dark .text-gray-900 { color: var(--text-h); }
