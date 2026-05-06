@@ -42,6 +42,15 @@ export default function Execution() {
 
   useEffect(() => {
     if (terminalRef.current) terminalRef.current.scrollTop = terminalRef.current.scrollHeight;
+    let msg = messages[messages.length-1];
+    if(msg && msg.text) {
+      //console.log(msg.text);
+      if(msg.text.trim() === "=== All targets complete. Overall: Success ===") {
+        console.log(msg.text);
+        listLogs().then(setLogs).catch(() => { });
+      }
+    }
+
   }, [messages]);
 
   const handleRunSingle = async () => {
@@ -91,6 +100,7 @@ export default function Execution() {
     e.target.value = '';
   };
 
+  // For parsing Powershell CLIXML data
   function formatXml2(xml, tab = '  ') {
     let formatted = '';
     let indent = '';
@@ -119,13 +129,16 @@ export default function Execution() {
       String.fromCharCode(parseInt(hex, 16))
     );
   }
+  
   function stripAnsi(str) {
     return str.replace(/\x1B\[[0-9;]*m/g, '');
   }
+
   function extractXml(str) {
     const start = str.indexOf('<Objs');
     return start !== -1 ? str.slice(start) : str;
   }
+
   function formatXml(xml) {
     const parser = new DOMParser();
     const doc = parser.parseFromString(xml, 'application/xml');
@@ -136,15 +149,17 @@ export default function Execution() {
     // crude pretty print
     return raw.replace(/(>)(<)(\/*)/g, '$1\n$2$3');
   }
+
   function clixmlToPrettyText(input) {
     let s = input;
 
-    s = decodeClixmlEscapes(s);
-    s = stripAnsi(s);
+    //s = decodeClixmlEscapes(s);
+    //s = stripAnsi(s);
     s = extractXml(s);
 
     return formatXml2(s);
   }
+
   return (
     <div>
       <h1 className="text-2xl font-bold mb-6">Execution & Logs</h1>
