@@ -1,13 +1,5 @@
-// src/socket.js
 import { io } from 'socket.io-client';
 
-// // Use your backend server URL
-// const URL = 'http://localhost:4000'; 
-
-// export const socket = io(URL, {
-//   autoConnect: false // Recommended: connect manually when needed
-// });
-
-export const socket = io('http://localhost:3000',{
-    autoConnect: true
-});
+// Connect to the backend. In dev, Vite proxies socket.io → port 4000.
+// In production (served from Express), this is a relative connection.
+export const socket = io({ autoConnect: true });

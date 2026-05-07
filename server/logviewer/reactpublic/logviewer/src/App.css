@@ -235,19 +235,22 @@ body {
 
 /* ── Main layout ─────────────────────────────────────────────────────────── */
 .mainSection {
-  display:flex;
+  display: flex;
   flex-direction: column;
   flex: 1;
+  min-height: 0;
+  overflow: hidden;
 }
 
 #main {
   display: flex;
   flex: 1;
+  min-height: 0;
   overflow: hidden;
   position: relative;
 }
 
-.tab-content { display: none; flex: 1; overflow: hidden; }
+.tab-content { display: none; flex: 1; min-height: 0; overflow: hidden; }
 .tab-content.active { display: flex; }
 
 /* ── Sidebar ─────────────────────────────────────────────────────────────── */
@@ -258,6 +261,7 @@ body {
   border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
+  min-height: 0;
   overflow: hidden;
   flex-shrink: 0;
 }
@@ -310,7 +314,7 @@ body {
   min-height: 22px;
 }
 
-#file-list { flex: 1; overflow-y: auto; list-style: none; }
+#file-list { flex: 1; min-height: 0; overflow-y: auto; list-style: none; }
 #file-list li {
   padding: 3px 10px 3px 12px;
   cursor: pointer;

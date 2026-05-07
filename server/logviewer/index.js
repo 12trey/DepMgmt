@@ -22,8 +22,11 @@ module.exports = function setupLogViewer(app, httpServer) {
   app.use(parserRouter);
   app.use(evtxRouter);
 
-  // Serve the Log Viewer static frontend under /logviewer
-  app.use('/logviewer', express.static(path.join(__dirname, 'public')));
+  // Serve the React Log Viewer under /logviewer
+  app.use('/logviewer', express.static(path.join(__dirname, 'reactpublic', 'logviewer', 'dist')));
+
+  // Original vanilla JS version preserved at /logviewer-classic
+  app.use('/logviewer-classic', express.static(path.join(__dirname, 'public')));
 
   // Attach real-time tail watcher (file tail + channel polling + ansible polling)
   attachTailWatcher(io);
