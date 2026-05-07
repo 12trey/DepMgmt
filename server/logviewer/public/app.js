@@ -547,6 +547,8 @@ function logTime(e) {
   if (!e.time) return null;
   try {
     var d = (e.date || '').replace(/^(\d+)-(\d+)-(\d{4})$/, '$3-$1-$2');
+    // fix single digit
+    d = d.replace(/-(\d{1})-/, "-0$1-").replace(/-(\d{1})$/, "-0$1");
     var t = (e.time || '').replace(/[+-]\d+$/, '');
     return new Date(d + 'T' + t);
   } catch (_) { return null; }
