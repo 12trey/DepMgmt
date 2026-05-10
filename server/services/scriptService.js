@@ -440,7 +440,7 @@ exports.runScript = function (scriptPath, params, useMgGraph, useAz, res, depth)
     lines.push(
       'Import-Module Az.Accounts -ErrorAction Stop',
       '$__azCtx = Get-AzContext -ErrorAction SilentlyContinue',
-      'if (-not $__azCtx) { Connect-AzAccount -UseDeviceAuthentication -ErrorAction Stop 3>&1 | ForEach-Object { Write-Output "$_" } }',
+      'if (-not $__azCtx) { Connect-AzAccount -ErrorAction Stop 3>&1 | ForEach-Object { Write-Output "$_" } }',
     );
   }
 

@@ -3,6 +3,13 @@ import { socket } from './socket';
 import { findErrorCodesInText } from './utils/errorCodes';
 import IntuneTab from './components/IntuneTab';
 import DsregTab from './components/DsregTab';
+import { FileSymlink, Eraser, Pause, Play, ArrowDownToLine  } from 'lucide-react';
+import { LuLogs } from "react-icons/lu";
+import { BsFileSpreadsheet } from "react-icons/bs";
+import { LuScroll } from "react-icons/lu";
+import { FaTools } from "react-icons/fa";
+import { MdOutlineDomainVerification } from "react-icons/md";
+import { PiFolderSimpleDuotone, PiFileTextFill } from "react-icons/pi";
 import './App.css';
 
 const ROW_HEIGHT = 22;
@@ -108,6 +115,16 @@ export default function App() {
   const [rowModal, setRowModal] = useState({ show: false, title: '', fields: [], errorCodes: [] });
   const [channelModal, setChannelModal] = useState({ show: false, channels: null, search: '' });
 
+  // ── Quick Links ───────────────────────────────────────────────────────────
+  const [customQuickLinks, setCustomQuickLinks] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('aicm-quick-links')) || []; } catch { return []; }
+  });
+  const [quickLinksDragOver, setQuickLinksDragOver] = useState(false);
+  const [quickLinkPathPrompt, setQuickLinkPathPrompt] = useState(null); // filename hint when path unknown
+
+  // ── Remote computer ───────────────────────────────────────────────────────
+  const [remoteComputer, setRemoteComputer] = useState(() => localStorage.getItem('aicm-remote') || '');
+
   // ── Appearance ────────────────────────────────────────────────────────────
   const [fontSize, setFontSize] = useState(() => parseInt(localStorage.getItem('aicm-font') || '13', 10));
   const [theme, setTheme] = useState(() => localStorage.getItem('aicm-theme') || 'dark');
@@ -144,6 +161,13 @@ export default function App() {
   useEffect(() => { findResultsRef.current = findResults; }, [findResults]);
   useEffect(() => { findIdxRef.current = findIdx; }, [findIdx]);
 
+  // ── Persist quick links + remote ─────────────────────────────────────────
+  useEffect(() => {
+    localStorage.setItem('aicm-quick-links', JSON.stringify(customQuickLinks));
+  }, [customQuickLinks]);
+
+  useEffect(() => { localStorage.setItem('aicm-remote', remoteComputer); }, [remoteComputer]);
+
   // ── Appearance effects ────────────────────────────────────────────────────
   useEffect(() => {
     document.body.dataset.theme = theme;
@@ -175,9 +199,25 @@ export default function App() {
     const total = filteredEntries.length;
     const wrap = scrollWrapRef.current;
     const viewH = wrap ? (wrap.clientHeight || 400) : 400;
-    setVsRange({ start: 0, end: Math.min(total - 1, Math.ceil(viewH / ROW_HEIGHT) + BUFFER) });
-    if (autoScrollRef.current && wrap) {
-      wrap.scrollTop = wrap.scrollHeight;
+    const visibleRows = Math.ceil(viewH / ROW_HEIGHT);
+
+    if (autoScrollRef.current) {
+      // Render the bottom rows immediately so they're present when we scroll there
+      const end = Math.max(0, total - 1);
+      setVsRange({ start: Math.max(0, end - visibleRows - BUFFER), end });
+      // Scroll after the DOM paints the new rows
+      requestAnimationFrame(() => {
+        if (scrollWrapRef.current) scrollWrapRef.current.scrollTop = scrollWrapRef.current.scrollHeight;
+      });
+    } else if (wrap) {
+      // Keep visible range anchored to current scroll position
+      const scrollTop = wrap.scrollTop;
+      const visStart = Math.floor(scrollTop / ROW_HEIGHT);
+      const visEnd   = Math.ceil((scrollTop + viewH) / ROW_HEIGHT);
+      setVsRange({
+        start: Math.max(0, visStart - BUFFER),
+        end:   Math.min(total - 1, visEnd + BUFFER),
+      });
     }
   }, [filteredEntries]);
 
@@ -412,7 +452,10 @@ export default function App() {
     setActiveTab('viewer');
     document.title = `${channelName.split('/').pop()} - Log Viewer`;
 
-    fetch(`/api/evtx?channel=${encodeURIComponent(channelName)}`)
+    const params = new URLSearchParams({ channel: channelName });
+    if (remoteComputer) params.set('remote', remoteComputer);
+
+    fetch(`/api/evtx?${params}`)
       .then(r => r.json())
       .then(data => {
         if (data.error) throw new Error(data.error);
@@ -422,14 +465,16 @@ export default function App() {
         for (let i = entries.length - 1; i >= 0; i--) {
           if (entries[i].isoTime) { since = entries[i].isoTime; break; }
         }
-        socket.emit('watch:channel', { channel: channelName, since });
-        setStatusWatching(`🔒 Live: ${channelName}`);
+        const watchPayload = { channel: channelName, since };
+        if (remoteComputer) watchPayload.remote = remoteComputer;
+        socket.emit('watch:channel', watchPayload);
+        setStatusWatching(`🔒 Live: ${remoteComputer ? remoteComputer + ' — ' : ''}${channelName}`);
         setChannelModal(m => ({ ...m, show: false }));
       })
       .catch(err => {
         setAllEntries([{ type: 3, message: `Error: ${err.message}`, time: '', date: '', component: '', thread: '', typeName: 'Error' }]);
       });
-  }, [resetViewer]);
+  }, [resetViewer, remoteComputer]);
 
   const openAnsibleLog = useCallback(() => {
     socket.emit('unwatch');
@@ -476,6 +521,38 @@ export default function App() {
     });
   }, []);
 
+  // ── Quick links actions ───────────────────────────────────────────────────
+  const addQuickLink = useCallback((filePath) => {
+    if (!filePath) return;
+    setCustomQuickLinks(prev => {
+      if (prev.some(l => l.path === filePath)) return prev;
+      const name = filePath.split(/[\\/]/).pop();
+      return [...prev, { id: Date.now(), path: filePath, name }];
+    });
+  }, []);
+
+  const removeQuickLink = useCallback((id) => {
+    setCustomQuickLinks(prev => prev.filter(l => l.id !== id));
+  }, []);
+
+  const onQuickLinksDragOver  = (e) => { e.preventDefault(); setQuickLinksDragOver(true); };
+  const onQuickLinksDragLeave = (e) => { if (!e.currentTarget.contains(e.relatedTarget)) setQuickLinksDragOver(false); };
+  const onQuickLinksDrop = (e) => {
+    e.preventDefault();
+    setQuickLinksDragOver(false);
+    // Our own file-browser drag
+    const custom = e.dataTransfer.getData('text/x-file-path');
+    if (custom) { addQuickLink(custom.trim()); return; }
+    const file = e.dataTransfer.files[0];
+    if (!file) return;
+    // Electron 32+ webUtils — preload injects into top window; iframe reaches up via parent
+    const eApi = window.electronAPI ?? window.parent?.electronAPI;
+    const electronPath = eApi?.getPathForFile?.(file);
+    if (electronPath) { addQuickLink(electronPath); return; }
+    // Plain browser fallback: path unavailable, ask user to enter it
+    setQuickLinkPathPrompt(file.name);
+  };
+
   // ── Drag & drop on viewer ─────────────────────────────────────────────────
   const [viewerDragOver, setViewerDragOver] = useState(false);
   const onViewerDragOver  = (e) => { e.preventDefault(); setViewerDragOver(true); };
@@ -498,15 +575,15 @@ export default function App() {
   // ── Channels modal ────────────────────────────────────────────────────────
   const openChannelsModal = useCallback(() => {
     setChannelModal(m => {
-      if (m.channels) return { ...m, show: true, search: '' };
-      // need to load
-      fetch('/api/evtx/channels')
+      if (m.channels && m.remote === remoteComputer) return { ...m, show: true, search: '' };
+      const url = '/api/evtx/channels' + (remoteComputer ? '?remote=' + encodeURIComponent(remoteComputer) : '');
+      fetch(url)
         .then(r => r.json())
         .then(data => setChannelModal(prev => ({ ...prev, channels: data.channels || [], loading: false })))
         .catch(() => setChannelModal(prev => ({ ...prev, channels: [], loading: false })));
-      return { ...m, show: true, search: '', loading: true };
+      return { ...m, show: true, search: '', loading: true, channels: null, remote: remoteComputer };
     });
-  }, []);
+  }, [remoteComputer]);
 
   const filteredChannels = (() => {
     if (!channelModal.channels) return [];
@@ -624,10 +701,10 @@ export default function App() {
       {/* ── Top bar ─────────────────────────────────────────────────────────── */}
       <div id="topbar">
         <div id="tab-bar">
-          <span className="brand">&#128196; Log Viewer</span>
-          <button className={`tab-btn${activeTab === 'viewer' ? ' active' : ''}`} onClick={() => setActiveTab('viewer')}>&#128196; Log Viewer</button>
-          <button className={`tab-btn${activeTab === 'intune' ? ' active' : ''}`} onClick={() => setActiveTab('intune')}>&#128295; Intune Diagnostics</button>
-          <button className={`tab-btn${activeTab === 'dsreg'  ? ' active' : ''}`} onClick={() => setActiveTab('dsreg')}>&#128187; DSRegCmd</button>
+          {/* <span className="brand">&#128196; Log Viewer</span> */}
+          <button className={`tab-btn${activeTab === 'viewer' ? ' active' : ''}`} onClick={() => setActiveTab('viewer')}><LuScroll size={12} style={{ display:"inline-block", marginRight: '4px' }} /> Log Viewer</button>
+          <button className={`tab-btn${activeTab === 'intune' ? ' active' : ''}`} onClick={() => setActiveTab('intune')}><FaTools size={12} style={{ display:"inline-block", marginRight: '4px' }} /> Intune Diagnostics</button>
+          <button className={`tab-btn${activeTab === 'dsreg'  ? ' active' : ''}`} onClick={() => setActiveTab('dsreg')}><MdOutlineDomainVerification size={14} style={{ display:"inline-block", marginRight: '4px' }} /> DSRegCmd</button>
         </div>
 
         <div id="toolbar">
@@ -635,7 +712,7 @@ export default function App() {
           <div className="toolbar-section" id="toolbar-viewer" style={{ display: activeTab === 'viewer' ? 'flex' : 'none' }}>
             <button className="btn btn-primary" onClick={() => handleOpenFolder(null)}>Drives</button>
             <span id="current-file" title={currentFile}>{currentFile}</span>
-            <div className="severity-filters">
+            <div className="severity-filters" style={{ marginRight: '20px' }}>
               {[['All', 0], ['Info', 1], ['Warn', 2], ['Error', 3]].map(([label, sev]) => (
                 <button key={sev}
                   className={`sev-btn${severityFilter === sev ? ' active' : ''}`}
@@ -645,29 +722,41 @@ export default function App() {
                 </button>
               ))}
             </div>
-            <input id="filter-input" type="text" placeholder="Filter... (Ctrl+F to find)"
-              autoComplete="off" value={filterInputValue} onChange={handleFilterChange} />
-            <label className="checkbox-label">
-              <input type="checkbox" checked={filterIsRegex} onChange={e => setFilterIsRegex(e.target.checked)} /> Regex
-            </label>
-            <button className="btn" onClick={openChannelsModal}>&#128221; Channels</button>
+
+            <div style={{ display: 'flex', gap: '0px 10px', marginRight: '20px'}}>
+              <input id="filter-input" type="text" placeholder="Filter... (Ctrl+F to find)"
+                autoComplete="off" value={filterInputValue} onChange={handleFilterChange} />
+              <label className="checkbox-label">
+                <input type="checkbox" checked={filterIsRegex} onChange={e => setFilterIsRegex(e.target.checked)} /> Regex
+              </label>
+            </div>
+            
+            <div className="remote-input-wrap">
+              <span className="remote-label">&#128187; Remote:</span>
+              <input className="remote-input" type="text" placeholder="localhost"
+                value={remoteComputer}
+                onChange={e => setRemoteComputer(e.target.value.trim())}
+                title="Leave blank for local machine" />
+            </div>
+            <button className="btn" onClick={openChannelsModal}><LuLogs size={12} style={{ display:"inline-block", marginRight: '4px' }} /> Windows Event Channels</button>
             <button className={`btn${tailPaused ? ' active' : ''}`} onClick={() => setTailPaused(p => !p)}>
-              {tailPaused ? 'Resume' : 'Pause'}
+              {tailPaused ? <Play size={12} style={{ display:"inline-block", marginRight: '4px' }} /> : <Pause size={12} style={{ display:"inline-block", marginRight: '4px' }} />}
+              {tailPaused ? 'Resume' : 'Pause'} 
             </button>
             <button className={`btn${autoScroll ? ' active' : ''}`} onClick={() => {
               setAutoScroll(a => {
                 if (!a && scrollWrapRef.current) scrollWrapRef.current.scrollTop = scrollWrapRef.current.scrollHeight;
                 return !a;
               });
-            }}>Auto-scroll</button>
+            }}><ArrowDownToLine size={12} style={{ display:"inline-block", marginRight: '4px' }} />Auto-scroll</button>
             <button className="btn" onClick={() => {
               setAllEntries([]);
               setFilteredEntries([]);
               setDetailEntry(null);
               setSelectedIdx(-1);
               setVsRange({ start: 0, end: 100 });
-            }}>Clear</button>
-            <button className="btn" onClick={handleExportCsv}>CSV</button>
+            }}><Eraser size={12} style={{ display:"inline-block", marginRight: '4px' }} />Clear</button>
+            <button className="btn" onClick={handleExportCsv}><BsFileSpreadsheet size={12} style={{ display:"inline-block", marginRight: '4px' }} />Export CSV</button>
           </div>
 
           {/* Intune toolbar */}
@@ -687,12 +776,13 @@ export default function App() {
 
           {/* Always-visible right controls */}
           <div className="toolbar-right">
-            <select value={theme} title="Theme" onChange={e => setTheme(e.target.value)}>
+            <select value={theme} style={{ backgroundColor: 'var(--bg1)'}} title="Theme" onChange={e => setTheme(e.target.value)}>
               <option value="dark">Dark</option>
               <option value="dracula">Dracula</option>
               <option value="nord">Nord</option>
               <option value="solarized">Solarized</option>
               <option value="hotdog">Hot Dog Stand</option>
+              <option value="dmdark">DM Dark</option>
             </select>
             <div className="font-controls">
               <button className="btn btn-icon" title="Decrease font size" onClick={() => setFontSize(s => Math.max(10, s - 1))}>A-</button>
@@ -709,13 +799,36 @@ export default function App() {
         {/* ═══ Log Viewer Tab ══════════════════════════════════════════════ */}
         <div className={`tab-content${activeTab === 'viewer' ? ' active' : ''}`} data-tab="viewer">
           <div id="sidebar" ref={sidebarRef}>
-            <div id="quick-links">
+            <div id="quick-links"
+              className={quickLinksDragOver ? 'drag-over' : ''}
+              onDragOver={onQuickLinksDragOver}
+              onDragLeave={onQuickLinksDragLeave}
+              onDrop={onQuickLinksDrop}>
               <div id="quick-links-header">Quick Links</div>
               <ul id="quick-links-list">
                 <li onClick={openAnsibleLog}><span className="icon">&#128280;</span><span className="name">Ansible Playbook Log</span></li>
+                {customQuickLinks.map(link => (
+                  <li key={link.id} onClick={() => handleOpenFile(link.path)}>
+                    <span className="icon"><PiFileTextFill size={12} color="#a6dbff" style={{ display:"inline-block", marginRight: '4px' }} /></span>
+                    <span className="name">{link.name}</span>
+                    <button className="quick-link-delete" title="Remove" onClick={(e) => { e.stopPropagation(); removeQuickLink(link.id); }}>&#10005;</button>
+                  </li>
+                ))}
               </ul>
+              {quickLinkPathPrompt && (
+                <div className="quick-link-path-form">
+                  <div className="quick-link-path-hint">Path for: <em>{quickLinkPathPrompt}</em></div>
+                  <input className="quick-link-path-input" autoFocus
+                    placeholder="C:\path\to\file"
+                    onKeyDown={(ev) => {
+                      if (ev.key === 'Enter') { addQuickLink(ev.target.value.trim()); setQuickLinkPathPrompt(null); }
+                      if (ev.key === 'Escape') setQuickLinkPathPrompt(null);
+                    }} />
+                  <button className="quick-link-path-cancel" onClick={() => setQuickLinkPathPrompt(null)}>&#10005;</button>
+                </div>
+              )}
             </div>
-            <div id="sidebar-header">&#128193; File Browser</div>
+            <div id="sidebar-header"><PiFolderSimpleDuotone size={18} style={{ display:"inline-block", marginRight: '4px' }} /> File Browser</div>
             <div id="sidebar-path" title={browserData.current}>{browserData.current}</div>
             <ul id="file-list">
               {browserData.parent !== null && (
@@ -730,12 +843,14 @@ export default function App() {
                   : browserData.current + '\\' + entry.name;
                 return entry.isDir ? (
                   <li key={i} className="dir" onClick={() => handleOpenFolder(entryPath)}>
-                    <span className="icon">&#128193;</span><span className="name">{entry.name}</span>
+                    <span className="icon"><PiFolderSimpleDuotone size={16} color="#0099ff" style={{ display:"inline-block", marginRight: '4px' }} /></span><span className="name">{entry.name}</span>
                   </li>
                 ) : (
                   <li key={i} className={`log-file${selectedFile === entryPath ? ' selected' : ''}`}
+                    draggable
+                    onDragStart={(e) => e.dataTransfer.setData('text/x-file-path', entryPath)}
                     onClick={() => handleOpenFile(entryPath)}>
-                    <span className="icon">&#128196;</span><span className="name">{entry.name}</span>
+                    <span className="icon"><PiFileTextFill size={16} color="#a6dbff" style={{ display:"inline-block", marginRight: '4px' }} /></span><span className="name">{entry.name}</span>
                   </li>
                 );
               })}
@@ -813,7 +928,7 @@ export default function App() {
 
             {/* Empty state */}
             <div id="empty-state" style={{ display: allEntries.length > 0 ? 'none' : 'flex' }}>
-              <span className="big">&#128196;</span>
+              <span className="big"><FileSymlink size={60} /></span>
               <span>Select a log file from the browser on the left</span>
               <span className="sub">or drag &amp; drop a file anywhere here</span>
             </div>

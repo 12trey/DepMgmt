@@ -25,6 +25,7 @@ import LogViewer from './pages/LogViewer';
 import ScriptRunner from './pages/ScriptRunner';
 import TemplateEditor from './pages/TemplateEditor';
 import { TabGuardContext } from './context/TabGuardContext';
+import { TfiLayoutTab } from "react-icons/tfi";
 
 // ── Nav definition ────────────────────────────────────────────────────────────
 const NAV_ITEMS = [
@@ -181,7 +182,7 @@ export default function App() {
       <FindBar />
 
       {/* ── Sidebar ── */}
-      <nav className={`${navCollapsed ? 'w-14' : 'w-56'} bg-gray-900 text-gray-300 flex flex-col shrink-0 transition-[width] duration-200 overflow-hidden`}>
+      <nav className={`${navCollapsed ? 'w-12' : 'w-[13.5rem]'}  bg-gray-900 text-gray-300 flex flex-col shrink-0 transition-[width] duration-200 overflow-hidden`}>
         {/* Header */}
         {navCollapsed ? (
           <div className="flex flex-col items-center gap-1 py-3 border-b border-gray-700">
@@ -242,7 +243,7 @@ export default function App() {
                 }`}
               >
                 <Icon size={18} />
-                <span className="flex-1">{label}</span>
+                <span className="flex-1 text-xs">{label}</span>
                 {isOpen && !isActive && (
                   <span className="w-1.5 h-1.5 rounded-full bg-blue-400 shrink-0" />
                 )}
@@ -253,7 +254,7 @@ export default function App() {
 
         {/* Theme toggle */}
         <div>
-          <div className={`border-t border-gray-700 shrink-0 ${navCollapsed ? 'p-3 px-4 flex-col justify-end' : 'px-3 py-2 flex items-end justify-end'}`}>
+          <div className={`border-t border-gray-700 shrink-0 ${navCollapsed ? 'pr-2 pl-2.5 pb-4 pt-1 flex-col justify-end' : 'px-3 py-2 flex items-end justify-end'}`}>
             {!navCollapsed && <span className="text-xs text-gray-500"></span>}
             <button
               onClick={toggleTheme}
@@ -268,7 +269,7 @@ export default function App() {
               title={tabStrip ? 'Toggle tab strip' : 'Toggle tab strip'}
               className="p-1.5 rounded hover:bg-gray-700 text-gray-400 hover:text-white"
             >
-              {tabStrip ? <NotebookTabs size={15} style={{ rotate: '-90deg' }} /> : <NotebookTabs size={15} style={{ rotate: '-90deg', color: '#333333' }} />}
+              {tabStrip ? <TfiLayoutTab size={15} /> : <TfiLayoutTab size={15} style={{ color: '#585858' }} />}
             </button>
           </div>
         </div>
@@ -290,14 +291,14 @@ export default function App() {
                 ref={el => { tabEls.current[to] = el; }}
                 onClick={() => navigate(to)}
                 style={isActive ? { background: 'var(--tab-active-bg)', color: 'var(--tab-active-text)' } : {}}
-                className={`flex items-center gap-2 px-3 py-2 text-sm cursor-pointer border-r border-gray-600 shrink-0 select-none ${
+                className={`flex items-center gap-2 px-2 py-1.5 text-sm cursor-pointer border-r border-gray-600 shrink-0 select-none ${
                   isActive
                     ? 'border-t-2 border-t-blue-500'
                     : 'text-gray-400 hover:bg-gray-700 hover:text-gray-200'
                 }`}
               >
                 <Icon size={14} />
-                <span className="max-w-[140px] truncate">{label}</span>
+                <span className="max-w-[140px] truncate text-xs">{label}</span>
                 {openTabs.length > 1 && (
                   <button
                     onClick={(e) => closeTab(to, e)}

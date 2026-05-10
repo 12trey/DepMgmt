@@ -14,10 +14,10 @@ const WSL_INSTANCE_KEY = 'dmt-wsl-instance';
 function getInitialResolution() {
   const navCollapsed = localStorage.getItem('navCollapsed') === 'true';
   const sidebarW = navCollapsed ? 56 : 224;  // matches App.jsx w-14 / w-56
-  const w = window.innerWidth  - sidebarW;
+  const w = window.innerWidth - sidebarW;
   const h = window.innerHeight - 38          // app tab bar
-                               - 28          // session tab bar
-                               - 34;         // session toolbar
+    - 28          // session tab bar
+    - 34;         // session toolbar
   return { width: String(Math.max(800, w)), height: String(Math.max(600, h)) };
 }
 
@@ -68,19 +68,19 @@ export default function RemoteDesktop() {
 
   const [newConnect, setNewConnect] = useState(false);
 
-  const displayRef    = useRef(null);
-  const clientRef     = useRef(null); // always points to the active session's client
-  const keyboardRef   = useRef(null);
+  const displayRef = useRef(null);
+  const clientRef = useRef(null); // always points to the active session's client
+  const keyboardRef = useRef(null);
   const displayScaleRef = useRef(1);
   const autoLaunchedRef = useRef(false);
   // id → { client, tunnel, displayEl, mouse, displayScale }
-  const sessionsRef   = useRef(new Map());
-  const activeIdRef   = useRef(null);   // sync copy of activeId for use inside closures
-  const forwardedRef  = useRef(new Set()); // keys forwarded to current remote
-  const sessionViewRef    = useRef(null);
-  const hudTimerRef       = useRef(null);
-  const inTriggerZoneRef  = useRef(false);
-  const hudRef            = useRef(null);
+  const sessionsRef = useRef(new Map());
+  const activeIdRef = useRef(null);   // sync copy of activeId for use inside closures
+  const forwardedRef = useRef(new Set()); // keys forwarded to current remote
+  const sessionViewRef = useRef(null);
+  const hudTimerRef = useRef(null);
+  const inTriggerZoneRef = useRef(false);
+  const hudRef = useRef(null);
 
   // Keep activeIdRef in sync with React state
   useEffect(() => { activeIdRef.current = activeId; }, [activeId]);
@@ -140,7 +140,7 @@ export default function RemoteDesktop() {
   // Disconnect all sessions on unmount
   useEffect(() => () => {
     for (const { client } of sessionsRef.current.values()) {
-      try { client.disconnect(); } catch {}
+      try { client.disconnect(); } catch { }
     }
   }, []);
 
@@ -178,7 +178,7 @@ export default function RemoteDesktop() {
     let resizeTimer = null;
     const ro = new ResizeObserver(() => {
       clearTimeout(resizeTimer);
-      resizeTimer = setTimeout(sendCurrentSize, 120);
+      resizeTimer = setTimeout(sendCurrentSize, 400);
     });
     ro.observe(displayRef.current);
 
@@ -440,9 +440,9 @@ export default function RemoteDesktop() {
       ));
     };
     mouse.onmousedown = sendMouse;
-    mouse.onmouseup  = sendMouse;
+    mouse.onmouseup = sendMouse;
     mouse.onmousemove = sendMouse;
-    mouse.onmouseout  = sendMouse;
+    mouse.onmouseout = sendMouse;
 
     let wasOpen = false;
     tunnel.onstatechange = state => {
@@ -450,8 +450,11 @@ export default function RemoteDesktop() {
         wasOpen = true;
         // Send size once the channel is live (works for both active and background tabs)
         if (displayRef.current && activeIdRef.current === id) {
-          const { clientWidth: w, clientHeight: h } = displayRef.current;
-          if (w && h) client.sendSize(w, h);
+          // Work around until I can figure out why the initial size is a little off sometimes.
+          setTimeout(() => {
+            const { clientWidth: w, clientHeight: h } = displayRef.current;
+            if (w && h) client.sendSize(w, h);
+          }, 2000);
         }
       } else if (state === Guacamole.Tunnel.State.CLOSED) {
         if (activeIdRef.current === id) {
@@ -459,7 +462,7 @@ export default function RemoteDesktop() {
             : wasOpen ? 'Disconnected.' : 'Connection refused — check guacd and target host.');
 
           //if(status==='Disconnected') {
-            disconnectSession(id);
+          disconnectSession(id);
           //}
         }
       }
@@ -490,7 +493,7 @@ export default function RemoteDesktop() {
   function disconnectSession(id) {
     const session = sessionsRef.current.get(id);
     if (session) {
-      try { session.client.disconnect(); } catch {}
+      try { session.client.disconnect(); } catch { }
       sessionsRef.current.delete(id);
     }
 
@@ -538,7 +541,7 @@ export default function RemoteDesktop() {
       await fetch(`${DMT_BASE}/remote-connections/${id}`, { method: 'DELETE' });
       await loadConnections();
       if (editingId === id) clearForm();
-    } catch {}
+    } catch { }
   }
 
   async function handleDiagnose() {
@@ -572,9 +575,11 @@ export default function RemoteDesktop() {
         setGuacLogs('(could not fetch logs)');
       }
     } catch (err) {
-      setDiagResult({ error: err.name === 'TimeoutError'
-        ? 'Timed out — sync app.js to WSL then restart DMT Tools'
-        : err.message });
+      setDiagResult({
+        error: err.name === 'TimeoutError'
+          ? 'Timed out — sync app.js to WSL then restart DMT Tools'
+          : err.message
+      });
     } finally {
       setDiagLoading(false);
     }
@@ -685,11 +690,10 @@ export default function RemoteDesktop() {
                 <button
                   key={t}
                   onClick={() => handleTypeChange(t)}
-                  className={`px-4 py-1.5 text-xs font-semibold rounded-md border transition-colors ${
-                    form.type === t
+                  className={`px-4 py-1.5 text-xs font-semibold rounded-md border transition-colors ${form.type === t
                       ? 'bg-blue-600 text-white border-blue-600'
                       : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:border-blue-400'
-                  }`}
+                    }`}
                 >
                   {t.toUpperCase()}
                 </button>
@@ -781,10 +785,9 @@ export default function RemoteDesktop() {
             </div>
 
             {status && (
-              <p className={`mt-3 text-xs ${
-                status.includes('failed') || status.includes('Failed') || status.includes('required') || status.includes('Error') || status.includes('refused')
+              <p className={`mt-3 text-xs ${status.includes('failed') || status.includes('Failed') || status.includes('required') || status.includes('Error') || status.includes('refused')
                   ? 'text-red-500' : 'text-green-600 dark:text-green-400'
-              }`}>
+                }`}>
                 {status}
               </p>
             )}
@@ -882,11 +885,10 @@ export default function RemoteDesktop() {
               <div
                 key={tab.id}
                 onClick={() => switchTab(tab.id)}
-                className={`flex items-center gap-1.5 px-3 py-1.5 text-xs shrink-0 cursor-pointer border-r border-gray-700 select-none ${
-                  tab.id === activeId
+                className={`flex items-center gap-1.5 px-3 py-1.5 text-xs shrink-0 cursor-pointer border-r border-gray-700 select-none ${tab.id === activeId
                     ? 'bg-gray-900 text-gray-100'
                     : 'text-gray-400 hover:bg-gray-700 hover:text-gray-200'
-                }`}
+                  }`}
               >
                 <span className="max-w-[140px] truncate">{tab.name}</span>
                 <button
@@ -945,8 +947,8 @@ export default function RemoteDesktop() {
             tabIndex={0}
             className="flex-1 overflow-hidden outline-none cursor-none flex items-center justify-center"
             style={{ background: '#000', ...newConnect ? { display: 'none' } : {} }}
-          />          
-          
+          />
+
           {sidebarOpen && !newConnect && (
             <GuacSidebar
               clientRef={clientRef}
@@ -1145,11 +1147,10 @@ function ConnectionsPanel({ grouped, editingId, connecting, onConnect, onSelect,
                 <div
                   key={conn.id}
                   onClick={() => onSelect(conn)}
-                  className={`flex items-center gap-1.5 px-2 py-1.5 rounded-md cursor-pointer mb-0.5 group ${
-                    isSelected
+                  className={`flex items-center gap-1.5 px-2 py-1.5 rounded-md cursor-pointer mb-0.5 group ${isSelected
                       ? 'bg-blue-50 dark:bg-blue-900/30 ring-1 ring-blue-300 dark:ring-blue-600'
                       : 'hover:bg-gray-100 dark:hover:bg-gray-700'
-                  }`}
+                    }`}
                 >
                   <div className="flex-1 min-w-0">
                     <div className="text-xs font-medium truncate" style={{ color: 'var(--text)' }}>{conn.name}</div>

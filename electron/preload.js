@@ -1,4 +1,4 @@
-const { contextBridge, ipcRenderer } = require('electron');
+const { contextBridge, ipcRenderer, webUtils } = require('electron');
 const { clipboard } = require('electron');
 
 // Single-slot callbacks for find bar (only one FindBar instance ever exists)
@@ -26,6 +26,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   setFullscreen: (flag) => ipcRenderer.send('set-fullscreen', flag),
   toggleFullscreen: () => ipcRenderer.send('toggle-fullscreen'),
   onFullscreenChanged: (cb) => { _fullscreenChangedCb = cb; },
+
+  // File path from drag-and-drop (Electron 32+ replacement for file.path)
+  getPathForFile: (file) => webUtils.getPathForFile(file),
 });
 
 ipcRenderer.on('clipboard-updated', (event, text) => {

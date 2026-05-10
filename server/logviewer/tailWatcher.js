@@ -6,7 +6,8 @@ const chokidar = require('chokidar');
 const { parseContent } = require('./logParser');
 const { readChannelSince } = require('./evtxParser');
 
-const CHANNEL_POLL_MS = 5000;
+const CHANNEL_POLL_MS  = 2000;
+const CHANNEL_BATCH    = 2000; // max events per poll; if full → catch-up immediately
 const ANSIBLE_POLL_MS = 3000;
 const ANSIBLE_LOG_URL = 'http://localhost:7000/logs/cmtrace';
 
@@ -75,24 +76,37 @@ module.exports = function attachTailWatcher(io) {
     });
 
     // ── Live channel polling ──────────────────────────────────────────────
-    socket.on('watch:channel', ({ channel, since }) => {
+    socket.on('watch:channel', ({ channel, since, remote, username, password }) => {
       const state = watchers.get(socket.id);
       if (!state) return;
       clearState(state);
 
       state.channelName = channel;
       state.sinceIso    = since || new Date().toISOString();
+      state.remoteOpts  = remote ? { remote, username, password } : {};
 
-      state.timer = setInterval(async () => {
+      // Use setTimeout chaining so the next poll only starts after the
+      // previous wevtutil call completes — prevents concurrent calls piling
+      // up on slow networks. First poll fires immediately.
+      async function poll() {
+        if (state.channelName !== channel) return;
+        let delay = CHANNEL_POLL_MS;
         try {
-          const entries = await readChannelSince(state.channelName, state.sinceIso);
-          if (!entries.length) return;
-          // Advance the cursor to the latest timestamp
-          const last = entries[entries.length - 1];
-          if (last.isoTime) state.sinceIso = last.isoTime;
-          socket.emit('log:lines', { entries });
+          const entries = await readChannelSince(state.channelName, state.sinceIso, state.remoteOpts, CHANNEL_BATCH);
+          if (entries.length) {
+            const last = entries[entries.length - 1];
+            if (last.isoTime) state.sinceIso = last.isoTime;
+            socket.emit('log:lines', { entries });
+            // Batch was full — there are likely more events waiting; catch up immediately
+            if (entries.length >= CHANNEL_BATCH) delay = 0;
+          }
         } catch (_) {}
-      }, CHANNEL_POLL_MS);
+        if (state.channelName === channel) {
+          state.timer = setTimeout(poll, delay);
+        }
+      }
+
+      poll();
     });
 
     // ── Ansible playbook log polling ──────────────────────────────────────

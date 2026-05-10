@@ -218,11 +218,11 @@ export default function ScriptRunner() {
           setStructuredOutput(evt.data);
           setOutputTab('structured');
         } else if (evt.type === 'exit') {
-          setConsoleText(fullStdoutRef.current.trimEnd());
+          //setConsoleText(fullStdoutRef.current.trimEnd());
           setExitCode(evt.data);
           setRunning(false);
         } else if (evt.type === 'error') {
-          setConsoleText(prev => prev + `\nError: ${evt.data}\n`);
+          //setConsoleText(prev => prev + `\nError: ${evt.data}\n`);
           setRunning(false);
         }
       }, ctrl.signal);

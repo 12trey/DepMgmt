@@ -81,9 +81,13 @@ function parseEventBlock(block) {
 }
 
 // ── wevtutil runners ───────────────────────────────────────────────────────
-function run(args) {
+function run(args, { remote, username, password } = {}) {
+  const fullArgs = [...args];
+  if (remote)   fullArgs.push('/r:' + remote);
+  if (username) fullArgs.push('/u:' + username);
+  if (password) fullArgs.push('/p:' + password);
   return new Promise((resolve, reject) => {
-    execFile(WEVTUTIL, args, { maxBuffer: MAX_BUF, windowsHide: true, encoding: 'utf8' },
+    execFile(WEVTUTIL, fullArgs, { maxBuffer: MAX_BUF, windowsHide: true, encoding: 'utf8' },
       (err, stdout, stderr) => {
         if (err && err.code === 5)
           return reject(Object.assign(new Error('Access denied (run as admin for Security log)'), { code: 'EACCES' }));
@@ -96,27 +100,27 @@ function run(args) {
 }
 
 // Read last N events from an .evtx file (chronological order)
-async function readEvtxFile(filePath, count = 1000) {
-  const out = await run(['qe', filePath, '/lf:true', '/f:text', '/rd:true', '/c:' + count]);
+async function readEvtxFile(filePath, count = 1000, remoteOpts = {}) {
+  const out = await run(['qe', filePath, '/lf:true', '/f:text', '/rd:true', '/c:' + count], remoteOpts);
   return parseWevtutilText(out).reverse();
 }
 
 // Read last N events from a named channel (chronological order)
-async function readChannel(channelName, count = 1000) {
-  const out = await run(['qe', channelName, '/f:text', '/rd:true', '/c:' + count]);
+async function readChannel(channelName, count = 1000, remoteOpts = {}) {
+  const out = await run(['qe', channelName, '/f:text', '/rd:true', '/c:' + count], remoteOpts);
   return parseWevtutilText(out).reverse();
 }
 
 // Read events newer than sinceIso from a named channel
-async function readChannelSince(channelName, sinceIso) {
+async function readChannelSince(channelName, sinceIso, remoteOpts = {}, count = 2000) {
   const xpath = `*[System[TimeCreated[@SystemTime>'${sinceIso}']]]`;
-  const out = await run(['qe', channelName, '/f:text', '/q:' + xpath]);
+  const out = await run(['qe', channelName, '/f:text', '/q:' + xpath, '/c:' + count], remoteOpts);
   return parseWevtutilText(out); // already oldest-first without /rd
 }
 
 // List all available channels
-async function listChannels() {
-  const out = await run(['el']);
+async function listChannels(remoteOpts = {}) {
+  const out = await run(['el'], remoteOpts);
   return out.split(/\r?\n/).map(l => l.trim()).filter(Boolean).sort();
 }
 
@@ -124,12 +128,13 @@ async function listChannels() {
 const router = Router();
 
 router.get('/api/evtx', async (req, res) => {
-  const { path: filePath, channel, count } = req.query;
+  const { path: filePath, channel, count, remote, username, password } = req.query;
   const n = Math.min(parseInt(count, 10) || 1000, 5000);
+  const remoteOpts = remote ? { remote, username, password } : {};
   try {
     let entries;
-    if (filePath)       entries = await readEvtxFile(filePath, n);
-    else if (channel)   entries = await readChannel(channel, n);
+    if (filePath)       entries = await readEvtxFile(filePath, n, remoteOpts);
+    else if (channel)   entries = await readChannel(channel, n, remoteOpts);
     else return res.status(400).json({ error: 'path or channel parameter required' });
     res.json({ entries });
   } catch (err) {
@@ -139,8 +144,10 @@ router.get('/api/evtx', async (req, res) => {
 });
 
 router.get('/api/evtx/channels', async (req, res) => {
+  const { remote, username, password } = req.query;
+  const remoteOpts = remote ? { remote, username, password } : {};
   try {
-    const channels = await listChannels();
+    const channels = await listChannels(remoteOpts);
     res.json({ channels });
   } catch (err) {
     res.status(500).json({ error: err.message });

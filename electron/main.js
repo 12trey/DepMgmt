@@ -235,6 +235,10 @@ app.whenReady().then(async () => {
     if (win) win.setFullScreen(!win.isFullScreen());
   });
 
+  globalShortcut.register('F5', () => {
+    BrowserWindow.getFocusedWindow()?.reload();
+  });
+
   session.defaultSession.setPermissionRequestHandler((webContents, permission, callback) => {
     if (permission === 'clipboard-write') {
       callback(true);
