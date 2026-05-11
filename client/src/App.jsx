@@ -161,6 +161,8 @@ export default function App() {
     return next;
   });
 
+  const [tabStrip, setTabStrip] = useState(()=>localStorage.getItem('showmaintabs')==='true');
+
   const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'light');
   useEffect(() => {
     document.documentElement.classList.toggle('dark', theme === 'dark');
@@ -168,13 +170,23 @@ export default function App() {
     document.querySelectorAll('iframe').forEach(frame => {
       try { frame.contentWindow.postMessage({ type: 'theme', theme }, '*'); } catch {}
     });
+
+    //localStorage.setItem('showmaintabs', tabStrip);
+    //setTabStrip(tabStrip);
   }, [theme]);
 
   const toggleTheme = () => {
     setTheme(t => t === 'light' ? 'dark' : 'light');
-  }
+  };
 
-  const [tabStrip, setTabStrip] = useState(true);
+  const toggleMainTabs = () => {
+    setTabStrip(t=>{
+        localStorage.setItem('showmaintabs', !t);
+        return !t
+      }
+    );
+  };
+
 
   return (
     <TabGuardContext.Provider value={registerGuard}>
@@ -265,7 +277,7 @@ export default function App() {
             </button>
 
             <button
-              onClick={(e)=>setTabStrip(s=>!s)}
+              onClick={toggleMainTabs}
               title={tabStrip ? 'Toggle tab strip' : 'Toggle tab strip'}
               className="p-1.5 rounded hover:bg-gray-700 text-gray-400 hover:text-white"
             >

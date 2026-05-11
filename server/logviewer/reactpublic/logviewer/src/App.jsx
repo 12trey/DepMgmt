@@ -84,7 +84,7 @@ export default function App() {
   const [browserData, setBrowserData] = useState({ current: '', parent: null, entries: [], isRoot: false });
   const [selectedFile, setSelectedFile] = useState(null);
 
-  // ── Log state ─────────────────────────────────────────────────────────────
+  // ── Log state (non-paged: plain logs, ansible, etc.) ──────────────────────
   const [currentFile, setCurrentFile] = useState('No file open');
   const [statusWatching, setStatusWatching] = useState('');
   const [tailPaused, setTailPaused] = useState(false);
@@ -93,6 +93,13 @@ export default function App() {
   const [filteredEntries, setFilteredEntries] = useState([]);
   const [selectedIdx, setSelectedIdx] = useState(-1);
   const [detailEntry, setDetailEntry] = useState(null);
+
+  // ── Paged mode (evtx files + WinEvent channels) ───────────────────────────
+  const [isPaginated, setIsPaginated] = useState(false);
+  const [logInfo, setLogInfo] = useState({ total: 0, rawTotal: 0, errCount: 0, warnCount: 0 });
+  const [pageStore, setPageStore] = useState(new Map()); // pageIdx → entries[]
+  const [liveEntries, setLiveEntries] = useState([]);    // WebSocket tail events
+  const [pageSize, setPageSize] = useState(50);          // rows per viewport page
 
   // ── Filter ────────────────────────────────────────────────────────────────
   const [severityFilter, setSeverityFilter] = useState(0);
@@ -120,14 +127,14 @@ export default function App() {
     try { return JSON.parse(localStorage.getItem('aicm-quick-links')) || []; } catch { return []; }
   });
   const [quickLinksDragOver, setQuickLinksDragOver] = useState(false);
-  const [quickLinkPathPrompt, setQuickLinkPathPrompt] = useState(null); // filename hint when path unknown
+  const [quickLinkPathPrompt, setQuickLinkPathPrompt] = useState(null);
 
   // ── Remote computer ───────────────────────────────────────────────────────
   const [remoteComputer, setRemoteComputer] = useState(() => localStorage.getItem('aicm-remote') || '');
 
   // ── Appearance ────────────────────────────────────────────────────────────
   const [fontSize, setFontSize] = useState(() => parseInt(localStorage.getItem('aicm-font') || '13', 10));
-  const [theme, setTheme] = useState(() => localStorage.getItem('aicm-theme') || 'dark');
+  const [theme, setTheme] = useState(() => localStorage.getItem('aicm-theme') || 'dmdark');
 
   // ── Intune toolbar state ──────────────────────────────────────────────────
   const [intuneFileLabel, setIntuneFileLabel] = useState('No file loaded');
@@ -153,6 +160,17 @@ export default function App() {
     || [...DEFAULT_COL_WIDTHS]
   );
 
+  // Paged mode refs (allow stable callbacks to read current state)
+  const isPaginatedRef    = useRef(false);
+  const logInfoRef        = useRef({ total: 0, rawTotal: 0, errCount: 0, warnCount: 0 });
+  const pageStoreRef      = useRef(new Map());
+  const liveEntriesRef    = useRef([]);
+  const pageSizeRef       = useRef(50);
+  const pagedSourceRef    = useRef(null); // { channel?, path?, remote? }
+  const fetchingRef       = useRef(new Set());
+  const activeFiltersRef  = useRef({ level: 0, text: '', regex: false });
+  const fetchGenRef       = useRef(0);   // bumped on source/filter change; stale responses are dropped
+
   // ── Keep refs in sync ─────────────────────────────────────────────────────
   useEffect(() => { autoScrollRef.current = autoScroll; }, [autoScroll]);
   useEffect(() => { tailPausedRef.current = tailPaused; }, [tailPaused]);
@@ -160,6 +178,11 @@ export default function App() {
   useEffect(() => { filteredEntriesRef.current = filteredEntries; }, [filteredEntries]);
   useEffect(() => { findResultsRef.current = findResults; }, [findResults]);
   useEffect(() => { findIdxRef.current = findIdx; }, [findIdx]);
+  useEffect(() => { isPaginatedRef.current = isPaginated; }, [isPaginated]);
+  useEffect(() => { logInfoRef.current = logInfo; }, [logInfo]);
+  useEffect(() => { pageStoreRef.current = pageStore; }, [pageStore]);
+  useEffect(() => { liveEntriesRef.current = liveEntries; }, [liveEntries]);
+  useEffect(() => { pageSizeRef.current = pageSize; }, [pageSize]);
 
   // ── Persist quick links + remote ─────────────────────────────────────────
   useEffect(() => {
@@ -187,14 +210,84 @@ export default function App() {
 
   useEffect(() => { applyColTemplate(); }, [applyColTemplate]);
 
-  // ── Filtering ─────────────────────────────────────────────────────────────
+  // ── Page size from viewport (computed on mount + window resize) ───────────
   useEffect(() => {
+    const update = () => {
+      if (scrollWrapRef.current) {
+        const ps = Math.max(20, Math.ceil(scrollWrapRef.current.clientHeight / ROW_HEIGHT));
+        setPageSize(ps);
+        pageSizeRef.current = ps;
+      }
+    };
+    window.addEventListener('resize', update);
+    requestAnimationFrame(update);
+    return () => window.removeEventListener('resize', update);
+  }, []);
+
+  // ── Keep activeFiltersRef in sync on every filter change ─────────────────
+  useEffect(() => {
+    activeFiltersRef.current = { level: severityFilter, text: filterText, regex: filterIsRegex };
+  }, [severityFilter, filterText, filterIsRegex]);
+
+  // ── Paged mode: server re-fetch on filter change only ────────────────────
+  // Depends only on filter values — NOT allEntries — so it doesn't fire when
+  // a new source is opened (which would race with the openChannel inline fetch).
+  useEffect(() => {
+    if (!isPaginatedRef.current) return;
+    const src = pagedSourceRef.current;
+    if (!src) return;
+
+    setPageStore(new Map());
+    pageStoreRef.current = new Map();
+    fetchingRef.current.clear();
+    fetchGenRef.current++;
+    const filterGen = fetchGenRef.current;
+    setLiveEntries([]);
+    liveEntriesRef.current = [];
+
+    const ps = pageSizeRef.current;
+    const initialOffset = autoScrollRef.current ? 'end' : '0';
+    const params = new URLSearchParams({ ...src, offset: initialOffset, count: ps * 3, ps });
+    if (severityFilter > 0) params.set('level', severityFilter);
+    if (filterText) { params.set('text', filterText); if (filterIsRegex) params.set('regex', 'true'); }
+
+    fetch(`/api/evtx?${params}`)
+      .then(r => r.json())
+      .then(data => {
+        if (fetchGenRef.current !== filterGen) return;
+        if (data.error) return;
+        setLogInfo(prev => ({ ...prev, total: data.total }));
+        logInfoRef.current = { ...logInfoRef.current, total: data.total };
+
+        const actualOffset = data.offset || 0;
+        const entries = data.entries || [];
+        const pages = new Map();
+        for (let p = 0; p * ps < entries.length; p++) {
+          pages.set(Math.floor(actualOffset / ps) + p, entries.slice(p * ps, (p + 1) * ps));
+        }
+        setPageStore(pages);
+        pageStoreRef.current = pages;
+
+        requestAnimationFrame(() => {
+          if (!scrollWrapRef.current) return;
+          scrollWrapRef.current.scrollTop = autoScrollRef.current
+            ? scrollWrapRef.current.scrollHeight
+            : 0;
+        });
+      })
+      .catch(() => {});
+  }, [severityFilter, filterText, filterIsRegex]);
+
+  // ── Non-paged mode: client-side filter on new entries or filter change ────
+  useEffect(() => {
+    if (isPaginatedRef.current) return;
     const fn = makeFilter(severityFilter, filterText, filterIsRegex);
     setFilteredEntries(allEntries.filter(fn));
   }, [severityFilter, filterText, filterIsRegex, allEntries]);
 
-  // ── Virtual scroll reset + auto-scroll when filteredEntries changes ───────
+  // ── Virtual scroll reset + auto-scroll (non-paged) ────────────────────────
   useEffect(() => {
+    if (isPaginatedRef.current) return;
     filteredEntriesRef.current = filteredEntries;
     const total = filteredEntries.length;
     const wrap = scrollWrapRef.current;
@@ -202,15 +295,12 @@ export default function App() {
     const visibleRows = Math.ceil(viewH / ROW_HEIGHT);
 
     if (autoScrollRef.current) {
-      // Render the bottom rows immediately so they're present when we scroll there
       const end = Math.max(0, total - 1);
       setVsRange({ start: Math.max(0, end - visibleRows - BUFFER), end });
-      // Scroll after the DOM paints the new rows
       requestAnimationFrame(() => {
         if (scrollWrapRef.current) scrollWrapRef.current.scrollTop = scrollWrapRef.current.scrollHeight;
       });
     } else if (wrap) {
-      // Keep visible range anchored to current scroll position
       const scrollTop = wrap.scrollTop;
       const visStart = Math.floor(scrollTop / ROW_HEIGHT);
       const visEnd   = Math.ceil((scrollTop + viewH) / ROW_HEIGHT);
@@ -221,9 +311,57 @@ export default function App() {
     }
   }, [filteredEntries]);
 
+  // ── Virtual scroll reset + auto-scroll (paged) ────────────────────────────
+  useEffect(() => {
+    if (!isPaginated) return;
+    const total = logInfo.total + liveEntries.length;
+    const wrap = scrollWrapRef.current;
+    const viewH = wrap ? (wrap.clientHeight || 400) : 400;
+    const visibleRows = Math.ceil(viewH / ROW_HEIGHT);
+
+    if (autoScrollRef.current) {
+      const end = Math.max(0, total - 1);
+      setVsRange({ start: Math.max(0, end - visibleRows - BUFFER), end });
+      requestAnimationFrame(() => {
+        if (scrollWrapRef.current) scrollWrapRef.current.scrollTop = scrollWrapRef.current.scrollHeight;
+      });
+    } else if (wrap) {
+      const scrollTop = wrap.scrollTop;
+      const visStart = Math.floor(scrollTop / ROW_HEIGHT);
+      const visEnd   = Math.ceil((scrollTop + viewH) / ROW_HEIGHT);
+      setVsRange({
+        start: Math.max(0, visStart - BUFFER),
+        end:   Math.min(total - 1, visEnd + BUFFER),
+      });
+    }
+  }, [isPaginated, logInfo.total, liveEntries.length]);
+
   // ── Find ──────────────────────────────────────────────────────────────────
   useEffect(() => {
     const matcher = makeFindMatcher(findText, findIsRegex);
+
+    if (isPaginatedRef.current) {
+      // Server-side search through cached entries
+      if (!findText) { setFindResults([]); setFindIdx(-1); return; }
+      const src = pagedSourceRef.current;
+      if (!src) return;
+      const { level, text, regex } = activeFiltersRef.current;
+      const params = new URLSearchParams({ ...src, find: findText });
+      if (findIsRegex) params.set('findRegex', 'true');
+      if (level > 0) params.set('level', level);
+      if (text) { params.set('text', text); if (regex) params.set('regex', 'true'); }
+
+      fetch(`/api/evtx/search?${params}`)
+        .then(r => r.json())
+        .then(data => {
+          const results = data.matches || [];
+          setFindResults(results);
+          setFindIdx(results.length ? 0 : -1);
+        })
+        .catch(() => {});
+      return;
+    }
+
     if (!matcher) { setFindResults([]); setFindIdx(-1); return; }
     const results = [];
     filteredEntries.forEach((e, i) => {
@@ -281,7 +419,7 @@ export default function App() {
       document.body.style.cursor = '';
       document.body.style.userSelect = '';
       localStorage.setItem('aicm-cols', JSON.stringify(colWidthsRef.current));
-      setVsRange(prev => ({ ...prev })); // force row re-render
+      setVsRange(prev => ({ ...prev }));
     };
     const onDbl = (e) => {
       const h = e.target.closest('.col-rz');
@@ -330,7 +468,14 @@ export default function App() {
       if (tailPausedRef.current || activeTabRef.current !== 'viewer') return;
       const newE = data.entries || [];
       if (!newE.length) return;
-      setAllEntries(prev => [...prev, ...newE]);
+      if (isPaginatedRef.current) {
+        const { level, text, regex } = activeFiltersRef.current;
+        const fn = makeFilter(level, text, regex);
+        const kept = newE.filter(fn);
+        if (kept.length) setLiveEntries(prev => [...prev, ...kept]);
+      } else {
+        setAllEntries(prev => [...prev, ...newE]);
+      }
     };
     socket.on('log:lines', handler);
     return () => socket.off('log:lines', handler);
@@ -408,6 +553,66 @@ export default function App() {
     setFindResults([]);
     setFindIdx(-1);
     setVsRange({ start: 0, end: 100 });
+    // Paged mode reset
+    setIsPaginated(false);
+    isPaginatedRef.current = false;
+    setLogInfo({ total: 0, rawTotal: 0, errCount: 0, warnCount: 0 });
+    logInfoRef.current = { total: 0, rawTotal: 0, errCount: 0, warnCount: 0 };
+    setPageStore(new Map());
+    pageStoreRef.current = new Map();
+    setLiveEntries([]);
+    liveEntriesRef.current = [];
+    fetchingRef.current.clear();
+    fetchGenRef.current++;
+    pagedSourceRef.current = null;
+  }, []);
+
+  // ── Paged mode: fetch a single page from the server ───────────────────────
+  const fetchPage = useCallback((pageIdx) => {
+    const src = pagedSourceRef.current;
+    if (!src) return;
+    if (fetchingRef.current.has(pageIdx)) return;
+    if (pageStoreRef.current.has(pageIdx)) return;
+
+    fetchingRef.current.add(pageIdx);
+    const gen = fetchGenRef.current;
+    const ps = pageSizeRef.current;
+    const { level, text, regex } = activeFiltersRef.current;
+    const params = new URLSearchParams({ ...src, offset: pageIdx * ps, count: ps, ps });
+    if (level > 0) params.set('level', level);
+    if (text) { params.set('text', text); if (regex) params.set('regex', 'true'); }
+
+    fetch(`/api/evtx?${params}`)
+      .then(r => r.json())
+      .then(data => {
+        if (fetchGenRef.current !== gen) return; // stale — filter or source changed
+        if (data.error) return;
+        setPageStore(prev => {
+          if (prev.has(pageIdx)) return prev;
+          const next = new Map(prev);
+          next.set(pageIdx, data.entries || []);
+          return next;
+        });
+      })
+      .catch(() => {})
+      .finally(() => { fetchingRef.current.delete(pageIdx); });
+  }, []);
+
+  // ── Paged mode: evict pages outside the topPage-1 … bottomPage+1 window ──
+  const evictPages = useCallback((topPage, bottomPage) => {
+    const keep = new Set();
+    for (let p = topPage - 1; p <= bottomPage + 1; p++) {
+      if (p >= 0) keep.add(p);
+    }
+    setPageStore(prev => {
+      let changed = false;
+      const next = new Map();
+      for (const [k, v] of prev) {
+        if (keep.has(k)) next.set(k, v);
+        else changed = true;
+      }
+      return changed ? next : prev;
+    });
   }, []);
 
   const handleOpenFile = useCallback((filePath) => {
@@ -420,28 +625,61 @@ export default function App() {
 
     const fileName = filePath.split(/[\\/]/).pop();
     const isEvtx = fileName.toLowerCase().endsWith('.evtx');
-    const apiUrl = isEvtx
-      ? `/api/evtx?path=${encodeURIComponent(filePath)}`
-      : `/api/read?path=${encodeURIComponent(filePath)}`;
-
     document.title = `${fileName} - Log Viewer`;
 
-    fetch(apiUrl)
-      .then(r => r.json())
-      .then(data => {
-        if (data.error) throw new Error(data.error);
-        setAllEntries(data.entries || []);
-        if (!isEvtx) {
+    if (isEvtx) {
+      const ps = pageSizeRef.current;
+      pagedSourceRef.current = { path: filePath };
+      setIsPaginated(true);
+      isPaginatedRef.current = true;
+      const openGen = fetchGenRef.current;
+
+      const initialOffset = autoScrollRef.current ? 'end' : '0';
+      const { level: initLevel, text: initText, regex: initRegex } = activeFiltersRef.current;
+      const params = new URLSearchParams({ path: filePath, offset: initialOffset, count: ps * 3, ps });
+      if (initLevel > 0) params.set('level', initLevel);
+      if (initText) { params.set('text', initText); if (initRegex) params.set('regex', 'true'); }
+
+      fetch(`/api/evtx?${params}`)
+        .then(r => r.json())
+        .then(data => {
+          if (fetchGenRef.current !== openGen) return;
+          if (data.error) throw new Error(data.error);
+          const info = { total: data.total, rawTotal: data.rawTotal, errCount: data.errCount, warnCount: data.warnCount };
+          setLogInfo(info);
+          logInfoRef.current = info;
+
+          const actualOffset = data.offset || 0;
+          const entries = data.entries || [];
+          const pages = new Map();
+          for (let p = 0; p * ps < entries.length; p++) {
+            pages.set(Math.floor(actualOffset / ps) + p, entries.slice(p * ps, (p + 1) * ps));
+          }
+          setPageStore(pages);
+          pageStoreRef.current = pages;
+          setStatusWatching(`📄 ${fileName} (snapshot)`);
+        })
+        .catch(err => {
+          setIsPaginated(false);
+          isPaginatedRef.current = false;
+          pagedSourceRef.current = null;
+          setAllEntries([{ type: 3, message: `Error: ${err.message}`, time: '', date: '', component: '', thread: '', typeName: 'Error' }]);
+          setStatusWatching('');
+        });
+    } else {
+      fetch(`/api/read?path=${encodeURIComponent(filePath)}`)
+        .then(r => r.json())
+        .then(data => {
+          if (data.error) throw new Error(data.error);
+          setAllEntries(data.entries || []);
           socket.emit('watch', { path: filePath });
           setStatusWatching(`🔒 Watching: ${fileName}`);
-        } else {
-          setStatusWatching(`📄 ${fileName} (snapshot)`);
-        }
-      })
-      .catch(err => {
-        setAllEntries([{ type: 3, message: `Error: ${err.message}`, time: '', date: '', component: '', thread: '', typeName: 'Error' }]);
-        setStatusWatching('');
-      });
+        })
+        .catch(err => {
+          setAllEntries([{ type: 3, message: `Error: ${err.message}`, time: '', date: '', component: '', thread: '', typeName: 'Error' }]);
+          setStatusWatching('');
+        });
+    }
   }, [resetViewer]);
 
   const openChannel = useCallback((channelName) => {
@@ -452,19 +690,39 @@ export default function App() {
     setActiveTab('viewer');
     document.title = `${channelName.split('/').pop()} - Log Viewer`;
 
-    const params = new URLSearchParams({ channel: channelName });
-    if (remoteComputer) params.set('remote', remoteComputer);
+    const ps = pageSizeRef.current;
+    const src = { channel: channelName, ...(remoteComputer ? { remote: remoteComputer } : {}) };
+    pagedSourceRef.current = src;
+    setIsPaginated(true);
+    isPaginatedRef.current = true;
+    const openGen = fetchGenRef.current;
+
+    const initialOffset = autoScrollRef.current ? 'end' : '0';
+    const { level: initLevel, text: initText, regex: initRegex } = activeFiltersRef.current;
+    const params = new URLSearchParams({ ...src, offset: initialOffset, count: ps * 3, ps });
+    if (initLevel > 0) params.set('level', initLevel);
+    if (initText) { params.set('text', initText); if (initRegex) params.set('regex', 'true'); }
 
     fetch(`/api/evtx?${params}`)
       .then(r => r.json())
       .then(data => {
+        if (fetchGenRef.current !== openGen) return;
         if (data.error) throw new Error(data.error);
+        const info = { total: data.total, rawTotal: data.rawTotal, errCount: data.errCount, warnCount: data.warnCount };
+        setLogInfo(info);
+        logInfoRef.current = info;
+
+        const actualOffset = data.offset || 0;
         const entries = data.entries || [];
-        setAllEntries(entries);
-        let since = new Date().toISOString();
-        for (let i = entries.length - 1; i >= 0; i--) {
-          if (entries[i].isoTime) { since = entries[i].isoTime; break; }
+        const pages = new Map();
+        for (let p = 0; p * ps < entries.length; p++) {
+          pages.set(Math.floor(actualOffset / ps) + p, entries.slice(p * ps, (p + 1) * ps));
         }
+        setPageStore(pages);
+        pageStoreRef.current = pages;
+
+        // Live tail starts from the newest event's timestamp (returned by server)
+        const since = data.sinceIsoTime || new Date().toISOString();
         const watchPayload = { channel: channelName, since };
         if (remoteComputer) watchPayload.remote = remoteComputer;
         socket.emit('watch:channel', watchPayload);
@@ -472,6 +730,9 @@ export default function App() {
         setChannelModal(m => ({ ...m, show: false }));
       })
       .catch(err => {
+        setIsPaginated(false);
+        isPaginatedRef.current = false;
+        pagedSourceRef.current = null;
         setAllEntries([{ type: 3, message: `Error: ${err.message}`, time: '', date: '', component: '', thread: '', typeName: 'Error' }]);
       });
   }, [resetViewer, remoteComputer]);
@@ -509,17 +770,34 @@ export default function App() {
   const handleScroll = useCallback(() => {
     const wrap = scrollWrapRef.current;
     if (!wrap) return;
-    const total = filteredEntriesRef.current.length;
-    if (!total) return;
     const scrollTop = wrap.scrollTop;
     const viewH = wrap.clientHeight || 400;
+
+    const total = isPaginatedRef.current
+      ? logInfoRef.current.total + liveEntriesRef.current.length
+      : filteredEntriesRef.current.length;
+    if (!total) return;
+
     const visStart = Math.floor(scrollTop / ROW_HEIGHT);
     const visEnd   = Math.ceil((scrollTop + viewH) / ROW_HEIGHT);
     setVsRange({
       start: Math.max(0, visStart - BUFFER),
       end:   Math.min(total - 1, visEnd + BUFFER),
     });
-  }, []);
+
+    if (isPaginatedRef.current) {
+      const ps = pageSizeRef.current;
+      const topPage    = Math.floor(scrollTop / (ps * ROW_HEIGHT));
+      const bottomPage = Math.floor((scrollTop + viewH) / (ps * ROW_HEIGHT));
+      const maxPage    = Math.ceil(logInfoRef.current.total / ps) - 1;
+
+      evictPages(topPage, bottomPage);
+
+      for (let p = Math.max(0, topPage - 1); p <= Math.min(maxPage, bottomPage + 1); p++) {
+        fetchPage(p);
+      }
+    }
+  }, [evictPages, fetchPage]);
 
   // ── Quick links actions ───────────────────────────────────────────────────
   const addQuickLink = useCallback((filePath) => {
@@ -540,16 +818,13 @@ export default function App() {
   const onQuickLinksDrop = (e) => {
     e.preventDefault();
     setQuickLinksDragOver(false);
-    // Our own file-browser drag
     const custom = e.dataTransfer.getData('text/x-file-path');
     if (custom) { addQuickLink(custom.trim()); return; }
     const file = e.dataTransfer.files[0];
     if (!file) return;
-    // Electron 32+ webUtils — preload injects into top window; iframe reaches up via parent
     const eApi = window.electronAPI ?? window.parent?.electronAPI;
     const electronPath = eApi?.getPathForFile?.(file);
     if (electronPath) { addQuickLink(electronPath); return; }
-    // Plain browser fallback: path unavailable, ask user to enter it
     setQuickLinkPathPrompt(file.name);
   };
 
@@ -633,12 +908,25 @@ export default function App() {
   }, []);
 
   // ── Export CSV ────────────────────────────────────────────────────────────
-  const handleExportCsv = useCallback(() => {
-    const fe = filteredEntriesRef.current;
-    if (!fe.length) return;
+  const handleExportCsv = useCallback(async () => {
+    let entries;
+    if (isPaginatedRef.current) {
+      const src = pagedSourceRef.current;
+      if (!src) return;
+      const { level, text, regex } = activeFiltersRef.current;
+      const ps = pageSizeRef.current;
+      const params = new URLSearchParams({ ...src, offset: 0, count: 100000, ps });
+      if (level > 0) params.set('level', level);
+      if (text) { params.set('text', text); if (regex) params.set('regex', 'true'); }
+      const data = await fetch(`/api/evtx?${params}`).then(r => r.json()).catch(() => ({ entries: [] }));
+      entries = data.entries || [];
+    } else {
+      entries = filteredEntriesRef.current;
+    }
+    if (!entries.length) return;
     const rows = ['Time,Date,Component,Thread,Delta,Type,Message'];
-    fe.forEach((e, i) => {
-      const delta = i > 0 ? calcDelta(fe[i - 1], e) : '';
+    entries.forEach((e, i) => {
+      const delta = i > 0 ? calcDelta(entries[i - 1], e) : '';
       rows.push([e.time||'', e.date||'', e.component||'', e.thread||'', delta, e.typeName||'Info', e.message||'']
         .map(v => { const s = String(v).replace(/"/g, '""'); return /[,"\n]/.test(s) ? `"${s}"` : s; })
         .join(','));
@@ -667,11 +955,19 @@ export default function App() {
   }, []);
 
   // ── Status bar values ─────────────────────────────────────────────────────
-  const statusEntries  = `${allEntries.length} entries`;
-  const statusFiltered = filteredEntries.length !== allEntries.length ? `${filteredEntries.length} shown` : '';
-  const errs  = allEntries.filter(e => e.type === 3).length;
-  const warns = allEntries.filter(e => e.type === 2).length;
-  const statusErrors = (errs || warns) ? `${errs} errors  ${warns} warnings` : '';
+  const statusEntries = isPaginated
+    ? `${logInfo.rawTotal.toLocaleString()} entries`
+    : `${allEntries.length} entries`;
+  const statusFiltered = isPaginated
+    ? (logInfo.total !== logInfo.rawTotal ? `${logInfo.total.toLocaleString()} shown` : '')
+    : (filteredEntries.length !== allEntries.length ? `${filteredEntries.length} shown` : '');
+  const statusErrors = isPaginated
+    ? ((logInfo.errCount || logInfo.warnCount) ? `${logInfo.errCount} errors  ${logInfo.warnCount} warnings` : '')
+    : (() => {
+        const errs  = allEntries.filter(e => e.type === 3).length;
+        const warns = allEntries.filter(e => e.type === 2).length;
+        return (errs || warns) ? `${errs} errors  ${warns} warnings` : '';
+      })();
 
   // ── Detail panel content ──────────────────────────────────────────────────
   const detailContent = (() => {
@@ -690,18 +986,27 @@ export default function App() {
     );
   })();
 
-  // ── Rendered log rows (virtual scroll) ────────────────────────────────────
+  // ── Render-time helpers ───────────────────────────────────────────────────
   const { start: vsStart, end: vsEnd } = vsRange;
-  const totalRows = filteredEntries.length;
-  const rowsToRender = filteredEntries.slice(vsStart, vsEnd + 1);
+  const totalRows = isPaginated
+    ? logInfo.total + liveEntries.length
+    : filteredEntries.length;
+  const hasEntries = isPaginated ? logInfo.rawTotal > 0 : allEntries.length > 0;
   const findResultSet = new Set(findResults);
+
+  function getEntryAt(i) {
+    if (!isPaginated) return filteredEntries[i] ?? null;
+    if (i < logInfo.total) {
+      return pageStore.get(Math.floor(i / pageSize))?.[i % pageSize] ?? null;
+    }
+    return liveEntries[i - logInfo.total] ?? null;
+  }
 
   return (
     <div className="mainSection">
       {/* ── Top bar ─────────────────────────────────────────────────────────── */}
       <div id="topbar">
         <div id="tab-bar">
-          {/* <span className="brand">&#128196; Log Viewer</span> */}
           <button className={`tab-btn${activeTab === 'viewer' ? ' active' : ''}`} onClick={() => setActiveTab('viewer')}><LuScroll size={12} style={{ display:"inline-block", marginRight: '4px' }} /> Log Viewer</button>
           <button className={`tab-btn${activeTab === 'intune' ? ' active' : ''}`} onClick={() => setActiveTab('intune')}><FaTools size={12} style={{ display:"inline-block", marginRight: '4px' }} /> Intune Diagnostics</button>
           <button className={`tab-btn${activeTab === 'dsreg'  ? ' active' : ''}`} onClick={() => setActiveTab('dsreg')}><MdOutlineDomainVerification size={14} style={{ display:"inline-block", marginRight: '4px' }} /> DSRegCmd</button>
@@ -730,7 +1035,7 @@ export default function App() {
                 <input type="checkbox" checked={filterIsRegex} onChange={e => setFilterIsRegex(e.target.checked)} /> Regex
               </label>
             </div>
-            
+
             <div className="remote-input-wrap">
               <span className="remote-label">&#128187; Remote:</span>
               <input className="remote-input" type="text" placeholder="localhost"
@@ -738,10 +1043,10 @@ export default function App() {
                 onChange={e => setRemoteComputer(e.target.value.trim())}
                 title="Leave blank for local machine" />
             </div>
-            <button className="btn" onClick={openChannelsModal}><LuLogs size={12} style={{ display:"inline-block", marginRight: '4px' }} /> Windows Event Channels</button>
+            <button className="btn" onClick={openChannelsModal}><LuLogs size={12} style={{ display:"inline-block", marginRight: '4px' }} /> WinEvent Channels</button>
             <button className={`btn${tailPaused ? ' active' : ''}`} onClick={() => setTailPaused(p => !p)}>
               {tailPaused ? <Play size={12} style={{ display:"inline-block", marginRight: '4px' }} /> : <Pause size={12} style={{ display:"inline-block", marginRight: '4px' }} />}
-              {tailPaused ? 'Resume' : 'Pause'} 
+              {tailPaused ? 'Resume' : 'Pause'}
             </button>
             <button className={`btn${autoScroll ? ' active' : ''}`} onClick={() => {
               setAutoScroll(a => {
@@ -755,6 +1060,16 @@ export default function App() {
               setDetailEntry(null);
               setSelectedIdx(-1);
               setVsRange({ start: 0, end: 100 });
+              setIsPaginated(false);
+              isPaginatedRef.current = false;
+              setLogInfo({ total: 0, rawTotal: 0, errCount: 0, warnCount: 0 });
+              logInfoRef.current = { total: 0, rawTotal: 0, errCount: 0, warnCount: 0 };
+              setPageStore(new Map());
+              pageStoreRef.current = new Map();
+              setLiveEntries([]);
+              liveEntriesRef.current = [];
+              fetchingRef.current.clear();
+              pagedSourceRef.current = null;
             }}><Eraser size={12} style={{ display:"inline-block", marginRight: '4px' }} />Clear</button>
             <button className="btn" onClick={handleExportCsv}><BsFileSpreadsheet size={12} style={{ display:"inline-block", marginRight: '4px' }} />Export CSV</button>
           </div>
@@ -777,12 +1092,12 @@ export default function App() {
           {/* Always-visible right controls */}
           <div className="toolbar-right">
             <select value={theme} style={{ backgroundColor: 'var(--bg1)'}} title="Theme" onChange={e => setTheme(e.target.value)}>
+              <option value="dmdark">DM Dark</option>
               <option value="dark">Dark</option>
               <option value="dracula">Dracula</option>
               <option value="nord">Nord</option>
               <option value="solarized">Solarized</option>
               <option value="hotdog">Hot Dog Stand</option>
-              <option value="dmdark">DM Dark</option>
             </select>
             <div className="font-controls">
               <button className="btn btn-icon" title="Decrease font size" onClick={() => setFontSize(s => Math.max(10, s - 1))}>A-</button>
@@ -881,7 +1196,7 @@ export default function App() {
             </div>
 
             {/* Column header */}
-            <div id="log-header" ref={logHeaderRef} className="log-grid" style={{ display: allEntries.length > 0 ? 'grid' : 'none' }}>
+            <div id="log-header" ref={logHeaderRef} className="log-grid" style={{ display: hasEntries ? 'grid' : 'none' }}>
               <span className="col-time">Time<i className="col-rz" data-col="0"></i></span>
               <span className="col-date">Date<i className="col-rz" data-col="1"></i></span>
               <span className="col-comp">Component<i className="col-rz" data-col="2"></i></span>
@@ -893,33 +1208,38 @@ export default function App() {
 
             {/* Virtual scroll */}
             <div id="log-scroll-wrap" ref={scrollWrapRef}
-              style={{ display: allEntries.length > 0 ? 'block' : 'none' }}
+              style={{ display: hasEntries ? 'block' : 'none' }}
               onScroll={handleScroll}>
               <div id="log-scroll-inner" style={{ height: totalRows * ROW_HEIGHT + 'px' }}>
-                {rowsToRender.map((entry, i) => {
+                {Array.from({ length: Math.max(0, vsEnd - vsStart + 1) }, (_, i) => {
                   const idx = vsStart + i;
-                  const delta = idx > 0 ? calcDelta(filteredEntries[idx - 1], entry) : '';
+                  const entry = getEntryAt(idx);
+                  const prevEntry = idx > 0 ? getEntryAt(idx - 1) : null;
+                  const delta = prevEntry && entry ? calcDelta(prevEntry, entry) : '';
                   const isFindMatch = findResultSet.has(idx);
                   const isFindCurr  = findIdx >= 0 && findResults[findIdx] === idx;
                   return (
                     <div
                       key={idx}
-                      className={`log-row type-${entry.type || 1}${idx === selectedIdx ? ' selected' : ''}${isFindMatch ? ' find-match' : ''}${isFindCurr ? ' find-current' : ''}`}
+                      className={`log-row type-${entry ? (entry.type || 1) : 0}${idx === selectedIdx ? ' selected' : ''}${isFindMatch ? ' find-match' : ''}${isFindCurr ? ' find-current' : ''}`}
                       style={{ top: idx * ROW_HEIGHT + 'px' }}
                       data-idx={idx}
-                      onClick={() => {
-                        setSelectedIdx(idx);
-                        setDetailEntry(entry);
-                      }}
-                      onDoubleClick={() => showRowModal(entry)}
+                      onClick={() => { if (entry) { setSelectedIdx(idx); setDetailEntry(entry); } }}
+                      onDoubleClick={() => entry && showRowModal(entry)}
                     >
-                      <span className="col-time">{entry.time || ''}</span>
-                      <span className="col-date">{entry.date || ''}</span>
-                      <span className="col-comp">{entry.component || ''}</span>
-                      <span className="col-thread">{entry.thread || ''}</span>
-                      <span className="col-delta">{delta}</span>
-                      <span className="col-type">{entry.typeName || 'Info'}</span>
-                      <span className="col-message">{entry.message || ''}</span>
+                      {entry ? (
+                        <>
+                          <span className="col-time">{entry.time || ''}</span>
+                          <span className="col-date">{entry.date || ''}</span>
+                          <span className="col-comp">{entry.component || ''}</span>
+                          <span className="col-thread">{entry.thread || ''}</span>
+                          <span className="col-delta">{delta}</span>
+                          <span className="col-type">{entry.typeName || 'Info'}</span>
+                          <span className="col-message">{entry.message || ''}</span>
+                        </>
+                      ) : (
+                        <span className="col-message" style={{ color: 'var(--text3)', fontStyle: 'italic' }}>Loading…</span>
+                      )}
                     </div>
                   );
                 })}
@@ -927,7 +1247,7 @@ export default function App() {
             </div>
 
             {/* Empty state */}
-            <div id="empty-state" style={{ display: allEntries.length > 0 ? 'none' : 'flex' }}>
+            <div id="empty-state" style={{ display: hasEntries ? 'none' : 'flex' }}>
               <span className="big"><FileSymlink size={60} /></span>
               <span>Select a log file from the browser on the left</span>
               <span className="sub">or drag &amp; drop a file anywhere here</span>

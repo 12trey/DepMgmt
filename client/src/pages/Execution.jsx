@@ -3,6 +3,7 @@ import { useLocation } from 'react-router-dom';
 import { listLogs, getLog, listPackages, runPackage, runWrapper } from '../api';
 import { useWebSocket } from '../hooks/useWebSocket';
 import { Plus, Trash2, Play, Upload } from 'lucide-react';
+import { useConfigContext } from '../context/ConfigContext';
 
 export default function Execution() {
   const { state: navState } = useLocation();
@@ -35,10 +36,12 @@ export default function Execution() {
   const singleTargetFileRef = useRef();
   const wrapperTargetFileRef = useRef();
 
+  const { notifyConfigSaved } = useConfigContext();
+
   useEffect(() => {
     listLogs().then(setLogs).catch(() => { });
     listPackages().then(setPackages).catch(() => { });
-  }, []);
+  }, [notifyConfigSaved]);
 
   useEffect(() => {
     if (terminalRef.current) terminalRef.current.scrollTop = terminalRef.current.scrollHeight;

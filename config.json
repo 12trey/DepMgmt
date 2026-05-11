@@ -4,7 +4,7 @@
     "localPath": ".\\repo"
   },
   "packages": {
-    "basePath": ".\\packages"
+    "basePath": "C:\\Users\\trey\\Documents\\Deployments\\packages"
   },
   "server": {
     "port": 4000

@@ -51,6 +51,7 @@ export default function ManagePackages() {
       setError(err.message);
     } finally {
       setImporting(false);
+      configVersion();
     }
   };
 

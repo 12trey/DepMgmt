@@ -92,7 +92,7 @@
   --btn-bg: #880000; --btn-fg: #ffff00; --btn-border: #ff0000;
 }
 
-[data-theme="dmdark"] {
+/* [data-theme="dmdark"] {
   --bg1: #262d38; --bg2: #172035; --bg3: #111827; --bg4: #1f2937;
   --border: #1b253f;
   --text1: #cccccc; --text2: #cccccc; --text3: #d1d5db;
@@ -104,6 +104,34 @@
   --row-find-bg: #ff8800; --row-find-curr-bg: #c6c6c6;
   --statusbar-bg: #212f4d; --statusbar-fg: #cccccc;
   --btn-bg: #314673; --btn-fg: #cccccc; --btn-border: #212f4d;
+} */
+
+[data-theme="dmdark"] {
+  --bg1: #111827;
+  --bg2: #1f2937;
+  --bg3: #111827;
+  --bg4: #3c3c3c;
+  --border: #3e3e42;
+  --text1: #d4d4d4;
+  --text2: #bbb;
+  --text3: #777;
+  --accent: #569cd6;
+  --accent2: #9cdcfe;
+  --accent3: #4ec9b0;
+  --row-info-bg: #1e1e1e;
+  --row-info-fg: #d4d4d4;
+  --row-warn-bg: #2e2600;
+  --row-warn-fg: #ffd700;
+  --row-err-bg:  #2e0000;
+  --row-err-fg:  #ff6b6b;
+  --row-sel-bg:  #094771;
+  --row-find-bg: #4a3f00;
+  --row-find-curr-bg: #7a6600;
+  --statusbar-bg: #0f5482;
+  --statusbar-fg: #fff;
+  --btn-bg:   #3c3c3c;
+  --btn-fg:   #d4d4d4;
+  --btn-border: #555;
 }
 
 /* ── Column template (overridden by JS for resizable columns) ────────────── */
@@ -196,7 +224,7 @@ body {
 
 #current-file {
   color: var(--accent2);
-  font-size: 12px;
+  font-size: .6rem;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -536,6 +564,7 @@ body {
 .log-row span:last-child { border-right: none; }
 .col-message { white-space: pre !important; }
 
+.log-row.type-0 { background: var(--bg2); opacity: 0.35; cursor: default; }
 .log-row.type-1 { background: var(--row-info-bg); color: var(--row-info-fg); }
 .log-row.type-2 { background: var(--row-warn-bg); color: var(--row-warn-fg); }
 .log-row.type-3 { background: var(--row-err-bg);  color: var(--row-err-fg); }
