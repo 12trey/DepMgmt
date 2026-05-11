@@ -1,6 +1,6 @@
 {
   "name": "dmtpsadt",
-  "version": "1.0.15",
+  "version": "1.0.16",
   "description": "Web-based PSADT, MSI, IntuneWin, Ansible and AD group management with Electron support",
   "main": "electron/main.js",
   "scripts": {
