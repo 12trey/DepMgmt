@@ -236,7 +236,7 @@ export default function Config() {
           </p>
 
           {managedGroups.length > 0 ? (
-            <div className="border rounded-lg divide-y mb-4">
+            <div className="border rounded-lg divide-y mb-4 max-h-64 overflow-y-auto">
               {managedGroups.map((g, i) => (
                 <div key={i} className="flex items-center gap-3 px-3 py-2">
                   <span

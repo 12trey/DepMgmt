@@ -10,6 +10,7 @@ export default function ManagePackages() {
   const [msg, setMsg] = useState('');
   const [error, setError] = useState('');
   const [importing, setImporting] = useState(false);
+  const [confirmDialog, setConfirmDialog] = useState(null); // { appName, version }
   const navigate = useNavigate();
   const isElectron = !!window.electronAPI?.isElectron;
 
@@ -21,8 +22,13 @@ export default function ManagePackages() {
     (p) => p.appName?.toLowerCase().includes(search.toLowerCase()) || p.vendor?.toLowerCase().includes(search.toLowerCase())
   );
 
-  const handleDelete = async (appName, version) => {
-    if (!confirm(`Delete ${appName} v${version}?`)) return;
+  const handleDelete = (appName, version) => {
+    setConfirmDialog({ appName, version });
+  };
+
+  const confirmDelete = async () => {
+    const { appName, version } = confirmDialog;
+    setConfirmDialog(null);
     await deletePackage(appName, version);
     load();
   };
@@ -51,6 +57,7 @@ export default function ManagePackages() {
       setError(err.message);
     } finally {
       setImporting(false);
+      configVersion();
     }
   };
 
@@ -124,6 +131,20 @@ export default function ManagePackages() {
           </tbody>
         </table>
       </div>
+      {confirmDialog && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm p-6">
+            <h2 className="text-lg font-semibold mb-2">Delete Package</h2>
+            <p className="text-gray-600 mb-6">
+              Delete <span className="font-medium text-gray-900">{confirmDialog.appName}</span> v{confirmDialog.version}? This cannot be undone.
+            </p>
+            <div className="flex justify-end gap-3">
+              <button onClick={() => setConfirmDialog(null)} className="btn-secondary">Cancel</button>
+              <button onClick={confirmDelete} className="btn-danger">Delete</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

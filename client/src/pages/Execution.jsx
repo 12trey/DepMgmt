@@ -2,7 +2,8 @@ import { useEffect, useState, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import { listLogs, getLog, listPackages, runPackage, runWrapper } from '../api';
 import { useWebSocket } from '../hooks/useWebSocket';
-import { Plus, Trash2, Play } from 'lucide-react';
+import { Plus, Trash2, Play, Upload } from 'lucide-react';
+import { useConfigContext } from '../context/ConfigContext';
 
 export default function Execution() {
   const { state: navState } = useLocation();
@@ -32,14 +33,27 @@ export default function Execution() {
 
   const { messages, subscribe, clear } = useWebSocket(activeExecId);
   const terminalRef = useRef();
+  const singleTargetFileRef = useRef();
+  const wrapperTargetFileRef = useRef();
+
+  const { notifyConfigSaved } = useConfigContext();
 
   useEffect(() => {
-    listLogs().then(setLogs).catch(() => {});
-    listPackages().then(setPackages).catch(() => {});
-  }, []);
+    listLogs().then(setLogs).catch(() => { });
+    listPackages().then(setPackages).catch(() => { });
+  }, [notifyConfigSaved]);
 
   useEffect(() => {
     if (terminalRef.current) terminalRef.current.scrollTop = terminalRef.current.scrollHeight;
+    let msg = messages[messages.length-1];
+    if(msg && msg.text) {
+      //console.log(msg.text);
+      if(msg.text.trim() === "=== All targets complete. Overall: Success ===") {
+        console.log(msg.text);
+        listLogs().then(setLogs).catch(() => { });
+      }
+    }
+
   }, [messages]);
 
   const handleRunSingle = async () => {
@@ -66,6 +80,88 @@ export default function Execution() {
   };
 
   const hasRemoteTarget = (t) => t && t.trim().length > 0;
+
+  const parseTargetFile = (text, filename) => {
+    if (filename.toLowerCase().endsWith('.csv')) {
+      const lines = text.split(/\r?\n/).filter(l => l.trim());
+      const firstCell = lines[0]?.split(',')[0]?.trim() ?? '';
+      const isHeader = /^(host|hostname|name|target|computer|ip|address)/i.test(firstCell);
+      return lines.slice(isHeader ? 1 : 0)
+        .map(l => l.split(',')[0].trim().replace(/^["']|["']$/g, ''))
+        .filter(Boolean)
+        .join('\n');
+    }
+    return text.trim();
+  };
+
+  const loadTargetFile = (e, setter) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => setter(parseTargetFile(ev.target.result, file.name));
+    reader.readAsText(file);
+    e.target.value = '';
+  };
+
+  // For parsing Powershell CLIXML data
+  function formatXml2(xml, tab = '  ') {
+    let formatted = '';
+    let indent = '';
+
+    // Split the XML by tags
+    xml.split(/>\s*</).forEach(function (node) {
+      if (node.match(/^\/\w/)) {
+        // Decrease indent for closing tags
+        indent = indent.substring(tab.length);
+      }
+
+      formatted += indent + '<' + node + '>\r\n';
+
+      if (node.match(/^<?\w[^>]*[^\/]$/)) {
+        // Increase indent for opening tags (excluding self-closing)
+        indent += tab;
+      }
+    });
+
+    // Trim extra characters from the final string
+    return formatted.substring(1, formatted.length - 3);
+  }
+
+  function decodeClixmlEscapes(str) {
+    return str.replace(/_x([0-9A-Fa-f]{4})_/g, (_, hex) =>
+      String.fromCharCode(parseInt(hex, 16))
+    );
+  }
+  
+  function stripAnsi(str) {
+    return str.replace(/\x1B\[[0-9;]*m/g, '');
+  }
+
+  function extractXml(str) {
+    const start = str.indexOf('<Objs');
+    return start !== -1 ? str.slice(start) : str;
+  }
+
+  function formatXml(xml) {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(xml, 'application/xml');
+
+    const serializer = new XMLSerializer();
+    const raw = serializer.serializeToString(doc);
+
+    // crude pretty print
+    return raw.replace(/(>)(<)(\/*)/g, '$1\n$2$3');
+  }
+
+  function clixmlToPrettyText(input) {
+    let s = input;
+
+    //s = decodeClixmlEscapes(s);
+    //s = stripAnsi(s);
+    s = extractXml(s);
+
+    return formatXml2(s);
+  }
 
   return (
     <div>
@@ -107,16 +203,22 @@ export default function Execution() {
               <button onClick={handleRunSingle} disabled={!singleForm.appName} className="btn-primary"><Play size={16} /> Run</button>
             </div>
             <div className="border-t pt-3 space-y-3">
-              <label className="block">
-                <span className="text-sm font-medium text-gray-700">Remote Targets <span className="text-gray-400 font-normal">(optional — leave blank to run locally; comma, space, or newline separated)</span></span>
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-sm font-medium text-gray-700">Remote Targets <span className="text-gray-400 font-normal">(optional — leave blank to run locally; comma, space, or newline separated)</span></span>
+                  <button type="button" onClick={() => singleTargetFileRef.current.click()} className="flex items-center gap-1 text-xs text-blue-500 hover:text-blue-700 shrink-0 ml-2">
+                    <Upload size={12} /> Load from file
+                  </button>
+                  <input ref={singleTargetFileRef} type="file" accept=".txt,.csv" className="hidden" onChange={(e) => loadTargetFile(e, v => setSingleForm(f => ({ ...f, target: v })))} />
+                </div>
                 <textarea
-                  className="input mt-1 font-mono text-sm resize-y"
+                  className="input font-mono text-sm resize-y"
                   rows={2}
                   placeholder="hostname1, hostname2&#10;192.168.1.10"
                   value={singleForm.target}
                   onChange={(e) => setSingleForm({ ...singleForm, target: e.target.value })}
                 />
-              </label>
+              </div>
               {hasRemoteTarget(singleForm.target) && (
                 <p className="text-xs text-gray-400">Requires WinRM enabled on each target. Package files are copied to a temp directory, executed, then removed. All targets run sequentially in a single combined log.</p>
               )}
@@ -193,16 +295,22 @@ export default function Execution() {
             </div>
 
             <div className="border-t pt-3 space-y-3">
-              <label className="block">
-                <span className="text-sm font-medium text-gray-700">Remote Targets <span className="text-gray-400 font-normal">(optional — leave blank to run locally; comma, space, or newline separated)</span></span>
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-sm font-medium text-gray-700">Remote Targets <span className="text-gray-400 font-normal">(optional — leave blank to run locally; comma, space, or newline separated)</span></span>
+                  <button type="button" onClick={() => wrapperTargetFileRef.current.click()} className="flex items-center gap-1 text-xs text-blue-500 hover:text-blue-700 shrink-0 ml-2">
+                    <Upload size={12} /> Load from file
+                  </button>
+                  <input ref={wrapperTargetFileRef} type="file" accept=".txt,.csv" className="hidden" onChange={(e) => loadTargetFile(e, setWrapperTarget)} />
+                </div>
                 <textarea
-                  className="input mt-1 font-mono text-sm resize-y"
+                  className="input font-mono text-sm resize-y"
                   rows={2}
                   placeholder="hostname1, hostname2&#10;192.168.1.10"
                   value={wrapperTarget}
                   onChange={(e) => setWrapperTarget(e.target.value)}
                 />
-              </label>
+              </div>
               {hasRemoteTarget(wrapperTarget) && (
                 <p className="text-xs text-gray-400">Each step will run on all targets before proceeding to the next step. All output is compiled into a single log.</p>
               )}
@@ -284,12 +392,12 @@ export default function Execution() {
       {/* Log viewer modal */}
       {selectedLog && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setSelectedLog(null)}>
-          <div className="bg-white rounded-lg shadow-xl w-full max-w-3xl max-h-[80vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-3xl max-h-[80vh] min-h-[50vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
             <div className="p-4 border-b flex justify-between items-center">
               <h3 className="font-semibold">{selectedLog.appName} — Log</h3>
               <button onClick={() => setSelectedLog(null)} className="text-gray-400 hover:text-gray-600">Close</button>
             </div>
-            <pre className="p-4 overflow-auto flex-1 bg-gray-900 text-green-300 text-xs font-mono">{logContent}</pre>
+            <pre className="p-4 overflow-auto flex-1 bg-gray-900 text-green-300 text-xs font-mono whitespace-pre-wrap">{clixmlToPrettyText(logContent)}</pre>
           </div>
         </div>
       )}

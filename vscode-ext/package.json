@@ -1,9 +1,10 @@
 {
   "name": "ansible-helper",
   "displayName": "Ansible Helper",
-  "description": "Insert Ansible task snippets into YAML playbooks and run them in WSL with Kerberos support",
+  "description": "Insert Ansible task snippets into YAML playbooks and run them in WSL with Kerberos support.",
   "version": "0.1.0",
-  "publisher": "aipsadt",
+  "icon": "media/icon.png",
+  "publisher": "Trey",
   "engines": {
     "vscode": "^1.85.0"
   },
@@ -12,7 +13,10 @@
     "Other"
   ],
   "activationEvents": [
-    "onLanguage:yaml"
+    "onLanguage:yaml",
+    "onCommand:ansible.setPlaybook",
+    "onCommand:ansible.setHosts",
+    "onCommand:ansible.runSelected"
   ],
   "main": "./extension.js",
   "contributes": {
@@ -61,14 +65,31 @@
       {
         "command": "ansible.editKrb5Conf",
         "title": "Ansible: Edit krb5.conf (graphical)"
+      },
+      {
+        "command": "ansible.setPlaybook",
+        "title": "Ansible: Set as Playbook"
+      },
+      {
+        "command": "ansible.setHosts",
+        "title": "Ansible: Set as Hosts File"
+      },
+      {
+        "command": "ansible.runSelected",
+        "title": "Ansible: Run Playbook ▶",
+        "icon": "$(play)"
+      },
+      {
+        "command": "ansible.clearRunner",
+        "title": "Ansible: Clear Playbook & Hosts"
       }
     ],
     "viewsContainers": {
       "activitybar": [
         {
           "id": "ansibleExplorer",
-          "title": "Ansible",
-          "icon": "$(list-unordered)"
+          "title": "Ansible UI",
+          "icon": "media/ansible.svg"
         }
       ]
     },
@@ -90,29 +111,39 @@
       ],
       "editor/context": [
         {
-          "command": "ansible.runPlaybook",
+          "command": "ansible.setPlaybook",
           "when": "resourceExtname == .yaml || resourceExtname == .yml",
           "group": "ansible@1"
         },
         {
           "command": "ansible.insertSnippet",
           "when": "resourceExtname == .yaml || resourceExtname == .yml",
-          "group": "ansible@2"
+          "group": "ansible@3"
         },
         {
           "command": "ansible.editKrb5Conf",
           "when": "resourceExtname == .conf",
-          "group": "ansible@3"
+          "group": "ansible@4"
         }
       ],
       "explorer/context": [
         {
-          "command": "ansible.newInventory",
+          "command": "ansible.setPlaybook",
+          "when": "resourceExtname == .yaml || resourceExtname == .yml",
           "group": "ansible@1"
         },
         {
+          "command": "ansible.setHosts",
+          "when": "resourceExtname == .ini",
+          "group": "ansible@1"
+        },
+        {
+          "command": "ansible.newInventory",
+          "group": "ansible@3"
+        },
+        {
           "command": "ansible.newPlaybook",
-          "group": "ansible@2"
+          "group": "ansible@4"
         }
       ]
     },

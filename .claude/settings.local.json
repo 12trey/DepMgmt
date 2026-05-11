@@ -36,7 +36,27 @@
       "Bash(ls src/components/FindBar*)",
       "Bash(npm audit *)",
       "Bash(npm ls *)",
-      "PowerShell(Get-ChildItem \"C:\\\\Users\\\\trey\\\\source\\\\aipsadt\\\\vscode-ext\" -Recurse -Name | Where-Object { $_ -notmatch 'node_modules' })"
+      "PowerShell(Get-ChildItem \"C:\\\\Users\\\\trey\\\\source\\\\aipsadt\\\\vscode-ext\" -Recurse -Name | Where-Object { $_ -notmatch 'node_modules' })",
+      "PowerShell(Get-ChildItem -Path \"C:\\\\Users\\\\trey\\\\source\\\\aipsadt\\\\ansible-app\" -Recurse -File | Select-Object -ExpandProperty FullName | ForEach-Object { $_.Replace\\(\"C:\\\\Users\\\\trey\\\\source\\\\aipsadt\\\\\", \"\"\\) })",
+      "WebFetch(domain:unpkg.com)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebFetch(domain:cdn.jsdelivr.net)",
+      "WebFetch(domain:guacamole.apache.org)",
+      "WebFetch(domain:lists.apache.org)",
+      "WebFetch(domain:www.npmjs.com)",
+      "Bash(npm view *)",
+      "WebFetch(domain:github.com)",
+      "Bash(wsl -- cat /home/ansibleapp/ansible-app/node_modules/guacamole-lite/lib/Crypt.js)",
+      "Bash(wsl -- find /home/ansibleapp -name \"Crypt.js\")",
+      "Bash(wsl -- find /home -name \"guacamole-lite\" -type d)",
+      "Bash(wsl *)",
+      "Bash(findstr version *)",
+      "Bash(findstr /i \"version\")",
+      "WebFetch(domain:registry.npmjs.org)",
+      "Bash(git checkout *)",
+      "Bash(Select-String -Pattern \"tailwind\")",
+      "Bash(dir \"C:\\\\Users\\\\trey\\\\source\\\\aipsadt\\\\server\\\\logviewer\" /b)",
+      "PowerShell(\\(Get-Content \"C:\\\\Users\\\\trey\\\\source\\\\aipsadt\\\\server\\\\logviewer\\\\reactpublic\\\\logviewer\\\\src\\\\App.jsx\" | Measure-Object -Line\\).Lines)"
     ]
   }
 }

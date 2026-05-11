@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, clipboard, Menu, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, clipboard, Menu, shell, globalShortcut } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { fork } = require('child_process');
@@ -70,7 +70,31 @@ function createWindow() {
     event.sender.send('clipboard-updated', data);
     //console.log(clipboard.readText());
   });
-  
+
+  // Allows triggering fullscreen from embedded reactjs client
+  //
+  // use the following from react client
+  //   // go fullscreen
+  // window.electronAPI.setFullscreen(true);
+  //
+  // // exit fullscreen
+  // window.electronAPI.setFullscreen(false);
+  //
+  // // toggle
+  // window.electronAPI.toggleFullscreen();
+  //
+  ipcMain.on('set-fullscreen', (event, flag) => {
+    //const win = BrowserWindow.fromWebContents(event.sender);
+    const win = BrowserWindow.getFocusedWindow();
+    if (win) win.setFullScreen(flag);
+  });
+
+  ipcMain.on('toggle-fullscreen', (event) => {
+    //const win = BrowserWindow.fromWebContents(event.sender);
+    const win = BrowserWindow.getFocusedWindow();
+    if (win) win.setFullScreen(!win.isFullScreen());
+  });
+
   mainWindow.removeMenu();
 
   // Open external links in the system default browser instead of a new Electron window
@@ -123,6 +147,13 @@ function createWindow() {
     mainWindow.loadURL(`http://localhost:${SERVER_PORT}`);
   }
 
+  mainWindow.on('enter-full-screen', () => {
+    mainWindow.webContents.send('fullscreen-changed', true);
+  });
+  mainWindow.on('leave-full-screen', () => {
+    mainWindow.webContents.send('fullscreen-changed', false);
+  });
+
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
@@ -172,6 +203,10 @@ ipcMain.handle('pick-file', async (_event, options = {}) => {
   return result.canceled ? null : result.filePaths[0];
 });
 
+app.whenReady().then(() => {
+  
+});
+
 app.whenReady().then(async () => {
   log(`[startup] app ready, isDev=${isDev}`);
   if (!isDev) {
@@ -193,6 +228,16 @@ app.whenReady().then(async () => {
   } else {
     createWindow();
   }
+
+  // Fullscreen support
+  globalShortcut.register('F11', () => {
+    const win = BrowserWindow.getFocusedWindow();
+    if (win) win.setFullScreen(!win.isFullScreen());
+  });
+
+  globalShortcut.register('F5', () => {
+    BrowserWindow.getFocusedWindow()?.reload();
+  });
 
   session.defaultSession.setPermissionRequestHandler((webContents, permission, callback) => {
     if (permission === 'clipboard-write') {

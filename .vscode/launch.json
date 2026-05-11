@@ -4,14 +4,39 @@
     // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
     "version": "0.2.0",
     "configurations": [
-
         {
-            "name": "Attach to Chrome",
+            "args": [
+                "--extensionDevelopmentPath=${workspaceFolder}/vscode-ext"
+            ],
+            "name": "Launch Extension",
+            "outFiles": [
+                "${workspaceFolder}/vscode-ext/out/**/*.js"
+            ],
+            //"preLaunchTask": "npm",
+            "request": "launch",
+            "type": "extensionHost"
+        },
+        {
+            "name": "PSADT client Attach Chrome",
             "port": 9222,
             "request": "attach",
             "type": "chrome",
             "webRoot": "${workspaceFolder}/client"
         },
+        {
+            "name": "logviewer Attach Chrome",
+            "port": 9222,
+            "request": "attach",
+            "type": "chrome",
+            "webRoot": "${workspaceFolder}/server/logviewer/reactpublic/logviewer/src"
+        },
+        {
+            "type": "chrome",
+            "request": "launch",
+            "name": "Launch Logviewer",
+            "url": "http://localhost:5173",
+            "webRoot": "${workspaceFolder}/server/logviewer/reactpublic/logviewer/src"
+            },
         {
             "name": "Attach by Process ID",
             "processId": "${command:PickProcess}",

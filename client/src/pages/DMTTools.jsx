@@ -17,7 +17,8 @@ async function fetchInstances() {
 }
 
 function readSkipEnvCheck() {
-  return localStorage.getItem(SKIP_ENV_CHECK_KEY) === 'true';
+  let skipcheck = localStorage.getItem(SKIP_ENV_CHECK_KEY) === 'true';
+  return skipcheck;
 }
 
 async function fetchSkipEnvCheck() {
@@ -295,6 +296,13 @@ export default function DMTTools() {
         const saved = localStorage.getItem(STORAGE_KEY);
         if (saved && list.includes(saved)) {
           handleInstanceSelect(saved);
+        } else if (saved && !list.includes(saved)) {
+          // Saved instance no longer exists (e.g. was deleted and recreated under a new name).
+          // Clear the stale selection so the page shows the instance picker instead of
+          // spinning forever on a non-existent instance.
+          localStorage.removeItem(STORAGE_KEY);
+          setSelectedInstance('');
+          setStage('select-instance');
         }
       })
       .catch(err => { setError(err.message); setStage('error'); });
@@ -396,7 +404,8 @@ export default function DMTTools() {
 
       // Service isn't running. Refresh the skip flag from the server in the
       // background (sync read is the fast path; fetch corrects it if stale).
-      const skipEnvCheck = readSkipEnvCheck() || await fetchSkipEnvCheck();
+      //const skipEnvCheck = readSkipEnvCheck() || await fetchSkipEnvCheck();
+      const skipEnvCheck = await fetchSkipEnvCheck();
       if (opGenRef.current !== gen) return;
 
       if (!skipEnvCheck) {
@@ -483,8 +492,11 @@ export default function DMTTools() {
     } catch (err) {
       if (opGenRef.current !== gen) return;
       setRepairMsg(`Repair failed: ${err.message}`);
+      handleRerunSetup();
     } finally {
-      if (opGenRef.current === gen) setRepairing(false);
+      if (opGenRef.current === gen) {
+        setRepairing(false);
+      }
     }
   };
 

@@ -4,6 +4,9 @@ const fs = require('fs');
 const { v4: uuidv4 } = require('uuid');
 const { broadcast } = require('./logStream');
 
+const { StringDecoder } = require('string_decoder');
+const decoder = new StringDecoder('utf8');
+
 const paths = require('../paths');
 const packageService = require('./packageService');
 const logsDir = paths.logsDir;
@@ -149,8 +152,8 @@ function _runRemoteTarget(appName, version, mode, target, username, password, de
 
     const credLines = (username && password)
       ? `$secPass = ConvertTo-SecureString '${psEsc(password)}' -AsPlainText -Force\n` +
-        `$cred = [System.Management.Automation.PSCredential]::new('${psEsc(username)}', $secPass)\n` +
-        `$sessionParams['Credential'] = $cred\n`
+      `$cred = [System.Management.Automation.PSCredential]::new('${psEsc(username)}', $secPass)\n` +
+      `$sessionParams['Credential'] = $cred\n`
       : '';
 
     const script = [
@@ -166,7 +169,18 @@ function _runRemoteTarget(appName, version, mode, target, username, password, de
       `    Write-Host "Creating remote staging directory $remoteTmp..."`,
       `    Invoke-Command -Session $session -ScriptBlock { param($p) New-Item -ItemType Directory -Path $p -Force | Out-Null } -ArgumentList $remoteTmp`,
       `    Write-Host "Copying package files to ${psEsc(target)}..."`,
-      `    Copy-Item -Path '${psEsc(localPath)}\\*' -Destination $remoteTmp -ToSession $session -Recurse -Force`,
+      `    $srcBase = '${psEsc(localPath)}'`,
+      `    $allItems = Get-ChildItem -Path $srcBase -Recurse`,
+      `    $relDirs = @($allItems | Where-Object { $_.PSIsContainer } | ForEach-Object { $_.FullName.Substring($srcBase.Length + 1) })`,
+      `    if ($relDirs.Count -gt 0) {`,
+      `        Invoke-Command -Session $session -ScriptBlock { param($base, $rels) foreach ($r in $rels) { [System.IO.Directory]::CreateDirectory((Join-Path $base $r)) | Out-Null } } -ArgumentList $remoteTmp, $relDirs`,
+      `    }`,
+      `    $allItems | Where-Object { -not $_.PSIsContainer -and $_.Length -gt 0 } | ForEach-Object {`,
+      `        $rel = $_.FullName.Substring($srcBase.Length + 1)`,
+      `        Write-Host "Source base: $($srcBase), FullName: $($_.FullName), Relative: $($rel)"`,
+      `        Write-Host "Copy $($_.FullName) to $(Join-Path $remoteTmp $rel)"`,
+      `        Copy-Item -Path $_.FullName -Destination (Join-Path $remoteTmp $rel) -ToSession $session -Force`,
+      `    }`,
       `    $adtMod = Get-Module -Name PSAppDeployToolkit -ListAvailable |`,
       `        Where-Object { $_.Version.Major -ge 4 } |`,
       `        Sort-Object Version -Descending |`,
@@ -254,15 +268,38 @@ function _runRemoteTarget(appName, version, mode, target, username, password, de
       `    }`,
       `    $output | ForEach-Object { Write-Host $_ }`,
       `} finally {`,
-      `    Write-Host "Cleaning up remote staging directory..."`,
-      `    try {`,
-      `        Invoke-Command -Session $session -ScriptBlock {`,
-      `            param($p) Remove-Item -Path $p -Recurse -Force -ErrorAction SilentlyContinue`,
-      `        } -ArgumentList $remoteTmp`,
-      `    } catch {}`,
+      `    Start-Sleep -Seconds 10`,
+      `    Write-Host "Cleaning up remote staging directory $($remoteTmp)..."`,
+      `    # Clean up will not work in same session. I'm not sure the reason but closing and opening a fresh session works.`,
       `    Remove-PSSession $session -ErrorAction SilentlyContinue`,
+      `    try {`,
+      `        $session = New-PSSession @sessionParams -SessionOption $sessionOption`,
+      `        Invoke-Command -Session $session -ScriptBlock {`,
+      `            param($p)`,
+      `            $tries = 0`,
+      `            while((Test-Path $p) -and ($tries -lt 10)) {`,
+      `               Remove-Item -Path $p -Recurse -Force -ErrorAction SilentlyContinue`,
+      `               $tries++`,
+      `               Start-Sleep -Seconds 1`,
+      `            }`,
+      `        } -ArgumentList $remoteTmp`,
+      `        Remove-PSSession $session -ErrorAction SilentlyContinue`,
+      `    } catch {`,
+      `         Write-Host "An error was caught: $($_.Exception.Message)"`,
+      `    }`,
+      `    #Remove-PSSession $session -ErrorAction SilentlyContinue`,
       `}`,
     ].join('\n');
+
+    // FOR DEBUGGING GENERATED SCRIPTS AND OUTPUT
+    let dolog = false;
+    if(dolog) {
+      fs.writeFileSync("C:\\temp\\generatedscript.txt", script, { 
+        'encoding': 'utf-8',
+        'flag': 'w',
+        'mode': 666
+      });
+    }
 
     const encoded = Buffer.from(script, 'utf16le').toString('base64');
     const spawnEnv = { ...process.env, PSModulePath: buildModulePath() };
@@ -270,15 +307,70 @@ function _runRemoteTarget(appName, version, mode, target, username, password, de
 
     const child = spawn(config.execution.powershellPath, psArgs, { env: spawnEnv });
 
+    let buffer = '';
+
+    //  KEEP THESE COMMENTED LINES FOR REFERENCES
+    //  These are different methods of parsing the data.
+    // const onData = (stream) => (chunk) => {
+    //   buffer += decoder.write(chunk);
+
+    //   while (true) {
+    //     const start = buffer.indexOf('#< CLIXML');
+    //     if (start === -1) break;
+
+    //     const end = buffer.indexOf('</Objs>', start);
+    //     if (end === -1) break; // wait for more data
+
+    //     const xmlBlock = buffer.slice(start, end + 7); // include </Objs>
+    //     buffer = buffer.slice(end + 7);
+
+    //     // handle full CLIXML block safely
+    //     fs.appendFileSync("C:\\temp\\psadtdeploylog.txt", xmlBlock + '\n');
+    //     sharedLogLines.push(xmlBlock);
+    //     broadcast(execId, xmlBlock, stream);
+    //   }
+    // };
+
+    // const onData = (stream) => (chunk) => {
+    //   buffer += decoder.write(chunk);
+
+    //   let lines = buffer.split(/\r?\n/);
+    //   buffer = lines.pop(); // keep incomplete line
+
+    //   for (const line of lines) {
+    //     fs.appendFileSync("C:\\temp\\psadtdeploylog.txt", line + '\n');
+    //     sharedLogLines.push(line);
+    //     broadcast(execId, line, stream);
+    //   }
+    // };
+
+    let chunklist = [];
     const onData = (stream) => (chunk) => {
+      chunklist.push(chunk);
       const text = chunk.toString();
+
+      if(dolog) {
+        fs.writeFileSync("C:\\temp\\psadtdeploylog_streamed.txt", chunk, {
+          'encoding': 'utf-8',
+          'flag': 'a',
+          'mode': 666
+        });
+      }
       sharedLogLines.push(text);
       broadcast(execId, text, stream);
     };
+
     child.stdout.on('data', onData('stdout'));
     child.stderr.on('data', onData('stderr'));
 
     child.on('close', (code) => {
+      if(dolog) {
+        fs.writeFileSync("C:\\temp\\psadtdeploylog_closed.txt", Buffer.concat(chunklist).toString(), {
+          'encoding': 'utf-8',
+          'flag': 'w',
+          'mode': 666
+        });
+      }
       const status = code === 0 ? 'Success' : 'Failed';
       broadcast(execId, `\n--- Remote Execution on ${target}: ${status} (exit code ${code}) ---\n`, 'system');
       resolve({ status, exitCode: code });
@@ -301,10 +393,10 @@ exports.runPackage = async (appName, version, mode, deploymentType = 'Install', 
 
   if (username && password) {
     broadcast(execId, `Starting deployment as '${username}': ${appName} v${version} [${deploymentType}/${mode}]\n`, 'system');
-    runScriptWithCredentials(scriptPath, mode, execId, deploymentType, username, password).catch(() => {});
+    runScriptWithCredentials(scriptPath, mode, execId, deploymentType, username, password).catch(() => { });
   } else {
     broadcast(execId, `Starting deployment: ${appName} v${version} [${deploymentType}/${mode}]\n`, 'system');
-    runScript(scriptPath, mode, execId, deploymentType).catch(() => {});
+    runScript(scriptPath, mode, execId, deploymentType).catch(() => { });
   }
 
   return { id: execId, status: 'Running' };

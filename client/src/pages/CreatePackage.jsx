@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Plus, Trash2, Upload, FileText } from 'lucide-react';
 import { createPackage, uploadFiles, getConfig, copyDefaultFiles } from '../api';
+import { useConfigContext } from '../context/ConfigContext';
 
 const emptyStep = () => ({ description: '', command: '' });
 
@@ -10,32 +11,32 @@ function generateCommands(filename, type, psadtVersion, isNullsoft = false) {
   if (psadtVersion === 'v4') {
     if (type === 'msi') {
       return {
-        install:   `Start-AdtMsiProcess -Action 'Install' -FilePath "$dirFiles\\${filename}" -ArgumentList '/QN'`,
+        install: `Start-AdtMsiProcess -Action 'Install' -FilePath "$dirFiles\\${filename}" -ArgumentList '/QN'`,
         uninstall: `Start-AdtMsiProcess -Action 'Uninstall' -FilePath "$dirFiles\\${filename}" -ArgumentList '/QN'`,
-        repair:    `Start-AdtMsiProcess -Action 'Repair' -FilePath "$dirFiles\\${filename}" -ArgumentList '/fa'`,
+        repair: `Start-AdtMsiProcess -Action 'Repair' -FilePath "$dirFiles\\${filename}" -ArgumentList '/fa'`,
       };
     }
     // exe (nullsoft or regular)
     return {
-      install:   `Start-AdtProcess -FilePath "$dirFiles\\${filename}" -ArgumentList '/S'`,
+      install: `Start-AdtProcess -FilePath "$dirFiles\\${filename}" -ArgumentList '/S'`,
       uninstall: '',
-      repair:    isNullsoft ? `Start-AdtProcess -FilePath "$dirFiles\\${filename}" -ArgumentList '/S'` : '',
+      repair: isNullsoft ? `Start-AdtProcess -FilePath "$dirFiles\\${filename}" -ArgumentList '/S'` : '',
     };
   }
 
   // v3
   if (type === 'msi') {
     return {
-      install:   `Execute-MSI -Action 'Install' -Path "$dirFiles\\${filename}" -Parameters '/QN'`,
+      install: `Execute-MSI -Action 'Install' -Path "$dirFiles\\${filename}" -Parameters '/QN'`,
       uninstall: `Execute-MSI -Action 'Uninstall' -Path "$dirFiles\\${filename}" -Parameters '/QN'`,
-      repair:    `Execute-MSI -Action 'Repair' -Path "$dirFiles\\${filename}" -Parameters '/fa'`,
+      repair: `Execute-MSI -Action 'Repair' -Path "$dirFiles\\${filename}" -Parameters '/fa'`,
     };
   }
   // exe (nullsoft or regular)
   return {
-    install:   `Execute-Process -Path "$dirFiles\\${filename}" -Parameters '/S'`,
+    install: `Execute-Process -Path "$dirFiles\\${filename}" -Parameters '/S'`,
     uninstall: '',
-    repair:    isNullsoft ? `Execute-Process -Path "$dirFiles\\${filename}" -Parameters '/S'` : '',
+    repair: isNullsoft ? `Execute-Process -Path "$dirFiles\\${filename}" -Parameters '/S'` : '',
   };
 }
 
@@ -87,12 +88,14 @@ export default function CreatePackage() {
   const [defaultFilesCfg, setDefaultFilesCfg] = useState(null);
   const [copyDefaults, setCopyDefaults] = useState(false);
 
+  const { notifyConfigSaved } = useConfigContext();
+
   useEffect(() => {
     getConfig().then(cfg => {
       const df = cfg.defaultFiles || {};
       setDefaultFilesCfg(df);
       setCopyDefaults(df.copyOnCreate ?? false);
-    }).catch(() => {});
+    }).catch(() => { });
   }, []);
 
   const set = (key, value) => setForm((f) => ({ ...f, [key]: value }));
@@ -137,14 +140,41 @@ export default function CreatePackage() {
         await uploadFiles(form.appName, form.version, [droppedFile]);
       }
       if (copyDefaults && defaultFilesCfg?.sourcePath) {
-        await copyDefaultFiles(form.appName, form.version).catch(() => {});
+        await copyDefaultFiles(form.appName, form.version).catch(() => { });
       }
       navigate('/packages');
     } catch (err) {
       setError(err.message);
     } finally {
       setSaving(false);
+      notifyConfigSaved();
+      clearDroppedFile();
+      resetForm();
     }
+  };
+
+  const resetForm = ()=> {
+    setForm({
+      appName: '',
+      version: '',
+      vendor: '',
+      architecture: 'x64',
+      psadtVersion: 'v4',
+      installCommand: '',
+      uninstallCommand: '',
+      repairCommand: '',
+      closeApps: '',
+      defaultMode: 'Silent',
+      detection: { type: 'file', path: '', valueName: '', productCode: '', script: '' },
+      preInstallSteps: [],
+      postInstallSteps: [],
+      conditions: [],
+    });
+  };
+
+  const handleCancel = async (e) => {
+    clearDroppedFile();
+    resetForm();
   };
 
   return (
@@ -312,6 +342,9 @@ export default function CreatePackage() {
 
         <button type="submit" disabled={saving} className="btn-primary">
           {saving ? 'Creating...' : 'Create Package'}
+        </button>
+        <button type="button" className="btn-secondary ml-2" onClick={() => { handleCancel() }}>
+          {saving ? 'Cancel' : 'Cancel'}
         </button>
       </form>
     </div>

@@ -3,8 +3,8 @@ import { Routes, Route, useLocation, useNavigate } from 'react-router-dom';
 import FindBar from './components/FindBar';
 import {
   LayoutDashboard, PackagePlus, FolderOpen, Play, GitBranch, Settings,
-  Monitor, Package, Archive, UsersRound, HelpCircle, ScrollText, X, ShieldCheck, Terminal, FileCode,
-  ChevronsLeft, ChevronsRight, Moon, Sun,
+  Monitor, MonitorPlay, Package, Archive, UsersRound, HelpCircle, ScrollText, X, ShieldCheck, Terminal, FileCode,
+  ChevronsLeft, ChevronsRight, Moon, Sun, NotebookTabs,
 } from 'lucide-react';
 import Dashboard from './pages/Dashboard';
 import CreatePackage from './pages/CreatePackage';
@@ -15,6 +15,7 @@ import Execution from './pages/Execution';
 import GitPanel from './pages/GitPanel';
 import Config from './pages/Config';
 import DMTTools from './pages/DMTTools';
+import RemoteDesktop from './pages/RemoteDesktop';
 import MsiBuilder from './pages/MsiBuilder';
 import CodeSigning from './pages/CodeSigning';
 import IntuneWin from './pages/IntuneWin';
@@ -24,6 +25,7 @@ import LogViewer from './pages/LogViewer';
 import ScriptRunner from './pages/ScriptRunner';
 import TemplateEditor from './pages/TemplateEditor';
 import { TabGuardContext } from './context/TabGuardContext';
+import { TfiLayoutTab } from "react-icons/tfi";
 
 // ── Nav definition ────────────────────────────────────────────────────────────
 const NAV_ITEMS = [
@@ -31,17 +33,18 @@ const NAV_ITEMS = [
   { to: '/create',        icon: PackagePlus,     label: 'Create Package' },
   { to: '/packages',      icon: FolderOpen,      label: 'Manage Packages' },
   { to: '/execution',     icon: Play,            label: 'Execution / Logs' },
+  { to: '/templates',     icon: FileCode,        label: 'Template Editor' },
+  { to: '/git',           icon: GitBranch,       label: 'Git' },
   { to: '/msi-builder',   icon: Package,         label: 'MSI Builder' },
-  { to: '/code-signing',  icon: ShieldCheck,     label: 'Code Signing' },
   { to: '/intune-win',    icon: Archive,         label: 'Intune Packager' },
+  { to: '/code-signing',  icon: ShieldCheck,     label: 'Code Signing' },
   { to: '/manage-groups', icon: UsersRound,      label: 'Manage Groups' },
   { to: '/script-runner', icon: Terminal,         label: 'Script Runner' },
-  { to: '/git',           icon: GitBranch,       label: 'Git' },
   { to: '/config',        icon: Settings,        label: 'Settings' },
-  { to: '/templates',     icon: FileCode,        label: 'Template Editor' },
   { divider: true },
-  { to: '/dmt-tools',    icon: Monitor,          label: 'DMT Tools' },
-  { to: '/log-viewer',   icon: ScrollText,       label: 'Log Viewer' },
+  { to: '/dmt-tools',       icon: Monitor,      label: 'DMT Tools' },
+  { to: '/remote-desktop',  icon: MonitorPlay,  label: 'Remote Desktop' },
+  { to: '/log-viewer',      icon: ScrollText,   label: 'Log Viewer' },
   { divider: true },
   { to: '/help',         icon: HelpCircle,       label: 'Help' },
 ];
@@ -59,8 +62,9 @@ const PAGE_COMPONENTS = {
   '/templates':     TemplateEditor,
   '/git':           GitPanel,
   '/config':        Config,
-  '/dmt-tools':     DMTTools,
-  '/log-viewer':    LogViewer,
+  '/dmt-tools':        DMTTools,
+  '/remote-desktop':   RemoteDesktop,
+  '/log-viewer':       LogViewer,
   '/help':          Help,
 };
 
@@ -157,6 +161,8 @@ export default function App() {
     return next;
   });
 
+  const [tabStrip, setTabStrip] = useState(()=>localStorage.getItem('showmaintabs')==='true');
+
   const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'light');
   useEffect(() => {
     document.documentElement.classList.toggle('dark', theme === 'dark');
@@ -164,8 +170,23 @@ export default function App() {
     document.querySelectorAll('iframe').forEach(frame => {
       try { frame.contentWindow.postMessage({ type: 'theme', theme }, '*'); } catch {}
     });
+
+    //localStorage.setItem('showmaintabs', tabStrip);
+    //setTabStrip(tabStrip);
   }, [theme]);
-  const toggleTheme = () => setTheme(t => t === 'light' ? 'dark' : 'light');
+
+  const toggleTheme = () => {
+    setTheme(t => t === 'light' ? 'dark' : 'light');
+  };
+
+  const toggleMainTabs = () => {
+    setTabStrip(t=>{
+        localStorage.setItem('showmaintabs', !t);
+        return !t
+      }
+    );
+  };
+
 
   return (
     <TabGuardContext.Provider value={registerGuard}>
@@ -173,7 +194,7 @@ export default function App() {
       <FindBar />
 
       {/* ── Sidebar ── */}
-      <nav className={`${navCollapsed ? 'w-14' : 'w-56'} bg-gray-900 text-gray-300 flex flex-col shrink-0 transition-[width] duration-200 overflow-hidden`}>
+      <nav className={`${navCollapsed ? 'w-12' : 'w-[13.5rem]'}  bg-gray-900 text-gray-300 flex flex-col shrink-0 transition-[width] duration-200 overflow-hidden`}>
         {/* Header */}
         {navCollapsed ? (
           <div className="flex flex-col items-center gap-1 py-3 border-b border-gray-700">
@@ -203,7 +224,7 @@ export default function App() {
         )}
 
         {/* Nav items */}
-        <div className="flex-1 py-2 overflow-y-auto min-h-0">
+        <div className="flex-1 py-2 overflow-y-auto min-h-0 navscrollback">
           {NAV_ITEMS.map((item, index) => {
             if (item.divider) {
               return <div key={`divider-${index}`} className="my-2 border-t border-gray-700" />;
@@ -234,7 +255,7 @@ export default function App() {
                 }`}
               >
                 <Icon size={18} />
-                <span className="flex-1">{label}</span>
+                <span className="flex-1 text-xs">{label}</span>
                 {isOpen && !isActive && (
                   <span className="w-1.5 h-1.5 rounded-full bg-blue-400 shrink-0" />
                 )}
@@ -244,15 +265,25 @@ export default function App() {
         </div>
 
         {/* Theme toggle */}
-        <div className={`border-t border-gray-700 shrink-0 ${navCollapsed ? 'p-2 flex justify-center' : 'px-3 py-2 flex items-center justify-between'}`}>
-          {!navCollapsed && <span className="text-xs text-gray-500"></span>}
-          <button
-            onClick={toggleTheme}
-            title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
-            className="p-1.5 rounded hover:bg-gray-700 text-gray-400 hover:text-white"
-          >
-            {theme === 'dark' ? <Sun size={15} /> : <Moon size={15} />}
-          </button>
+        <div>
+          <div className={`border-t border-gray-700 shrink-0 ${navCollapsed ? 'pr-2 pl-2.5 pb-4 pt-1 flex-col justify-end' : 'px-3 py-2 flex items-end justify-end'}`}>
+            {!navCollapsed && <span className="text-xs text-gray-500"></span>}
+            <button
+              onClick={toggleTheme}
+              title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+              className="p-1.5 rounded hover:bg-gray-700 text-gray-400 hover:text-white"
+            >
+              {theme === 'dark' ? <Sun size={15} /> : <Moon size={15} />}
+            </button>
+
+            <button
+              onClick={toggleMainTabs}
+              title={tabStrip ? 'Toggle tab strip' : 'Toggle tab strip'}
+              className="p-1.5 rounded hover:bg-gray-700 text-gray-400 hover:text-white"
+            >
+              {tabStrip ? <TfiLayoutTab size={15} /> : <TfiLayoutTab size={15} style={{ color: '#585858' }} />}
+            </button>
+          </div>
         </div>
       </nav>
 
@@ -260,7 +291,7 @@ export default function App() {
       <div className="flex-1 flex flex-col overflow-hidden">
 
         {/* Tab bar */}
-        <div ref={tabBarRef} className="flex bg-gray-800 border-b border-gray-600 overflow-x-auto shrink-0">
+        <div ref={tabBarRef} className={`flex bg-gray-800 border-b border-gray-600 overflow-x-auto shrink-0 ${!tabStrip ? 'hidden' : ''}`}>
           {openTabs.map(to => {
             const item = getNavItem(to);
             if (!item) return null;
@@ -272,14 +303,14 @@ export default function App() {
                 ref={el => { tabEls.current[to] = el; }}
                 onClick={() => navigate(to)}
                 style={isActive ? { background: 'var(--tab-active-bg)', color: 'var(--tab-active-text)' } : {}}
-                className={`flex items-center gap-2 px-3 py-2 text-sm cursor-pointer border-r border-gray-600 shrink-0 select-none ${
+                className={`flex items-center gap-2 px-2 py-1.5 text-sm cursor-pointer border-r border-gray-600 shrink-0 select-none ${
                   isActive
                     ? 'border-t-2 border-t-blue-500'
                     : 'text-gray-400 hover:bg-gray-700 hover:text-gray-200'
                 }`}
               >
                 <Icon size={14} />
-                <span className="max-w-[140px] truncate">{label}</span>
+                <span className="max-w-[140px] truncate text-xs">{label}</span>
                 {openTabs.length > 1 && (
                   <button
                     onClick={(e) => closeTab(to, e)}
@@ -305,13 +336,16 @@ export default function App() {
           {openTabs.map(to => {
             const Component = PAGE_COMPONENTS[to];
             const isActive    = activeTo === to && !isSubRoute;
-            const isLogViewer = to === '/log-viewer';
+            const isFullBleed = to === '/log-viewer' || to === '/remote-desktop';
             return (
               <div
                 key={to}
-                style={{ display: isActive ? 'block' : 'none', ...(isLogViewer ? {} : { background: 'var(--content-bg)' }) }}
-                className={`absolute inset-0 ${isLogViewer ? '' : 'overflow-auto p-6'}`}
+                style={{ display: isActive ? 'block' : 'none', ...(!isFullBleed ? { background: 'var(--content-bg)' } : {}) }}
+                className={`absolute inset-0 ${isFullBleed ? '' : 'overflow-auto p-6'}`}
               >
+                {/* <div style={{ display: tabStrip || openTabs.length==1 ? 'none' : 'block' }} className='flex items-end justify-items-end my-1'>
+                  <X onClick={(e) => closeTab(to, e)} />
+                </div> */}
                 <Component />
               </div>
             );

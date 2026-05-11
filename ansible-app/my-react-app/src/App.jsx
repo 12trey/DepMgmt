@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import Editor from '@monaco-editor/react';
-import { Folder, FileText, ChevronUp, Play, Server, Maximize2 } from 'lucide-react';
+import { Folder, FileText, ChevronUp, Play, Server, Maximize2, ArrowDownRight } from 'lucide-react';
 import './App.css';
 
 const BASE = 'http://localhost:7000';
@@ -331,7 +331,7 @@ function CtxItem({ children, onClick }) {
 
 // ── Floating panel (undocked output) ─────────────────────────────────────────
 
-function FloatingPanel({ title, onDock, defaultW = 600, defaultH = 400, children }) {
+function FloatingPanel({ title, onDock, defaultW = 800, defaultH = 550, children }) {
   const [pos, setPos] = useState(() => ({
     x: Math.max(20, (window.innerWidth - defaultW) / 2),
     y: Math.max(20, (window.innerHeight - defaultH) / 4),
@@ -359,10 +359,10 @@ function FloatingPanel({ title, onDock, defaultW = 600, defaultH = 400, children
     function onMove(ev) {
       const dx = ev.clientX - sx, dy = ev.clientY - sy;
       let nw = sw, nh = sh, nx = spx, ny = spy;
-      if (dir.includes('e')) nw = Math.max(200, sw + dx);
-      if (dir.includes('w')) { nw = Math.max(200, sw - dx); nx = spx + sw - nw; }
-      if (dir.includes('s')) nh = Math.max(150, sh + dy);
-      if (dir.includes('n')) { nh = Math.max(150, sh - dy); ny = spy + sh - nh; }
+      if (dir.includes('e')) nw = Math.max(300, sw + dx);
+      if (dir.includes('w')) { nw = Math.max(300, sw - dx); nx = spx + sw - nw; }
+      if (dir.includes('s')) nh = Math.max(200, sh + dy);
+      if (dir.includes('n')) { nh = Math.max(200, sh - dy); ny = spy + sh - nh; }
       setSize({ w: nw, h: nh });
       setPos({ x: nx, y: ny });
     }
@@ -374,7 +374,7 @@ function FloatingPanel({ title, onDock, defaultW = 600, defaultH = 400, children
     document.addEventListener('mouseup', onUp);
   }
 
-  const ez = 6;
+  const ez = 12;
   const edges = [
     { dir: 'n',  s: { top: 0, left: ez, right: ez, height: ez, cursor: 'n-resize' } },
     { dir: 's',  s: { bottom: 0, left: ez, right: ez, height: ez, cursor: 's-resize' } },
@@ -383,18 +383,26 @@ function FloatingPanel({ title, onDock, defaultW = 600, defaultH = 400, children
     { dir: 'nw', s: { top: 0, left: 0, width: ez, height: ez, cursor: 'nw-resize' } },
     { dir: 'ne', s: { top: 0, right: 0, width: ez, height: ez, cursor: 'ne-resize' } },
     { dir: 'sw', s: { bottom: 0, left: 0, width: ez, height: ez, cursor: 'sw-resize' } },
-    { dir: 'se', s: { bottom: 0, right: 0, width: ez, height: ez, cursor: 'se-resize' } },
+    { dir: 'se', s: { bottom: 0, right: 0, width: ez * 2, height: ez * 2, cursor: 'se-resize' } },
   ];
 
   return (
     <div style={{
       position: 'fixed', left: pos.x, top: pos.y, width: size.w, height: size.h,
       background: 'var(--panel-bg)', border: '1px solid var(--border)',
-      borderRadius: '8px', boxShadow: '0 8px 24px rgba(0,0,0,0.2)',
+      borderRadius: '8px', boxShadow: '0 8px 24px rgba(0,0,0,0.25)',
       display: 'flex', flexDirection: 'column', overflow: 'hidden', zIndex: 500,
     }}>
       {edges.map(({ dir, s }) => (
-        <div key={dir} onMouseDown={e => startResize(e, dir)} style={{ position: 'absolute', ...s, zIndex: 1 }} />
+        <div key={dir} onMouseDown={e => startResize(e, dir)} style={{ position: 'absolute', ...s, zIndex: 1 }}>
+          {dir === 'se' && (
+            <svg style={{ position: 'absolute', bottom: 3, right: 3, opacity: 0.3, pointerEvents: 'none' }} width="14" height="14" viewBox="0 0 14 14">
+              <circle cx="12" cy="12" r="2" fill="currentColor" />
+              <circle cx="7" cy="12" r="2" fill="currentColor" />
+              <circle cx="12" cy="7" r="2" fill="currentColor" />
+            </svg>
+          )}
+        </div>
       ))}
       <div
         onMouseDown={startDrag}
@@ -407,10 +415,13 @@ function FloatingPanel({ title, onDock, defaultW = 600, defaultH = 400, children
         <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text)' }}>{title}</span>
         <button
           onClick={onDock}
-          style={{ background: 'transparent', border: '1px solid var(--border-dark)', borderRadius: '4px', cursor: 'pointer', color: 'var(--muted)', fontSize: '11px', padding: '2px 8px', lineHeight: 1.4 }}
-        >Dock</button>
+          title="Dock"
+          style={{ background: 'transparent', border: '1px solid var(--border-dark)', borderRadius: '4px', cursor: 'pointer', color: 'var(--muted)', padding: '3px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+        >
+          <ArrowDownRight size={14} />
+        </button>
       </div>
-      <div style={{ flex: 1, overflow: 'auto', padding: '10px' }}>
+      <div style={{ flex: 1, overflow: 'auto', padding: '10px', marginRight: `${ez}px`, marginBottom: `${ez}px` }}>
         {children}
       </div>
     </div>
@@ -779,6 +790,15 @@ function App() {
 
   return (
     <>
+      {/* ── Undocked panel backdrop ── */}
+      {(!rawDocked || !formattedDocked) && (
+        <div style={{
+          position: 'fixed', inset: 0,
+          background: 'rgba(0, 0, 0, 0.45)',
+          zIndex: 499,
+        }} />
+      )}
+
       {/* ── Context menu ── */}
       {ctxMenu && (
         <div

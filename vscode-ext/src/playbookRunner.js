@@ -18,7 +18,7 @@ function buildVerbosityFlag(level) {
   return ['-' + 'v'.repeat(Math.min(level, 5))];
 }
 
-function run(options, outputChannel) {
+function run(options, outputChannel, { onData, onFinish } = {}) {
   const { playbookPath, inventoryPath, ansibleConfig, repoFolder, ansibleBin, distro, verbosity } = options;
 
   if (_activeProc) {
@@ -50,29 +50,50 @@ function run(options, outputChannel) {
     ? ['-d', distro, 'bash', '-c', shellCmd]
     : ['bash', '-c', shellCmd];
 
+  const header = `[ansible-helper] Running: ${shellCmd}\n${'─'.repeat(60)}\n`;
   outputChannel.clear();
   outputChannel.appendLine(`[ansible-helper] Running: ${shellCmd}`);
   outputChannel.appendLine('─'.repeat(60));
   outputChannel.show(true);
+  if (onData) onData(header);
 
   _activeProc = spawn('wsl.exe', wslArgs);
 
-  _activeProc.stdout.on('data', d => outputChannel.append(d.toString()));
-  _activeProc.stderr.on('data', d => outputChannel.append(d.toString()));
+  _activeProc.stdout.on('data', d => {
+    const text = d.toString();
+    outputChannel.append(text);
+    if (onData) onData(text);
+  });
+
+  _activeProc.stderr.on('data', d => {
+    const text = d.toString();
+    outputChannel.append(text);
+    if (onData) onData(text);
+  });
 
   _activeProc.on('close', code => {
     _activeProc = null;
+    const footer = `${'─'.repeat(60)}\n` + (
+      code === 0
+        ? '[ansible-helper] Playbook completed successfully.\n'
+        : `[ansible-helper] Playbook exited with code ${code}.\n`
+    );
     outputChannel.appendLine('─'.repeat(60));
     outputChannel.appendLine(
       code === 0
         ? '[ansible-helper] Playbook completed successfully.'
         : `[ansible-helper] Playbook exited with code ${code}.`
     );
+    if (onData) onData(footer);
+    if (onFinish) onFinish(code);
   });
 
   _activeProc.on('error', err => {
     _activeProc = null;
+    const msg = `[ansible-helper] Failed to start: ${err.message}\n`;
     outputChannel.appendLine(`[ansible-helper] Failed to start: ${err.message}`);
+    if (onData) onData(msg);
+    if (onFinish) onFinish(1);
   });
 }
 

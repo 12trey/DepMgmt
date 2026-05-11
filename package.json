@@ -1,6 +1,6 @@
 {
   "name": "dmtpsadt",
-  "version": "1.0.15",
+  "version": "1.0.16",
   "description": "Web-based PSADT, MSI, IntuneWin, Ansible and AD group management with Electron support",
   "main": "electron/main.js",
   "scripts": {
@@ -9,9 +9,10 @@
     "dev:client": "cd client && npx vite --port 3000",
     "build:client": "cd client && npx vite build",
     "start": "node server/index.js",
-    "electron:dev": "concurrently --kill-others \"npm run dev:server\" \"npm run dev:client\" \"wait-on http://localhost:3000 && cross-env NODE_ENV=development electron .\"",
+    "electron:dev": "concurrently --kill-others \"npm run dev:server\" \"npm run dev:client\" \"npm run --prefix server/logviewer/reactpublic/logviewer buildwatch\" \"wait-on http://localhost:3000 && cross-env NODE_ENV=development electron .\"",
     "electron:build": "npm run build:client && electron-builder",
-    "electron:pack": "npm run build:client && electron-builder --dir"
+    "electron:pack": "npm run build:client && electron-builder --dir",
+    "debugchrome": "start /wait \"\" \"C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe\" --remote-debugging-port=9222 --user-data-dir=remote-debug-profile http://localhost:5173/"
   },
   "build": {
     "appId": "com.dmtpsadt.app",
