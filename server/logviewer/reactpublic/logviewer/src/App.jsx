@@ -615,6 +615,10 @@ export default function App() {
     });
   }, []);
 
+  const [evtxLoading, setEvtxLoading] = useState((t)=>{
+    return false;
+  });
+
   const handleOpenFile = useCallback((filePath) => {
     socket.emit('unwatch');
     setTailPaused(false);
@@ -640,6 +644,8 @@ export default function App() {
       if (initLevel > 0) params.set('level', initLevel);
       if (initText) { params.set('text', initText); if (initRegex) params.set('regex', 'true'); }
 
+      setEvtxLoading(true);
+
       fetch(`/api/evtx?${params}`)
         .then(r => r.json())
         .then(data => {
@@ -658,6 +664,7 @@ export default function App() {
           setPageStore(pages);
           pageStoreRef.current = pages;
           setStatusWatching(`📄 ${fileName} (snapshot)`);
+          setEvtxLoading(false);
         })
         .catch(err => {
           setIsPaginated(false);
@@ -665,6 +672,7 @@ export default function App() {
           pagedSourceRef.current = null;
           setAllEntries([{ type: 3, message: `Error: ${err.message}`, time: '', date: '', component: '', thread: '', typeName: 'Error' }]);
           setStatusWatching('');
+          setEvtxLoading(false);
         });
     } else {
       fetch(`/api/read?path=${encodeURIComponent(filePath)}`)
@@ -674,10 +682,12 @@ export default function App() {
           setAllEntries(data.entries || []);
           socket.emit('watch', { path: filePath });
           setStatusWatching(`🔒 Watching: ${fileName}`);
+          setEvtxLoading(false);
         })
         .catch(err => {
           setAllEntries([{ type: 3, message: `Error: ${err.message}`, time: '', date: '', component: '', thread: '', typeName: 'Error' }]);
           setStatusWatching('');
+          setEvtxLoading(false);
         });
     }
   }, [resetViewer]);
@@ -702,6 +712,9 @@ export default function App() {
     const params = new URLSearchParams({ ...src, offset: initialOffset, count: ps * 3, ps });
     if (initLevel > 0) params.set('level', initLevel);
     if (initText) { params.set('text', initText); if (initRegex) params.set('regex', 'true'); }
+
+    setEvtxLoading(true);
+    setChannelModal(m => ({ ...m, show: false }));
 
     fetch(`/api/evtx?${params}`)
       .then(r => r.json())
@@ -728,12 +741,14 @@ export default function App() {
         socket.emit('watch:channel', watchPayload);
         setStatusWatching(`🔒 Live: ${remoteComputer ? remoteComputer + ' — ' : ''}${channelName}`);
         setChannelModal(m => ({ ...m, show: false }));
+        setEvtxLoading(false);
       })
       .catch(err => {
         setIsPaginated(false);
         isPaginatedRef.current = false;
         pagedSourceRef.current = null;
         setAllEntries([{ type: 3, message: `Error: ${err.message}`, time: '', date: '', component: '', thread: '', typeName: 'Error' }]);
+        setEvtxLoading(false);
       });
   }, [resetViewer, remoteComputer]);
 
@@ -1247,11 +1262,20 @@ export default function App() {
             </div>
 
             {/* Empty state */}
-            <div id="empty-state" style={{ display: hasEntries ? 'none' : 'flex' }}>
-              <span className="big"><FileSymlink size={60} /></span>
-              <span>Select a log file from the browser on the left</span>
-              <span className="sub">or drag &amp; drop a file anywhere here</span>
-            </div>
+            {/* <div id="empty-state" style={{ display: hasEntries ? 'none' : 'flex' }}>               */}
+              { 
+                evtxLoading ? 
+                <div id="empty-state" style={{ display: hasEntries ? 'none' : 'flex' }}>  
+                <div className='spinner'></div>
+                <div>Loading {currentFile}...</div>
+                </div> : 
+                <div id="empty-state" style={{ display: hasEntries ? 'none' : 'flex' }}>    
+                <span className="big"><FileSymlink size={60} /></span>
+                <span>Select a log file from the browser on the left</span>
+                <span className="sub">or drag &amp; drop a file anywhere here</span>
+                </div>
+              }
+            {/* </div> */}
 
             {/* Detail panel */}
             <div id="detail-panel" className={detailEntry ? 'visible' : ''}>

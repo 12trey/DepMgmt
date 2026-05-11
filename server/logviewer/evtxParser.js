@@ -58,14 +58,13 @@ function filterEntries(entries, level, text, isRegex) {
 // events on every poll because their real SystemTime was above the padded floor.
 function unescapeXml(s) {
   return s
-    .replace(/&#x0?D;&#x0?A;/gi, '\n')
-    .replace(/&#x0?A;/gi, '\n')
-    .replace(/&#x0?D;/gi, '\r')
+    .replace(/&#x([0-9a-fA-F]+);/gi, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
+    .replace(/&#(\d+);/g, (_, dec) => String.fromCharCode(parseInt(dec, 10)))
     .replace(/&lt;/gi, '<')
     .replace(/&gt;/gi, '>')
-    .replace(/&amp;/gi, '&')
     .replace(/&quot;/gi, '"')
     .replace(/&apos;/gi, "'")
+    .replace(/&amp;/gi, '&')
     .replace(/<[^>]+>/g, '');  // strip any remaining inline XML tags
 }
 
