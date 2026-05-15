@@ -5,6 +5,15 @@
     "version": "0.2.0",
     "configurations": [
         {
+            "name": "Attach to main",
+            "request": "attach",
+            "cwd": "${workspaceFolder}",
+            "skipFiles": [
+                "<node_internals>/**"
+            ],
+            "type": "node"
+        },
+        {
             "args": [
                 "--extensionDevelopmentPath=${workspaceFolder}/vscode-ext"
             ],
@@ -36,7 +45,7 @@
             "name": "Launch Logviewer",
             "url": "http://localhost:5173",
             "webRoot": "${workspaceFolder}/server/logviewer/reactpublic/logviewer/src"
-            },
+        },
         {
             "name": "Attach by Process ID",
             "processId": "${command:PickProcess}",
@@ -61,6 +70,20 @@
                 "<node_internals>/**"
             ],
             "type": "node"
+        },
+        {
+            "name": "Debug Main Process",
+            "type": "node",
+            "request": "launch",
+            "cwd": "${workspaceFolder}",
+            "runtimeExecutable": "${workspaceFolder}/node_modules/.bin/electron",
+            "windows": {
+                "runtimeExecutable": "${workspaceFolder}/node_modules/.bin/electron.cmd"
+            },
+            "args": [
+                "."
+            ],
+            "outputCapture": "std"
         }
     ]
 }

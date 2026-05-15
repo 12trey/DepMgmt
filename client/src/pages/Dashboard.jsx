@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   Package, Activity, CheckCircle, XCircle, Terminal,
-  PackagePlus, FolderOpen, Play, GitBranch, Archive, UsersRound, Monitor, Wrench, ScrollText, ShieldCheck,
+  PackagePlus, FolderOpen, Play, GitBranch, Archive, UsersRound, Monitor, Wrench, ScrollText, ShieldCheck, LayoutDashboard,
 } from 'lucide-react';
 import { listPackages, listLogs } from '../api';
 
@@ -108,7 +108,10 @@ export default function Dashboard() {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold mb-6">Dashboard</h1>
+      <div className="flex items-center gap-3 mb-6">
+        <LayoutDashboard size={22} className="text-blue-600" />
+        <h1 className="text-2xl font-bold">Dashboard</h1>
+      </div>
 
       {/* Stats */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
@@ -150,8 +153,8 @@ export default function Dashboard() {
               {recent.map((l) => {
                 const label = l.type === 'wrapper'
                   ? (l.steps?.length > 0
-                      ? `${l.steps[0].appName} +${l.steps.length - 1} more`
-                      : 'Multi-step')
+                    ? `${l.steps[0].appName} +${l.steps.length - 1} more`
+                    : 'Multi-step')
                   : `${l.appName || '?'} v${l.version || '?'}`;
                 return (
                   <li key={l.id} className="py-2 flex justify-between text-sm">

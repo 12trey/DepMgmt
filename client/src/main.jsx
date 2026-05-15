@@ -4,6 +4,7 @@ import { BrowserRouter } from 'react-router-dom';
 import App from './App';
 import { AdCredentialProvider } from './context/AdCredentialContext';
 import { ConfigProvider } from './context/ConfigContext';
+import { PackageChangeProvider } from './context/PackageChangeContext';
 import './index.css';
 
 ReactDOM.createRoot(document.getElementById('root')).render(
@@ -11,7 +12,9 @@ ReactDOM.createRoot(document.getElementById('root')).render(
     <BrowserRouter>
       <ConfigProvider>
         <AdCredentialProvider>
-          <App />
+          <PackageChangeProvider>
+            <App />
+          </PackageChangeProvider>
         </AdCredentialProvider>
       </ConfigProvider>
     </BrowserRouter>

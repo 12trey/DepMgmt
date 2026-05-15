@@ -5,7 +5,7 @@
 /* ── CSS variables — used by App.jsx shell and inline styles in pages f9fafb ── */
 :root {
   --content-bg:      #f8f8f8;  /* page content area */
-  --panel-bg:        #f1f1f1;  /* cards, modals, inputs */
+  --panel-bg:        #ffffff;  /* cards, modals, inputs */
   --border:          #e5e7eb;
   --border-dark:     #d1d5db;
   --text:            #374151;
@@ -32,7 +32,7 @@
 }
 .bg-white {
   background-color: var(--panel-bg);
-  box-shadow: 0px 0px 10px -1px #a6bcce;
+  box-shadow: 0px 0px 1px 1px #a6bcce;
 }
 /* ── Global dark overrides for Tailwind utility classes used in page components ── */
 .dark .bg-white      { background-color: var(--panel-bg); box-shadow: 0px 0px 10px -1px #0a0c0d; }
@@ -135,3 +135,4 @@
     @apply inline-flex items-center gap-2 rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white shadow hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed;
   }
 }
+

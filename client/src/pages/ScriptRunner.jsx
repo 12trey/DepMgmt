@@ -346,10 +346,10 @@ export default function ScriptRunner() {
   // ── Render ────────────────────────────────────────────────────────────────
   return (
     <div className="space-y-4">
-      <h1 className="text-2xl font-bold flex items-center gap-2">
-        <Terminal size={24} />
-        Script Runner
-      </h1>
+      <div className="flex items-center gap-3 mb-6">
+        <Terminal size={22} className="text-blue-600" />
+        <h1 className="text-2xl font-bold">Script Runner</h1>
+      </div>
       <div className='text-xs'><button onClick={ () => navigate('/help')}>* Please read Script Runner section in Help *</button></div>
       {/* MgGraph panel */}
       <MgGraphPanel

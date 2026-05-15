@@ -5,7 +5,7 @@ const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
 const process = require('process');
-const { exec, spawn } = require('child_process');
+const { exec, spawn, spawnSync } = require('child_process');
 const { promisify } = require('util');
 const { cwd } = require('process');
 const yaml = require('js-yaml');
@@ -90,7 +90,7 @@ function generateGuacToken(type, settings) {
   let value = cipher.update(payload, 'utf8', 'binary');
   value += cipher.final('binary');
   const inner = JSON.stringify({
-    iv:    Buffer.from(iv).toString('base64'),
+    iv: Buffer.from(iv).toString('base64'),
     value: Buffer.from(value, 'binary').toString('base64'),
   });
   return Buffer.from(inner).toString('base64');
@@ -449,7 +449,7 @@ function buildAuthUrl(repoUrl, username, token) {
   try {
     const u = new URL(repoUrl);
     if (username) u.username = username;
-    if (token)    u.password = token;
+    if (token) u.password = token;
     return u.toString();
   } catch {
     return repoUrl;
@@ -912,6 +912,110 @@ function buildGuacSettings(type, { host, port, username, password, domain, width
   };
 }
 
+async function extInstallToHost(req, res, next) {
+  let wUserProfile = spawnSync('powershell.exe', ['-c', 'write-output', '$env:USERPROFILE']);
+  let wslpath = spawnSync('wslpath', [`${wUserProfile.stdout}`]);
+  // console.log(`${wUserProfile.stdout}`);
+  // console.log(`${wUserProfile.stderr}`);
+  // console.log(`${wslpath.stdout}`);
+  // console.log(`${wslpath.stderr}`);
+
+  let lUserProfile = wslpath.stdout ? `${wslpath.stdout}` : '';
+  lUserProfile = lUserProfile.replace(/[\r\n]/g, '');
+  let distroName = process.env.WSL_DISTRO_NAME;
+
+  let promresult2 = await new Promise((resolve, reject) => {
+    // let code = spawn('wsl.exe', ['-d', distroName, 'code', '--install-extension', `${lUserProfile}/source/aipsadt/vscode-ext/ansible-helper-0.1.0.vsix`], {
+    //   //shell: true,
+    // });
+
+    let code = spawn('code', ['--install-extension', `${lUserProfile}/source/aipsadt/vscode-ext/ansible-helper-0.1.0.vsix`], {
+      //shell: true,
+    });
+
+    let errors = [];
+    let datas = [];
+
+    code.stdout.on('data', (data) => {
+      console.log(`stdout: ${data}`);
+      datas.push(data);
+    });
+
+    code.stderr.on('data', (data) => {
+      console.error(`stderr: ${data}`);
+      errors.push(data);
+    });
+
+    code.on('close', (code) => {
+      console.log(`child process exited with code ${code}`);
+      if (errors.length === 0) {
+        resolve({ status: datas.join(' ') });
+      }
+      else {
+        resolve({ status: errors.join(' ') });
+      }
+    });
+  });
+  res.vscode = promresult2;
+  next();
+}
+
+async function extUninstallFromHost(req, res, next) {
+  let wUserProfile = spawnSync('powershell.exe', ['-c', 'write-output', '$env:USERPROFILE']);
+  let wslpath = spawnSync('wslpath', [`${wUserProfile.stdout}`]);
+  // console.log(`${wUserProfile.stdout}`);
+  // console.log(`${wUserProfile.stderr}`);
+  // console.log(`${wslpath.stdout}`);
+  // console.log(`${wslpath.stderr}`);
+
+  let lUserProfile = wslpath.stdout ? `${wslpath.stdout}` : '';
+  lUserProfile = lUserProfile.replace(/[\r\n]/g, '');
+  let distroName = process.env.WSL_DISTRO_NAME;
+ 
+  let promresult2 = await new Promise((resolve, reject) => {
+    // let code = spawn('wsl.exe', ['-d', distroName, 'code', '--uninstall-extension', `${lUserProfile}/source/aipsadt/vscode-ext/ansible-helper-0.1.0.vsix`], {
+    //   //shell: true,
+    // });
+
+    let code = spawn('code', ['--uninstall-extension', `${lUserProfile}/source/aipsadt/vscode-ext/ansible-helper-0.1.0.vsix`], {
+      //shell: true,
+    });
+
+    let errors = [];
+    let datas = [];
+
+    code.stdout.on('data', (data) => {
+      console.log(`stdout: ${data}`);
+      datas.push(data);
+    });
+
+    code.stderr.on('data', (data) => {
+      console.error(`stderr: ${data}`);
+      errors.push(data);
+    });
+
+    code.on('close', (code) => {
+      console.log(`child process exited with code ${code}`);
+      if (errors.length === 0) {
+        resolve({ status: datas.join(' ') });
+      }
+      else {
+        resolve({ status: errors.join(' ') });
+      }
+    });
+  });
+  res.vscode = promresult2;
+  next();
+}
+
+app.get('/install', extInstallToHost, (req, res) => {
+  res.json(res.vscode);
+});
+
+app.get('/uninstall', extUninstallFromHost, (req, res) => {
+  res.json(res.vscode);
+});
+
 // ── Catch-all ──────────────────────────────────────────────────────────────────
 
 app.get('/*name', (req, res) => {
@@ -940,9 +1044,9 @@ httpServer.listen(port, '127.0.0.1', () => {
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
 function parseKrb5(content) {
-  const realm       = (content.match(/default_realm\s*=\s*(.+)/)    || [])[1]?.trim() || '';
-  const kdcServers  = [...content.matchAll(/^\s*kdc\s*=\s*(.+)/mg)].map(m => m[1].trim());
-  const adminServer = (content.match(/admin_server\s*=\s*(.+)/)     || [])[1]?.trim() || '';
+  const realm = (content.match(/default_realm\s*=\s*(.+)/) || [])[1]?.trim() || '';
+  const kdcServers = [...content.matchAll(/^\s*kdc\s*=\s*(.+)/mg)].map(m => m[1].trim());
+  const adminServer = (content.match(/admin_server\s*=\s*(.+)/) || [])[1]?.trim() || '';
   const defaultDomain = (content.match(/default_domain\s*=\s*(.+)/) || [])[1]?.trim() || '';
   return { realm, kdcServers, adminServer, defaultDomain };
 }

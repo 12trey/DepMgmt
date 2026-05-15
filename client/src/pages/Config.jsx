@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Plus, Trash2, CheckCircle, AlertCircle, Loader, FolderOpen } from 'lucide-react';
+import { Plus, Trash2, CheckCircle, AlertCircle, Loader, FolderOpen, Settings } from 'lucide-react';
 import { getConfig, updateConfig, verifyGroup, browseFolder, browseFile } from '../api';
 import { useAdCredential } from '../context/AdCredentialContext';
 import { useConfigContext } from '../context/ConfigContext';
@@ -96,7 +96,10 @@ export default function Config() {
 
   return (
     <div className="max-w-2xl space-y-6">
-      <h1 className="text-2xl font-bold">Settings</h1>
+      <div className="flex items-center gap-3 mb-6">
+        <Settings size={22} className="text-blue-600" />
+        <h1 className="text-2xl font-bold">Settings</h1>
+      </div>
 
       {msg && (
         <div

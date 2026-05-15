@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Search, Trash2, Play, Download, FolderInput } from 'lucide-react';
+import { Search, Trash2, Play, Download, FolderInput, FolderOpen } from 'lucide-react';
 import { listPackages, deletePackage, importPackage } from '../api';
 import { useConfigContext } from '../context/ConfigContext';
+import { usePackageChange } from '../context/PackageChangeContext'
 
 export default function ManagePackages() {
   const [packages, setPackages] = useState([]);
@@ -14,9 +15,13 @@ export default function ManagePackages() {
   const navigate = useNavigate();
   const isElectron = !!window.electronAPI?.isElectron;
 
+
+  const { changedPackage, setChangedPackage } = usePackageChange();
+
   const { configVersion } = useConfigContext();
   const load = () => listPackages().then(setPackages).catch(() => {});
   useEffect(() => { load(); }, [configVersion]);
+  useEffect(() => { load(); }, [changedPackage]);
 
   const filtered = packages.filter(
     (p) => p.appName?.toLowerCase().includes(search.toLowerCase()) || p.vendor?.toLowerCase().includes(search.toLowerCase())
@@ -31,6 +36,7 @@ export default function ManagePackages() {
     setConfirmDialog(null);
     await deletePackage(appName, version);
     load();
+    setChangedPackage({appName: appName, changeTime: Date.now()});
   };
 
   const handleRun = (appName, version) => {
@@ -64,7 +70,10 @@ export default function ManagePackages() {
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center gap-3 mb-6">
+        <FolderOpen size={22} className="text-blue-600" />
         <h1 className="text-2xl font-bold">Manage Packages</h1>
+      </div>
         <button onClick={handleImport} disabled={importing} className="btn-secondary">
           <FolderInput size={16} /> {importing ? 'Importing…' : 'Import Package'}
         </button>

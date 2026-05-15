@@ -2,7 +2,7 @@ import { useState } from 'react';
 import {
   PackagePlus, FolderOpen, Play, GitBranch, Settings, Monitor,
   Package, Archive, UsersRound, PuzzleIcon, FileText, Image,
-  Code2, FolderOpen as FolderIcon, Wrench, ChevronRight, ScrollText, ShieldCheck, Terminal
+  Code2, FolderOpen as FolderIcon, Wrench, ChevronRight, ScrollText, ShieldCheck, Terminal, HelpCircle,
 } from 'lucide-react';
 
 const SECTIONS = [
@@ -15,10 +15,10 @@ const SECTIONS = [
   { id: 'intune', label: 'Intune Packager' },
   { id: 'git', label: 'Git Integration' },
   { id: 'groups', label: 'Group Management' },
-  { id: 'dmt',       label: 'DMT Tools' },
+  { id: 'dmt', label: 'DMT Tools' },
   { id: 'logviewer', label: 'Log Viewer' },
-  { id: 'signing',   label: 'Code Signing' },
-  { id: 'scriptrunner',   label: 'Script Runner' },
+  { id: 'signing', label: 'Code Signing' },
+  { id: 'scriptrunner', label: 'Script Runner' },
 ];
 
 function Section({ id, title, icon: Icon, children }) {
@@ -81,8 +81,8 @@ export default function Help() {
                 key={s.id}
                 onClick={() => scrollTo(s.id)}
                 className={`w-full text-left px-2 py-1.5 rounded text-xs flex items-center gap-1 transition-colors ${active === s.id
-                    ? 'bg-blue-50 text-blue-700 font-medium'
-                    : 'text-gray-600 hover:bg-gray-50'
+                  ? 'bg-blue-50 text-blue-700 font-medium'
+                  : 'text-gray-600 hover:bg-gray-50'
                   }`}
               >
                 <ChevronRight size={10} className={active === s.id ? 'text-blue-500' : 'text-gray-300'} />
@@ -95,7 +95,10 @@ export default function Help() {
 
       {/* Content */}
       <div className="flex-1 min-w-0">
-        <h1 className="text-2xl font-bold mb-6">Help &amp; Reference</h1>
+        <div className="flex items-center gap-3 mb-6">
+          <HelpCircle size={22} className="text-blue-600" />
+          <h1 className="text-2xl font-bold">Help &amp; Reference</h1>
+        </div>
 
         {/* ── Overview ── */}
         <Section id="overview" title="Overview">
@@ -113,8 +116,8 @@ export default function Help() {
               { icon: Archive, label: 'Intune Packager', desc: 'Wrap installers into .intunewin files.' },
               { icon: GitBranch, label: 'Git Integration', desc: 'Version-control your package repository.' },
               { icon: UsersRound, label: 'Group Management', desc: 'Query and manage on-premises Active Directory groups.' },
-              { icon: Monitor,      label: 'DMT Tools',    desc: 'Ansible playbook execution via WSL.' },
-              { icon: ScrollText,  label: 'Log Viewer',  desc: 'Real-time CMTrace, EVTX, and Ansible log viewing.' },
+              { icon: Monitor, label: 'DMT Tools', desc: 'Ansible playbook execution via WSL.' },
+              { icon: ScrollText, label: 'Log Viewer', desc: 'Real-time CMTrace, EVTX, and Ansible log viewing.' },
               { icon: ShieldCheck, label: 'Code Signing', desc: 'Authenticode-sign executables, MSIs, scripts, and more.' },
             ].map(({ icon: Icon, label, desc }) => (
               <div key={label} className="flex gap-2 p-2 bg-gray-50 rounded border border-gray-100">
@@ -407,7 +410,7 @@ export default function Help() {
             </p>
 
             <p className="mt-2">
-            <Code>wsl --import MyAnsibleUbuntu $env:userprofile\MyAnsibleUbuntu "&lt;PATH TO&gt;\noble-wsl-amd64.wsl"</Code>
+              <Code>wsl --import MyAnsibleUbuntu $env:userprofile\MyAnsibleUbuntu "&lt;PATH TO&gt;\noble-wsl-amd64.wsl"</Code>
             </p>
 
             <p className="mt-2">
@@ -418,7 +421,7 @@ export default function Help() {
               To remove the image if you no longer need it, run the following:
             </p>
             <p className="mt-2">
-            <Code>wsl --unregister MyAnsibleUbuntu</Code>
+              <Code>wsl --unregister MyAnsibleUbuntu</Code>
             </p>
           </Callout>
           <h3 className="font-semibold mt-3 mb-1">Ansible templates</h3>
@@ -667,7 +670,7 @@ param(
 
 Get-MgUser -ConsistencyLevel eventual -Count userCount -Filter "startsWith(DisplayName, '$DisplayNameOrUPN') or startsWith(UserPrincipalName, '$DisplayNameOrUPN')" -OrderBy UserPrincipalName
 `}</pre>
-<pre className="bg-gray-950 text-gray-100 rounded p-3 text-xs font-mono overflow-x-auto mt-1">{`<#
+          <pre className="bg-gray-950 text-gray-100 rounded p-3 text-xs font-mono overflow-x-auto mt-1">{`<#
 .SYNOPSIS
   List host information for a host pool. Az required.
 #>

@@ -49,7 +49,8 @@ $gallery = Get-PSRepository -Name PSGallery -ErrorAction SilentlyContinue
 });
 
 // ── POST /api/psadt/trust-gallery ─────────────────────────────────────────────
-// Sets PSGallery installation policy to Trusted.
+// Sets PSGallery installation policy to Trusted. BTW, this won't help if
+// repository is blocked by proxy/firewall.
 router.post('/trust-gallery', async (_req, res) => {
   try {
     await runPS(`Set-PSRepository -Name PSGallery -InstallationPolicy Trusted`);

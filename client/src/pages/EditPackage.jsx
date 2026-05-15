@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Plus, Trash2 } from 'lucide-react';
 import { getPackage, updatePackage } from '../api';
+import { usePackageChange } from '../context/PackageChangeContext';
 
 const emptyStep = () => ({ description: '', command: '' });
 
@@ -11,6 +12,7 @@ export default function EditPackage() {
   const [form, setForm] = useState(null);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
+  const { setChangedPackage } = usePackageChange();
 
   useEffect(() => {
     getPackage(appName, version)
@@ -48,6 +50,7 @@ export default function EditPackage() {
       setError(err.message);
     } finally {
       setSaving(false);
+      setChangedPackage({appName: appName, changeTime: Date.now()});
     }
   };
 
@@ -61,15 +64,15 @@ export default function EditPackage() {
 
       <form onSubmit={handleSubmit} className="space-y-6">
         {/* PSADT Version */}
-        <Section title="PSADT Version">
+        <Section title="PSADT Version (readonly)">
           <div className="flex gap-4">
             <label className="flex items-center gap-2 cursor-pointer">
-              <input type="radio" name="psadtVersion" value="v3" checked={form.psadtVersion === 'v3'} onChange={() => set('psadtVersion', 'v3')} className="accent-blue-600" />
+              <input type="radio" name="psadtVersion" value="v3" checked={form.psadtVersion === 'v3'} onChange={() => set('psadtVersion', 'v3')} className="accent-blue-600" readOnly={true} disabled={true} />
               <span className="text-sm font-medium">PSADT v3</span>
               <span className="text-xs text-gray-400">Deploy-Application.ps1 + XML config</span>
             </label>
             <label className="flex items-center gap-2 cursor-pointer">
-              <input type="radio" name="psadtVersion" value="v4" checked={form.psadtVersion === 'v4'} onChange={() => set('psadtVersion', 'v4')} className="accent-blue-600" />
+              <input type="radio" name="psadtVersion" value="v4" checked={form.psadtVersion === 'v4'} onChange={() => set('psadtVersion', 'v4')} className="accent-blue-600" readOnly={true} disabled={true} />
               <span className="text-sm font-medium">PSADT v4.1.x</span>
               <span className="text-xs text-gray-400">Invoke-AppDeployToolkit.ps1 + PSD1 config</span>
             </label>
@@ -77,12 +80,12 @@ export default function EditPackage() {
         </Section>
 
         {/* Basic Info */}
-        <Section title="Application Info">
+        <Section title="Application Info (readonly)">
           <div className="grid grid-cols-2 gap-4">
-            <Input label="Application Name" required value={form.appName} onChange={(v) => set('appName', v)} />
-            <Input label="Version" required value={form.version} onChange={(v) => set('version', v)} />
-            <Input label="Vendor" value={form.vendor} onChange={(v) => set('vendor', v)} />
-            <Select label="Architecture" value={form.architecture} onChange={(v) => set('architecture', v)} options={['x64', 'x86', 'ARM64']} />
+            <Input label="Application Name" required value={form.appName} onChange={(v) => set('appName', v)} readOnly={true} disabled={true} style={{ fontStyle: 'italic' }} />
+            <Input label="Version" required value={form.version} onChange={(v) => set('version', v)} readOnly={true} disabled={true} style={{ fontStyle: 'italic' }} />
+            <Input label="Vendor" value={form.vendor} onChange={(v) => set('vendor', v)} readOnly={true} disabled={true} style={{ fontStyle: 'italic' }} />
+            <Select label="Architecture" value={form.architecture} onChange={(v) => set('architecture', v)} options={['x64', 'x86', 'ARM64']}  readOnly={true} disabled={true}  style={{ fontStyle: 'italic' }} />
           </div>
         </Section>
 

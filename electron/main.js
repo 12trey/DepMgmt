@@ -1,7 +1,7 @@
 const { app, BrowserWindow, ipcMain, dialog, clipboard, Menu, shell, globalShortcut } = require('electron');
 const path = require('path');
 const fs = require('fs');
-const { fork } = require('child_process');
+const { fork, spawn } = require('child_process');
 const { session } = require('electron');
 const { electron } = require('process');
 
@@ -17,6 +17,161 @@ if (!gotLock) {
   app.quit();
   process.exit(0);
 }
+
+function checkExecutable(exe) {
+  // Get the system path and split it by the platform delimiter
+  const pathDirs = (process.env.PATH || "").split(path.delimiter);
+
+  // Windows uses PATHEXT to resolve extensions automatically if not provided
+  const extensions = (process.env.PATHEXT || ".EXE").split(';');
+
+  for (const dir of pathDirs) {
+    for (const ext of extensions) {
+      const fullPath = path.join(dir, exe + ext);
+      if (fs.existsSync(fullPath)) {
+        return fullPath;
+      }
+    }
+  }
+  return null;
+}
+
+const openPsadtReference = () => {
+  // const child = spawn('powershell.exe', ['-NoExit',
+  //   '-ExecutionPolicy', 'Bypass', '-c', 'Show-ADTHelpConsole;'], {
+  //   detached: true,
+  //   shell: true,
+  //   stdio: 'ignore'
+  // });
+
+  // child.unref();
+
+  const pwshPath = checkExecutable('pwsh');
+  if (pwshPath) {
+    let newchild = spawn('pwsh.exe', [
+      '-NoProfile',
+      '-ExecutionPolicy',
+      'Bypass',
+      '-Command',
+      `
+  Import-Module PSAppDeployToolkit -Force;
+  Show-ADTHelpConsole
+  `
+    ], {
+
+    });
+
+    newchild.stdout.on('data', (data) => {
+      console.log(`${data}`);
+    });
+
+    newchild.stderr.on('data', (data) => {
+      console.log(`${data}`);
+    });
+
+    newchild.on('close', (code) => {
+      console.log(code);
+    });
+  }
+
+};
+
+const listPsadtCmdlets = async () => {
+  let prom = await new Promise((resolve, reject) => {
+    const pwshPath = checkExecutable('powershell');
+    if (pwshPath) {
+      let newchild = spawn('powershell.exe', [
+        '-NoProfile',
+        '-ExecutionPolicy',
+        'Bypass',
+        '-Command',
+        `
+  Import-Module PSAppDeployToolkit -Force | Out-Null;
+  Get-ADTCommandTable | Foreach-Object { $_.Keys } | ConvertTo-Json
+  `
+      ], {
+        env: {}
+      });
+
+      let alldata = [];
+      newchild.stdout.on('data', (data) => {
+        console.log(`${data}`);
+        alldata.push(data);
+      });
+
+      newchild.stderr.on('data', (data) => {
+        console.log(`${data}`);
+      });
+
+      newchild.on('close', (code) => {
+        console.log(code);
+        let output = alldata.join();
+        let jsonoutput = {};
+        try{
+          jsonoutput = JSON.parse(output);
+        } catch (err) {}
+
+        resolve(jsonoutput);
+      });
+    }
+    else {
+      reject();
+    }
+  });
+  return prom;
+};
+
+const getpsadtcmdletexample = async (arg) => {
+  let prom = await new Promise((resolve, reject) => {
+    const pwshPath = checkExecutable('powershell');
+    if (pwshPath) {
+      let newchild = spawn('powershell.exe', [
+        '-NoProfile',
+        '-ExecutionPolicy',
+        'Bypass',
+        '-Command',
+        `
+  Import-Module PSAppDeployToolkit -Force | Out-Null;
+  Get-Help ${arg} -Full
+  `
+      ], {
+        env: {}
+      });
+
+      let alldata = '';
+
+      newchild.stdout.on('data', (data) => {
+        console.log(`${data}`);
+        alldata += `${data}`;
+      });
+
+      newchild.stderr.on('data', (data) => {
+        console.log(`${data}`);
+      });
+
+      newchild.on('close', (code) => {
+        console.log(code);
+
+        let output = alldata
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#39;');
+
+        console.log(output);
+        output = output.replace(/```(\w+)([\s\S]*?)```/g, (match, language, code) => {
+          return `<div style="color: #f1f14d">\`\`\`${language}${code}\`\`\`</div>`;
+        });
+        resolve({ data: output });
+      });
+    }
+    else {
+      reject();
+    }
+  });
+  return prom;
+};
 
 app.commandLine.appendSwitch('remote-debugging-port', '9222');
 
@@ -93,6 +248,18 @@ function createWindow() {
     //const win = BrowserWindow.fromWebContents(event.sender);
     const win = BrowserWindow.getFocusedWindow();
     if (win) win.setFullScreen(!win.isFullScreen());
+  });
+
+  ipcMain.on('open-psadtref', () => {
+    openPsadtReference();
+  });
+
+  ipcMain.handle('list-psadtcmdlets', async () => {
+    return await listPsadtCmdlets();
+  });
+
+  ipcMain.handle('get-psadtcmdletexample', async (event, args) => {
+    return await getpsadtcmdletexample(args);
   });
 
   mainWindow.removeMenu();
@@ -204,7 +371,7 @@ ipcMain.handle('pick-file', async (_event, options = {}) => {
 });
 
 app.whenReady().then(() => {
-  
+
 });
 
 app.whenReady().then(async () => {

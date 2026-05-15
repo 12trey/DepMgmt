@@ -46,7 +46,10 @@ export default function GitPanel() {
 
   return (
     <div className="max-w-2xl">
-      <h1 className="text-2xl font-bold mb-6">Git Repository</h1>
+      <div className="flex items-center gap-3 mb-6">
+        <GitBranch size={22} className="text-blue-600" />
+        <h1 className="text-2xl font-bold">Git Repository</h1>
+      </div>
       {msg && <div className="bg-green-50 text-green-700 p-3 rounded mb-4">{msg}</div>}
       {error && <div className="bg-red-50 text-red-700 p-3 rounded mb-4">{error}</div>}
 

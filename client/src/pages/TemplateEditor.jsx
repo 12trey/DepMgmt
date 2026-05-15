@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import Editor from '@monaco-editor/react';
-import { Save, RotateCcw, Loader } from 'lucide-react';
+import { Save, RotateCcw, Loader, FileCode } from 'lucide-react';
 import { readTemplate, saveTemplate, resetTemplate } from '../api';
 
 const V4_FILES = [
@@ -94,7 +94,10 @@ export default function TemplateEditor() {
 
   return (
     <div className="flex flex-col" style={{ height: 'calc(100vh - 100px)' }}>
-      <h1 className="text-2xl font-bold mb-4 flex-shrink-0">Template Editor</h1>
+      <div className="flex items-center gap-3 mb-6">
+        <FileCode size={22} className="text-blue-600" />
+        <h1 className="text-2xl font-bold">Template Editor</h1>
+      </div>
 
       <div className="flex gap-4 flex-1 min-h-0">
         {/* Sidebar */}

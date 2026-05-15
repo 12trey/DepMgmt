@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Trash2, Upload, FileText } from 'lucide-react';
-import { createPackage, uploadFiles, getConfig, copyDefaultFiles } from '../api';
+import { Plus, Trash2, Upload, FileText, PackagePlus, Search } from 'lucide-react';
+import { createPackage, uploadFiles, getConfig, copyDefaultFiles, getPsadtStatus } from '../api';
 import { useConfigContext } from '../context/ConfigContext';
 
 const emptyStep = () => ({ description: '', command: '' });
@@ -90,6 +90,15 @@ export default function CreatePackage() {
 
   const { notifyConfigSaved } = useConfigContext();
 
+  const [psadtStatus, setPsadtStatus] = useState(null);
+
+  const [allCmdLets, setAllCmdLets] = useState([]);
+  const [filteredCmdLets, setFilteredCmdLets] = useState([]);
+  const [cmdLetFilter, setCmdLetFilter] = useState('');
+  const [example, setExample] = useState(null);
+  const exampleRef = useRef(null);
+  const [selectedCmdLet, setSelectedCmdLet] = useState(null);
+
   useEffect(() => {
     getConfig().then(cfg => {
       const df = cfg.defaultFiles || {};
@@ -97,6 +106,13 @@ export default function CreatePackage() {
       setCopyDefaults(df.copyOnCreate ?? false);
     }).catch(() => { });
   }, []);
+
+  useEffect(() => {
+    getPsadtStatus().then((state) => {
+      //console.log(state);
+      setPsadtStatus(state);
+    });
+  }, [getPsadtStatus]);
 
   const set = (key, value) => setForm((f) => ({ ...f, [key]: value }));
 
@@ -153,7 +169,7 @@ export default function CreatePackage() {
     }
   };
 
-  const resetForm = ()=> {
+  const resetForm = () => {
     setForm({
       appName: '',
       version: '',
@@ -177,9 +193,51 @@ export default function CreatePackage() {
     resetForm();
   };
 
+  const handleOpenPsadtRef = async (e) => {
+    window.electronAPI.onOpenPsadtRef();
+  };
+  const handleListPsadtCmdlets = async (e) => {
+    let cmdlets = await window.electronAPI.onListPsadtCmdlets();
+    //console.log(cmdlets);
+    setAllCmdLets(cmdlets);
+    setFilteredCmdLets(cmdlets);
+  };
+  const handleGetExample = async (arg, idx) => {
+    setSelectedCmdLet(idx);
+    let output = await window.electronAPI.onGetPsadtCmdletExample(arg);
+    //console.log(output);
+    setExample(output);
+    exampleRef.current?.scrollTo({
+      top: 0,
+      behavior: 'smooth'
+    });
+  }
+
+
+  const handleFilterCmdLets = async (event) => {
+    //console.log(event.currentTarget.value);
+    let filter = event.currentTarget.value;
+    setCmdLetFilter((prev) => {
+      setFilteredCmdLets(allCmdLets.filter(item => item.toLowerCase().includes(filter.toLowerCase())));
+      return filter;
+    });
+  }
+  useEffect(() => {
+    window.electronAPI.onListPsadtCmdlets().then(cmdlets => {
+      setAllCmdLets(cmdlets);
+      setFilteredCmdLets(cmdlets);
+    });
+  }, [setAllCmdLets, setFilteredCmdLets]);
+
   return (
-    <div className="max-w-3xl">
-      <h1 className="text-2xl font-bold mb-6">Create Package</h1>
+    <div className="max-w-5xl">
+      <div className="flex items-center gap-3 mb-6">
+        <PackagePlus size={22} className="text-blue-600" />
+        <h1 className="text-2xl font-bold">Create Package</h1>
+      </div>
+
+      {/* {psadtStatus != null && psadtStatus.installed ? <div>PSADT v{psadtStatus.version} module detected <button className='btn' onClick={handleOpenPsadtRef}>Help Console</button><button className='btn' onClick={handleListPsadtCmdlets}>Inline Help</button> </div> : ''} */}
+
       {error && <div className="bg-red-50 text-red-700 p-3 rounded mb-4">{error}</div>}
 
       <form onSubmit={handleSubmit} className="space-y-6">
@@ -340,6 +398,7 @@ export default function CreatePackage() {
           </button>
         </Section>
 
+
         <button type="submit" disabled={saving} className="btn-primary">
           {saving ? 'Creating...' : 'Create Package'}
         </button>
@@ -347,6 +406,34 @@ export default function CreatePackage() {
           {saving ? 'Cancel' : 'Cancel'}
         </button>
       </form>
+
+      {
+        allCmdLets.length > 0 ?
+          <div className='m-10'>
+            <h2>Cmdlet reference</h2>
+            <div className='relative mb-4'>
+              <input type='text' className='border rounded-md m-1 pl-6' onKeyUp={handleFilterCmdLets} />
+              <Search size={18} className='absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400' />
+            </div>
+            <div className='rounded-md max-w-80 max-h-96 mr-4' style={{ display: 'flex', flexDirection: 'column', overflow: 'auto', backgroundColor: '#1f2937' }}>
+              {filteredCmdLets.map((cmdlet, idx) => {
+                return selectedCmdLet != idx ?
+                  <div className='text-xs border-l-4 border-transparent hover:bg-brand-blue active:bg-blue-700 m-1 p-1 max-w-auto cursor-pointer' key={idx} onClick={() => { handleGetExample(cmdlet, idx) }}>{cmdlet}</div> :
+                  <div className='text-xs border-l-4 border-blue-700  hover:bg-brand-blue active:bg-blue-700 m-1 p-1 max-w-auto cursor-pointer' key={idx} onClick={() => { handleGetExample(cmdlet, idx) }}>{cmdlet}</div>            
+              })}
+
+            </div>
+          </div> : ''
+      }
+
+      {
+        example != null ?
+          <div ref={exampleRef} className='rounded-md p-4' style={{ display: 'flex', flexDirection: 'column', maxHeight: '32rem', overflow: 'auto', backgroundColor: '#1f2937' }}>
+            {/* <div className='text-sm' style={{ whiteSpace: 'pre-wrap' }}>{example.data}</div> */}
+            <div className='text-sm' style={{ whiteSpace: 'pre-wrap' }} dangerouslySetInnerHTML={{ __html: example.data }} />
+          </div> : ''
+      }
+
     </div>
   );
 }

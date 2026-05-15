@@ -1,6 +1,6 @@
 {
   "name": "dmtpsadt",
-  "version": "1.0.16",
+  "version": "1.0.17",
   "description": "Web-based PSADT, MSI, IntuneWin, Ansible and AD group management with Electron support",
   "main": "electron/main.js",
   "scripts": {
@@ -28,6 +28,7 @@
       "templates/**/*",
       "config.json",
       "ansible-app/**/*",
+      "vscode-ext/ansible-helper-0.1.0.vsix",
       "!ansible-app/.git/**/*",
       "!ansible-app/.gitkeep",
       "!ansible-app/node_modules/**/*",
@@ -42,9 +43,11 @@
       "icon": "assets/icon.ico"
     },
     "nsis": {
-      "oneClick": false,
-      "allowToChangeInstallationDirectory": true,
-      "deleteAppDataOnUninstall": false
+      "oneClick": true,
+      "allowToChangeInstallationDirectory": false,
+      "deleteAppDataOnUninstall": false,
+      "perMachine": false,
+      "allowElevation": false
     }
   },
   "keywords": [

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import {
-  AlertCircle, CheckCircle, ChevronDown, ChevronRight,
+  AlertCircle, CheckCircle, ChevronDown, ChevronRight, ChevronUp,
   FileText, Folder, FolderPlus, Plus, Trash2, Package, HardDrive, Server, Settings, ShieldCheck, SearchCode
 } from 'lucide-react';
 import { detectMsiTools, probeMsi, buildMsi, getConfig } from '../api';
@@ -537,6 +537,9 @@ export default function MsiBuilder() {
   const [shortcuts, setShortcuts] = useState([]);
   const [registryEntries, setRegistryEntries] = useState([]);
   const [expandedRegIds, setExpandedRegIds] = useState(new Set());
+  const [envVars, setEnvVars] = useState([]);
+  const [psScripts, setPsScripts] = useState([]);
+  const [selectedPsFile, setSelectedPsFile] = useState('');
   const [activeTab, setActiveTab] = useState('files');
   const [building, setBuilding] = useState(false);
   const [buildError, setBuildError] = useState('');
@@ -720,6 +723,39 @@ export default function MsiBuilder() {
     }
   };
 
+  // ── Environment Variables ──
+  const addEnvVar = () =>
+    setEnvVars(v => [...v, {
+      id: crypto.randomUUID(),
+      destId: destinations[0]?.id || '',
+      name: '',
+      separator: ';',
+      action: 'set',
+      part: 'last',
+      system: details.scope !== 'perUser',
+    }]);
+  const updateEnvVar = (id, field, value) =>
+    setEnvVars(v => v.map(e => e.id === id ? { ...e, [field]: value } : e));
+  const deleteEnvVar = (id) => setEnvVars(v => v.filter(e => e.id !== id));
+
+  // ── PS Scripts ──
+  const psFiles = allFiles.filter(f => f.name.toLowerCase().endsWith('.ps1'));
+  const addPsScript = () => {
+    if (!selectedPsFile || psScripts.some(s => s.fileId === selectedPsFile)) return;
+    setPsScripts(v => [...v, { id: crypto.randomUUID(), fileId: selectedPsFile }]);
+    setSelectedPsFile('');
+  };
+  const removePsScript = (id) => setPsScripts(v => v.filter(s => s.id !== id));
+  const movePsScript = (id, dir) => setPsScripts(v => {
+    const idx = v.findIndex(s => s.id === id);
+    if (idx < 0) return v;
+    const newIdx = idx + dir;
+    if (newIdx < 0 || newIdx >= v.length) return v;
+    const arr = [...v];
+    [arr[idx], arr[newIdx]] = [arr[newIdx], arr[idx]];
+    return arr;
+  });
+
   // ── Build ──
   const handleBuild = async () => {
     setBuildError(''); setBuildSuccess(false); setBuilding(true);
@@ -730,6 +766,8 @@ export default function MsiBuilder() {
         destinations: destinations.map(serializeTree),
         shortcuts,
         registryEntries,
+        envVars,
+        psScripts,
       };
       const formData = new FormData();
       formData.append('meta', JSON.stringify(meta));
@@ -889,13 +927,15 @@ export default function MsiBuilder() {
       {/* Tabs */}
       <div className="bg-white rounded-lg shadow mb-5">
         <div className="flex border-b px-4">
-          {['files', 'shortcuts', 'registry'].map(tab => (
+          {['files', 'shortcuts', 'registry', 'environment', 'scripts'].map(tab => (
             <button key={tab} onClick={() => setActiveTab(tab)}
               className={`text-sm font-medium py-3 px-4 border-b-2 -mb-px capitalize ${activeTab === tab ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
             >
               {tab}
               {tab === 'shortcuts' && shortcuts.length > 0 && <span className="ml-1.5 bg-blue-100 text-blue-700 text-xs px-1.5 py-0.5 rounded-full">{shortcuts.length}</span>}
               {tab === 'registry' && registryEntries.length > 0 && <span className="ml-1.5 bg-blue-100 text-blue-700 text-xs px-1.5 py-0.5 rounded-full">{registryEntries.length}</span>}
+              {tab === 'environment' && envVars.length > 0 && <span className="ml-1.5 bg-blue-100 text-blue-700 text-xs px-1.5 py-0.5 rounded-full">{envVars.length}</span>}
+              {tab === 'scripts' && psScripts.length > 0 && <span className="ml-1.5 bg-blue-100 text-blue-700 text-xs px-1.5 py-0.5 rounded-full">{psScripts.length}</span>}
             </button>
           ))}
         </div>
@@ -1133,6 +1173,166 @@ export default function MsiBuilder() {
               )}
             </div>
           )}
+
+          {/* ── Scripts tab ── */}
+          {activeTab === 'scripts' && (
+            <div>
+              <div className="mb-3">
+                <p className="text-sm text-gray-500">
+                  Scripts run in order after <code className="bg-gray-100 px-1 rounded text-xs">InstallFiles</code> during installation. Requires PowerShell on the target machine. Add <code className="bg-gray-100 px-1 rounded text-xs">.ps1</code> files in the Files tab first.
+                </p>
+              </div>
+              {psFiles.length === 0 ? (
+                <p className="text-gray-400 text-sm py-6 text-center">No .ps1 files found across all destinations. Add PowerShell scripts in the Files tab first.</p>
+              ) : (
+                <div className="flex items-center gap-2 mb-4">
+                  <select
+                    className="input flex-1 text-sm"
+                    value={selectedPsFile}
+                    onChange={e => setSelectedPsFile(e.target.value)}
+                  >
+                    <option value="">Select a .ps1 file to add…</option>
+                    {psFiles.filter(f => !psScripts.some(s => s.fileId === f.id)).map(f => (
+                      <option key={f.id} value={f.id}>{f.name}</option>
+                    ))}
+                  </select>
+                  <button className="btn-primary text-sm" onClick={addPsScript} disabled={!selectedPsFile}>
+                    <Plus size={14} /> Add to Run List
+                  </button>
+                </div>
+              )}
+              {psScripts.length === 0 && psFiles.length > 0 && (
+                <p className="text-gray-400 text-sm text-center py-4">No scripts in the run list yet.</p>
+              )}
+              {psScripts.length > 0 && (
+                <div className="border rounded-lg overflow-hidden">
+                  <div className="bg-gray-50 px-3 py-2 border-b text-xs font-medium text-gray-500 flex items-center gap-2">
+                    <span className="w-6 text-center">#</span>
+                    <span className="flex-1">Script</span>
+                    <span>Runs with: powershell.exe -ExecutionPolicy Bypass -NonInteractive</span>
+                  </div>
+                  {psScripts.map((ps, idx) => {
+                    const file = allFiles.find(f => f.id === ps.fileId);
+                    const missing = !file;
+                    return (
+                      <div key={ps.id} className={`flex items-center gap-2 px-3 py-2.5 border-b last:border-0 ${missing ? 'bg-red-50' : 'hover:bg-gray-50'}`}>
+                        <span className="w-6 text-center text-xs text-gray-400 font-mono select-none">{idx + 1}</span>
+                        <FileText size={14} className={`flex-shrink-0 ${missing ? 'text-red-400' : 'text-blue-500'}`} />
+                        <span className={`flex-1 text-sm font-mono truncate ${missing ? 'text-red-500 line-through' : 'text-gray-800'}`}>
+                          {file ? file.name : `(removed — id: ${ps.fileId.slice(0, 8)}…)`}
+                        </span>
+                        <div className="flex items-center gap-0.5 flex-shrink-0">
+                          <button
+                            onClick={() => movePsScript(ps.id, -1)}
+                            disabled={idx === 0}
+                            className="p-1 rounded hover:bg-gray-200 text-gray-400 hover:text-gray-700 disabled:opacity-30 disabled:cursor-not-allowed"
+                            title="Move up"
+                          >
+                            <ChevronUp size={13} />
+                          </button>
+                          <button
+                            onClick={() => movePsScript(ps.id, 1)}
+                            disabled={idx === psScripts.length - 1}
+                            className="p-1 rounded hover:bg-gray-200 text-gray-400 hover:text-gray-700 disabled:opacity-30 disabled:cursor-not-allowed"
+                            title="Move down"
+                          >
+                            <ChevronDown size={13} />
+                          </button>
+                          <button
+                            onClick={() => removePsScript(ps.id)}
+                            className="p-1 rounded hover:bg-red-50 text-gray-400 hover:text-red-500"
+                            title="Remove"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── Environment tab ── */}
+          {activeTab === 'environment' && (
+            <div>
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-sm text-gray-500">
+                  Add destination folders to environment variables like <code className="bg-gray-100 px-1 rounded text-xs">PATH</code> or <code className="bg-gray-100 px-1 rounded text-xs">PSModulePath</code>.
+                  {details.scope === 'perUser' && <span className="ml-1 text-amber-600">Current User scope — System defaults to No.</span>}
+                </p>
+                <button className="btn-secondary text-sm" onClick={addEnvVar}><Plus size={14} /> Add Entry</button>
+              </div>
+              {envVars.length === 0 && <p className="text-gray-400 text-sm py-6 text-center">No environment variable entries defined.</p>}
+              <div className="space-y-3">
+                {envVars.map(ev => (
+                  <div key={ev.id} className="border rounded-lg p-3 bg-gray-50 space-y-2">
+                    <div className="grid grid-cols-[1fr_1fr_auto] gap-3 items-end">
+                      <label className="block">
+                        <span className="text-xs font-medium text-gray-600">Destination</span>
+                        <select className="input mt-1 w-full text-sm" value={ev.destId} onChange={e => updateEnvVar(ev.id, 'destId', e.target.value)}>
+                          <option value="">Select destination…</option>
+                          {destinations.map(d => (
+                            <option key={d.id} value={d.id}>
+                              {d.name}{d.customPath ? ` — ${d.customPath}` : ''}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="block">
+                        <span className="text-xs font-medium text-gray-600">Variable Name</span>
+                        <input
+                          list={`env-name-list-${ev.id}`}
+                          className="input mt-1 w-full text-sm font-mono"
+                          value={ev.name}
+                          onChange={e => updateEnvVar(ev.id, 'name', e.target.value)}
+                          placeholder="PATH"
+                        />
+                        <datalist id={`env-name-list-${ev.id}`}>
+                          <option value="PATH" />
+                          <option value="PSModulePath" />
+                          <option value="JAVA_HOME" />
+                          <option value="PYTHONPATH" />
+                          <option value="NODE_PATH" />
+                        </datalist>
+                      </label>
+                      <button onClick={() => deleteEnvVar(ev.id)} className="text-red-400 hover:text-red-600 mb-0.5"><Trash2 size={16} /></button>
+                    </div>
+                    <div className="grid grid-cols-4 gap-3 items-end">
+                      <label className="block">
+                        <span className="text-xs font-medium text-gray-600">Separator</span>
+                        <input className="input mt-1 w-full text-sm font-mono" value={ev.separator} onChange={e => updateEnvVar(ev.id, 'separator', e.target.value)} placeholder=";" />
+                      </label>
+                      <label className="block">
+                        <span className="text-xs font-medium text-gray-600">Action</span>
+                        <select className="input mt-1 w-full text-sm" value={ev.action} onChange={e => updateEnvVar(ev.id, 'action', e.target.value)}>
+                          <option value="set">set</option>
+                          <option value="create">create</option>
+                          <option value="remove">remove</option>
+                        </select>
+                      </label>
+                      <label className="block">
+                        <span className="text-xs font-medium text-gray-600">Part</span>
+                        <select className="input mt-1 w-full text-sm" value={ev.part} onChange={e => updateEnvVar(ev.id, 'part', e.target.value)}>
+                          <option value="last">last</option>
+                          <option value="first">first</option>
+                          <option value="all">all</option>
+                        </select>
+                      </label>
+                      <label className="block">
+                        <span className="text-xs font-medium text-gray-600">System</span>
+                        <div className="mt-2 flex items-center gap-1.5">
+                          <input type="checkbox" checked={ev.system} onChange={e => updateEnvVar(ev.id, 'system', e.target.checked)} />
+                          <span className="text-xs text-gray-600">{ev.system ? 'Yes (machine-wide)' : 'No (user only)'}</span>
+                        </div>
+                      </label>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -1244,7 +1444,7 @@ export default function MsiBuilder() {
           <div>
             <h2 className="font-semibold text-gray-800">Compile MSI</h2>
             <p className="text-sm text-gray-500 mt-0.5">
-              {allFiles.length} file{allFiles.length !== 1 ? 's' : ''} · {shortcuts.length} shortcut{shortcuts.length !== 1 ? 's' : ''} · {registryEntries.length} registry entr{registryEntries.length !== 1 ? 'ies' : 'y'}
+              {allFiles.length} file{allFiles.length !== 1 ? 's' : ''} · {shortcuts.length} shortcut{shortcuts.length !== 1 ? 's' : ''} · {registryEntries.length} registry entr{registryEntries.length !== 1 ? 'ies' : 'y'} · {envVars.length} env var{envVars.length !== 1 ? 's' : ''} · {psScripts.length} script{psScripts.length !== 1 ? 's' : ''}
             </p>
           </div>
           <button

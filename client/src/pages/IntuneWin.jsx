@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { Download, FolderOpen, FileSearch, Package, CheckCircle, AlertCircle, Play } from 'lucide-react';
+import { Download, FolderOpen, FileSearch, Package, CheckCircle, AlertCircle, Play, Archive } from 'lucide-react';
 import { getIntuneToolStatus, downloadIntuneTool, buildIntuneWin, checkIntuneOutput, clearIntuneOutput } from '../api';
 import { useWebSocket } from '../hooks/useWebSocket';
 
@@ -167,7 +167,10 @@ export default function IntuneWin() {
 
   return (
     <div className="max-w-3xl space-y-6">
-      <h1 className="text-2xl font-bold">Intune Win32 Packager</h1>
+      <div className="flex items-center gap-3 mb-6">
+        <Archive size={22} className="text-blue-600" />
+        <h1 className="text-2xl font-bold">Intune Win32 Packager</h1>
+      </div>
       <p className="text-sm text-gray-500 -mt-4">
         Create <code className="bg-gray-100 px-1 rounded">.intunewin</code> packages using Microsoft's IntuneWinAppUtil.
       </p>

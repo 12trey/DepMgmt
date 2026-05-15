@@ -186,9 +186,59 @@ function buildRegistryComponents(registryEntries, indent) {
   return xml;
 }
 
+function buildPsScriptComponents(psScripts, allFiles, meta) {
+  if (!psScripts || psScripts.length === 0) return { propertyXml: '', caXml: '', sequenceXml: '' };
+  const perUser = meta.scope === 'perUser';
+  const impersonate = perUser ? 'yes' : 'no';
+  let propertyXml = `    <Property Id="POWERSHELLEXE">
+      <RegistrySearch Id="FindPSExe" Root="HKLM" Key="SOFTWARE\\Microsoft\\PowerShell\\1\\ShellIds\\Microsoft.PowerShell" Name="Path" Type="raw" />
+    </Property>\n`;
+  let caXml = '';
+  let seqEntries = '';
+  let prevAction = 'InstallFiles';
+  for (let i = 0; i < psScripts.length; i++) {
+    const ps = psScripts[i];
+    const file = allFiles.find(f => f.id === ps.fileId);
+    if (!file) continue;
+    const fileWixId = sid('file_' + file.id);
+    const setPropId = `Set_PS_${i}`;
+    const caId = `PS_${i}`;
+    caXml += `    <CustomAction Id="${setPropId}" Property="${caId}" Value="&quot;[POWERSHELLEXE]&quot; -ExecutionPolicy Bypass -NonInteractive -File &quot;[#${fileWixId}]&quot;" Execute="immediate" />\n`;
+    caXml += `    <CustomAction Id="${caId}" BinaryKey="WixCA" DllEntry="WixQuietExec" Execute="deferred" Return="check" Impersonate="${impersonate}" />\n`;
+    seqEntries += `      <Custom Action="${setPropId}" After="${prevAction}">NOT Installed</Custom>\n`;
+    seqEntries += `      <Custom Action="${caId}" After="${setPropId}">NOT Installed</Custom>\n`;
+    prevAction = caId;
+  }
+  const sequenceXml = seqEntries
+    ? `    <InstallExecuteSequence>\n${seqEntries}    </InstallExecuteSequence>\n`
+    : '';
+  return { propertyXml, caXml, sequenceXml };
+}
+
+function buildEnvVarComponents(envVars, destinations, meta, indent) {
+  const pad = '  '.repeat(indent);
+  let xml = '';
+  const perUser = meta.scope === 'perUser';
+  for (const ev of (envVars || [])) {
+    const dest = (destinations || []).find(d => d.id === ev.destId);
+    if (!dest || !ev.name) continue;
+    const compId = sid(`comp_env_${ev.id}`);
+    const envId = sid(`env_${ev.id}`);
+    const rootHive = perUser ? 'HKCU' : 'HKLM';
+    const systemAttr = ev.system ? 'yes' : 'no';
+    xml += `${pad}<Component Id="${compId}" Directory="${dest.wixId}" Guid="*">\n`;
+    xml += `${pad}  <RegistryValue Root="${rootHive}" Key="Software\\${esc(meta.manufacturer || '')}\\${esc(meta.productName)}" Name="${envId}" Type="integer" Value="1" KeyPath="yes" />\n`;
+    xml += `${pad}  <Environment Id="${envId}" Name="${esc(ev.name)}" Value="[${dest.wixId}]"`;
+    if (ev.separator) xml += ` Separator="${esc(ev.separator)}"`;
+    xml += ` Action="${ev.action}" Part="${ev.part}" System="${systemAttr}" />\n`;
+    xml += `${pad}</Component>\n`;
+  }
+  return xml;
+}
+
 // destDirMaps: { [destId]: { [nodeId]: wixDirId } }
 function generateWxs(meta, allFiles, destDirMaps) {
-  const { productName, manufacturer, version, upgradeCode, platform, scope, installDirName, shortcuts, registryEntries, destinations } = meta;
+  const { productName, manufacturer, version, upgradeCode, platform, scope, installDirName, shortcuts, registryEntries, destinations, envVars, psScripts } = meta;
   const arch = platform === 'x86' ? 'x86' : 'x64';
   const installScope = scope === 'perUser' ? 'perUser' : 'perMachine';
   const dirName = esc(installDirName || productName);
@@ -257,6 +307,8 @@ function generateWxs(meta, allFiles, destDirMaps) {
 
   const scComps = buildShortcutComponents(shortcuts, allFiles, manufacturer, productName, 3);
   const regComps = buildRegistryComponents(registryEntries, 3);
+  const envComps = buildEnvVarComponents(envVars, destinations, meta, 3);
+  const { propertyXml: psPropertyXml, caXml: psCaXml, sequenceXml: psSeqXml } = buildPsScriptComponents(psScripts, allFiles, meta);
 
   // ── Directory XML + SetProperty for custom paths ──────────────────────────────
   let directoryXml = '';
@@ -305,17 +357,17 @@ ${genDirs(dest.children || [], destDirMap, 5)}        </Directory>
 
     <MajorUpgrade DowngradeErrorMessage="A newer version of [ProductName] is already installed." />
     <MediaTemplate EmbedCab="yes" />
-${setProperties ? '\n' + setProperties : ''}
+${psPropertyXml}${setProperties ? '\n' + setProperties : ''}
     <Directory Id="TARGETDIR" Name="SourceDir">
 ${directoryXml}${shortcutDirs}    </Directory>
 
     <ComponentGroup Id="AllComponents">
-${fileComps}${cleanupComp}${scComps}${regComps}    </ComponentGroup>
+${fileComps}${cleanupComp}${scComps}${regComps}${envComps}    </ComponentGroup>
 
     <Feature Id="MainFeature" Title="${esc(productName)}" Level="1">
       <ComponentGroupRef Id="AllComponents" />
     </Feature>
-  </Product>
+${psCaXml}${psSeqXml}  </Product>
 </Wix>`;
 }
 
@@ -492,9 +544,19 @@ async function buildMsi(meta, fileBuffers) {
     const msiPath = path.join(buildDir, msiName);
     const arch = meta.platform === 'x86' ? 'x86' : 'x64';
 
+    // WixUtilExtension required for WixCA/WixQuietExec (PS script custom actions)
+    const hasScripts = (meta.psScripts || []).length > 0;
+    let extArgs = [];
+    if (hasScripts) {
+      const wixBinDir = path.isAbsolute(tool.exe.candle) ? path.dirname(tool.exe.candle) : null;
+      const utilExtPath = wixBinDir ? path.join(wixBinDir, 'WixUtilExtension.dll') : null;
+      const utilExt = utilExtPath && fs.existsSync(utilExtPath) ? utilExtPath : 'WixUtilExtension';
+      extArgs = ['-ext', utilExt];
+    }
+
     let buildLog = '';
-    buildLog += await runExe(tool.exe.candle, ['-arch', arch, '-out', 'product.wixobj', 'product.wxs'], buildDir);
-    buildLog += '\n' + await runExe(tool.exe.light, ['-sice:ICE91', '-out', msiName, 'product.wixobj'], buildDir);
+    buildLog += await runExe(tool.exe.candle, ['-arch', arch, ...extArgs, '-out', 'product.wixobj', 'product.wxs'], buildDir);
+    buildLog += '\n' + await runExe(tool.exe.light, ['-sice:ICE91', ...extArgs, '-out', msiName, 'product.wixobj'], buildDir);
 
     if (!fs.existsSync(msiPath)) {
       throw new Error(`Compiler finished but MSI was not created.\n${buildLog}`);

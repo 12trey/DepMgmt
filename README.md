@@ -431,6 +431,10 @@ All endpoints are under `/api`.
 | Session open | *(implicit)* | `Open-ADTSession` |
 | Session close | `Exit-Script` | `Close-ADTSession` |
 
+### Things to remember
+- Set WSL to use Windows credential manager
+`git config --global credential.helper "/mnt/c/Program\ Files/Git/mingw64/bin/git-credential-manager.exe"`
+
 ---
 
 ## License

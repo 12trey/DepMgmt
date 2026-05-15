@@ -2,7 +2,8 @@ import { useEffect, useState, useCallback } from 'react';
 import {
   Users, UserPlus, UserMinus, CheckCircle, AlertCircle,
   Loader, RefreshCw, ShieldCheck, ChevronDown, KeyRound,
-  Eye, EyeOff, X,
+  Eye, EyeOff, X, UsersRound,
+  UserRound,
 } from 'lucide-react';
 import {
   getConfig,
@@ -49,15 +50,15 @@ export default function ManageGroups() {
         setGroups(sorted);
         if (sorted.length === 1) setSelectedGroup(sorted[0]);
       })
-      .catch(() => {});
+      .catch(() => { });
   }, []);
 
   // Filtered + already-sorted group list
   const filteredGroups = groupFilter.trim()
     ? groups.filter((g) =>
-        // g.name.toLowerCase().startsWith(groupFilter.trim().toLowerCase())
-        g.name.toLowerCase().includes(groupFilter.trim().toLowerCase(),0)
-      )
+      // g.name.toLowerCase().startsWith(groupFilter.trim().toLowerCase())
+      g.name.toLowerCase().includes(groupFilter.trim().toLowerCase(), 0)
+    )
     : groups;
 
   // Build credential object for API calls (null when no username set)
@@ -194,7 +195,10 @@ export default function ManageGroups() {
     <div className="max-w-5xl space-y-4">
       {/* Page header */}
       <div>
-        <h1 className="text-2xl font-bold">Manage Groups</h1>
+        <div className="flex items-center gap-3 mb-6">
+          <UsersRound size={22} className="text-blue-600" />
+          <h1 className="text-2xl font-bold">Manage Groups</h1>
+        </div>
         <p className="text-sm text-gray-500 mt-1">
           Add or remove users from local and Active Directory groups.
           Configure groups in{' '}
@@ -234,7 +238,7 @@ export default function ManageGroups() {
         <div className="flex gap-5 items-start">
           {/* ── Groups sidebar ── */}
           <div className="w-56 flex-shrink-0 flex flex-col bg-white rounded-lg shadow overflow-hidden"
-               style={{ maxHeight: 'calc(100vh - 220px)' }}>
+            style={{ maxHeight: 'calc(100vh - 220px)' }}>
             {/* Header + filter */}
             <div className="px-3 pt-3 pb-2 border-b bg-gray-50 flex-shrink-0">
               <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
@@ -257,11 +261,10 @@ export default function ManageGroups() {
                   <button
                     key={i}
                     onClick={() => selectGroup(g)}
-                    className={`w-full text-left px-3 py-2.5 flex items-center gap-2 text-sm hover:bg-gray-50 transition-colors ${
-                      selectedGroup?.name === g.name && selectedGroup?.type === g.type
+                    className={`w-full text-left px-3 py-2.5 flex items-center gap-2 text-sm hover:bg-gray-50 transition-colors ${selectedGroup?.name === g.name && selectedGroup?.type === g.type
                         ? 'bg-blue-50 border-l-2 border-blue-500 font-medium text-blue-700'
                         : ''
-                    }`}
+                      }`}
                   >
                     <ShieldCheck size={14} className="flex-shrink-0 text-gray-400" />
                     <div className="flex-1 min-w-0">
@@ -535,9 +538,8 @@ function AddUserPanel({
               )}
               <div className="flex items-center gap-3 mt-1">
                 <span
-                  className={`text-xs font-medium ${
-                    userInfo.enabled ? 'text-green-600' : 'text-red-500'
-                  }`}
+                  className={`text-xs font-medium ${userInfo.enabled ? 'text-green-600' : 'text-red-500'
+                    }`}
                 >
                   {userInfo.enabled ? 'Enabled' : 'Disabled'}
                 </span>
@@ -581,9 +583,8 @@ function AddUserPanel({
 
       {result && (
         <p
-          className={`text-xs mt-1 ${
-            result.startsWith('Error') ? 'text-red-600' : 'text-green-600'
-          }`}
+          className={`text-xs mt-1 ${result.startsWith('Error') ? 'text-red-600' : 'text-green-600'
+            }`}
         >
           {result}
         </p>
@@ -602,10 +603,10 @@ function MemberRow({
     member.type === 'user' || member.type === 'inetOrgPerson'
       ? 'User'
       : member.type === 'computer'
-      ? 'Computer'
-      : member.type === 'group'
-      ? 'Group'
-      : member.type || '';
+        ? 'Computer'
+        : member.type === 'group'
+          ? 'Group'
+          : member.type || '';
 
   return (
     <div className={`transition-colors ${isPending ? 'bg-red-50' : 'hover:bg-gray-50'}`}>
@@ -624,11 +625,10 @@ function MemberRow({
         </div>
         <button
           onClick={onRemoveClick}
-          className={`flex items-center gap-1 text-xs font-medium px-2.5 py-1 rounded transition-colors ${
-            isPending
+          className={`flex items-center gap-1 text-xs font-medium px-2.5 py-1 rounded transition-colors ${isPending
               ? 'bg-red-100 text-red-700 hover:bg-red-200'
               : 'text-gray-400 hover:text-red-600 hover:bg-red-50'
-          }`}
+            }`}
         >
           <UserMinus size={13} />
           {isPending ? 'Cancel' : 'Remove'}

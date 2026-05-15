@@ -4,6 +4,7 @@ import { listLogs, getLog, listPackages, runPackage, runWrapper } from '../api';
 import { useWebSocket } from '../hooks/useWebSocket';
 import { Plus, Trash2, Play, Upload } from 'lucide-react';
 import { useConfigContext } from '../context/ConfigContext';
+import { usePackageChange } from '../context/PackageChangeContext'
 
 export default function Execution() {
   const { state: navState } = useLocation();
@@ -37,6 +38,25 @@ export default function Execution() {
   const wrapperTargetFileRef = useRef();
 
   const { notifyConfigSaved } = useConfigContext();
+
+  const { changedPackage, setChangedPackage } = usePackageChange();
+  //const [lastChangedPackage, setLastChangedPackage] = useState({appName: '', changeTime: ''});
+
+  useEffect(()=>{
+    if(changedPackage)
+    {
+      // if(lastChangedPackage.appName === changedPackage.appName && 
+      //     lastChangedPackage.changeTime === changedPackage.changeTime)
+      //     return;
+
+      // setLastChangedPackage(changedPackage);
+      //console.log(`Changed ${changedPackage.appName} at ${new Date(changedPackage.changeTime)}`);
+      // Re-populate with changes.
+      listLogs().then(setLogs).catch(() => { });
+      listPackages().then(setPackages).catch(() => { });
+      setChangedPackage(null); // Execution is the only consumer so reset to null, otherwise this component will always run this effect.
+    }
+  }, [changedPackage]);
 
   useEffect(() => {
     listLogs().then(setLogs).catch(() => { });
@@ -165,7 +185,10 @@ export default function Execution() {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold mb-6">Execution & Logs</h1>
+      <div className="flex items-center gap-3 mb-6">
+        <Play size={22} className="text-blue-600" />
+        <h1 className="text-2xl font-bold">Execution & Logs</h1>
+      </div>
 
       {/* Run controls */}
       <div className="bg-white rounded-lg shadow p-5 mb-6">

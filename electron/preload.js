@@ -29,6 +29,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // File path from drag-and-drop (Electron 32+ replacement for file.path)
   getPathForFile: (file) => webUtils.getPathForFile(file),
+
+  // Open PSADT reference
+  onOpenPsadtRef: () => ipcRenderer.send('open-psadtref', null),
+  onListPsadtCmdlets: () => ipcRenderer.invoke('list-psadtcmdlets', null),
+  onGetPsadtCmdletExample: (arg) => ipcRenderer.invoke('get-psadtcmdletexample', arg),
 });
 
 ipcRenderer.on('clipboard-updated', (event, text) => {

@@ -1,7 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
-const { execFile } = require('child_process');
+const { execFile, spawnSync } = require('child_process');
 const { promisify } = require('util');
 const Handlebars = require('handlebars');
 const paths = require('../paths');
@@ -17,9 +17,29 @@ function runPS(script) {
   );
 }
 
+function generatePsadtTemplate() {
+  const config = JSON.parse(fs.readFileSync(paths.configPath, 'utf-8'));
+  let psPath = config.execution.powershellPath;
+  let psDefaultArgs = config.execution.defaultArgs;
+
+  const result = spawnSync(psPath, 
+    [
+      ...psDefaultArgs, '-c', 'New-ADTTemplate', '-Destination', `${process.env.temp}\\psadtTemplate`, '-Name', 'MyNewApp'
+    ], { 
+      encoding: 'utf8',
+      env: {}
+    });
+}
+
 // Locate the installed PSAppDeployToolkit module and copy it into destDir.
 // Returns { ok, modulePath, fileCount } or { ok: false, reason } without throwing.
 async function populateToolkitDir(destDir) {
+  try {
+    //if(!fs.existsSync(`${process.env.temp}\\psadtTemplate\\MyNewApp\\Invoke-AppDeployToolkit.exe`))
+      generatePsadtTemplate();
+  }
+  catch (err) {}
+
   try {
     const { stdout } = await runPS(`
 $userDocs = [Environment]::GetFolderPath('MyDocuments')
@@ -43,7 +63,13 @@ if ($mod) { $mod.ModuleBase } else { '' }
       fs.rmSync(path.join(destDir, entry), { recursive: true, force: true });
     }
     fs.cpSync(modulePath, destDir, { recursive: true });
-
+    let newpath = path.dirname(destDir)+'\\Invoke-AppDeployToolkit.exe';
+    // Copy exe from generated template
+    fs.copyFileSync(`${process.env.temp}\\psadtTemplate\\MyNewApp\\Invoke-AppDeployToolkit.exe`, newpath);
+    //fs.rmSync(`${process.env.temp}\\psadtTemplate`, { recursive: true, force: true, maxRetries: 40 });
+    // using cmd.exe seems to successfully delete folder.
+    // rmSync failing on some PCs maybe due to security scanning, etc...
+    spawnSync('cmd.exe', ['/c', 'rmdir', '/s', '/q', `${process.env.temp}\\psadtTemplate`])
     return { ok: true, modulePath, fileCount: fs.readdirSync(destDir).length };
   } catch (err) {
     return { ok: false, reason: err.message };
